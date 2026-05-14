@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: cinema-booking-system
+
+  datasource:
+    url: jdbc:postgresql://localhost:5433/cinema_booking
+    username: cinema_user
+    password: 123456
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: none   # dev: update | prod: validate
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  jackson:
+    serialization:
+      FAIL_ON_EMPTY_BEANS: false
+
+server:
+  port: 8080
+
+# JWT (bảo mật)
+jwt:
+  secret: your-secret-key-123456
+  expiration: 86400000   # 1 ngày (ms)
+
+# Logging (debug SQL)
+logging:
+  level:
+    org.hibernate.SQL: debug
+    org.hibernate.type.descriptor.sql.BasicBinder: trace
