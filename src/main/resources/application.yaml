@@ -10,7 +10,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: none
+      ddl-auto: validate
     show-sql: true
     properties:
       hibernate:
@@ -25,8 +25,9 @@ server:
   port: ${SERVER_PORT:8080}
 
 jwt:
-  secret: ${JWT_SECRET:your-secret-key-123456}
-  expiration: ${JWT_EXPIRATION:86400000}
+  signer-key: ${JWT_SECRET}
+  access-token-valid-duration: 3600
+  refresh-token-valid-duration: 604800
 
 logging:
   level:

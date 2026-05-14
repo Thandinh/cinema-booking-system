@@ -32,8 +32,7 @@ build/
 *.ipr
 out/
 gen/
-# Nếu bạn muốn giữ lại cấu hình run configurations (tùy chọn)
-# !.idea/runConfigurations/
+
 
 # --- [ Security & Environment ] ---
 .env
