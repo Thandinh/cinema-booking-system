@@ -25,7 +25,7 @@ server:
   port: ${SERVER_PORT:8080}
 
 jwt:
-  signer-key: ${JWT_SECRET}
+  signer-key: ${JWT_SECRET:default-dev-secret-key-32-chars-minimum}
   access-token-valid-duration: 3600
   refresh-token-valid-duration: 604800
 
