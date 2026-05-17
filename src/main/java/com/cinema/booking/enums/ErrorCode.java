@@ -32,6 +32,15 @@ public enum ErrorCode {
     FIRSTNAME_REQUIRED     (1017, "First name is required",                           HttpStatus.BAD_REQUEST),
     LASTNAME_REQUIRED      (1018, "Last name is required",                            HttpStatus.BAD_REQUEST),
     EMAIL_REQUIRED         (1019, "Email is required",                                HttpStatus.BAD_REQUEST),
+
+    // ── Movie ────────────────────────────────────────────────────────────────
+    MOVIE_NOT_FOUND        (2001, "Movie not found",                      HttpStatus.NOT_FOUND),
+    MOVIE_TITLE_EXISTED    (2002, "Movie title already exists",           HttpStatus.CONFLICT),
+    MOVIE_TITLE_REQUIRED   (2010, "Movie title is required",              HttpStatus.BAD_REQUEST),
+    MOVIE_DURATION_REQUIRED(2011, "Movie duration is required",           HttpStatus.BAD_REQUEST),
+    MOVIE_DURATION_INVALID (2012, "Movie duration must be greater than 0",HttpStatus.BAD_REQUEST),
+    MOVIE_RELEASE_DATE_REQUIRED(2013, "Movie release date is required",   HttpStatus.BAD_REQUEST),
+    MOVIE_STATUS_REQUIRED  (2014, "Movie status is required",             HttpStatus.BAD_REQUEST),
     ;
 
     ErrorCode(int code, String message, HttpStatusCode statusCode) {
