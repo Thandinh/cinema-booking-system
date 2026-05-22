@@ -41,6 +41,26 @@ public enum ErrorCode {
     MOVIE_DURATION_INVALID (2012, "Movie duration must be greater than 0",HttpStatus.BAD_REQUEST),
     MOVIE_RELEASE_DATE_REQUIRED(2013, "Movie release date is required",   HttpStatus.BAD_REQUEST),
     MOVIE_STATUS_REQUIRED  (2014, "Movie status is required",             HttpStatus.BAD_REQUEST),
+
+    // ── Cinema & Room ────────────────────────────────────────────────────────
+    CINEMA_NOT_FOUND       (3001, "Cinema not found",                     HttpStatus.NOT_FOUND),
+    CINEMA_NAME_EXISTED    (3002, "Cinema name already exists",           HttpStatus.CONFLICT),
+    ROOM_NOT_FOUND         (3003, "Room not found",                       HttpStatus.NOT_FOUND),
+    ROOM_NAME_EXISTED      (3004, "Room name already exists in this cinema", HttpStatus.CONFLICT),
+    CINEMA_NAME_REQUIRED   (3010, "Cinema name is required",              HttpStatus.BAD_REQUEST),
+    ROOM_NAME_REQUIRED     (3011, "Room name is required",                HttpStatus.BAD_REQUEST),
+    CINEMA_ID_REQUIRED     (3012, "Cinema ID is required",                HttpStatus.BAD_REQUEST),
+    ROOM_ID_REQUIRED       (3013, "Room ID is required",                  HttpStatus.BAD_REQUEST),
+
+    // ── Seat ────────────────────────────────────────────────────────────────
+    SEAT_NOT_FOUND         (4001, "Seat not found",                       HttpStatus.NOT_FOUND),
+    SEAT_ALREADY_EXISTS    (4002, "Seat already exists in this room",     HttpStatus.CONFLICT),
+    SEAT_IN_USE            (4003, "Seat is currently in use (booked/held)",HttpStatus.CONFLICT),
+    SEAT_ROW_REQUIRED      (4010, "Seat row label is required",           HttpStatus.BAD_REQUEST),
+    SEAT_NUMBER_REQUIRED   (4011, "Seat number is required",              HttpStatus.BAD_REQUEST),
+    SEAT_NUMBER_INVALID    (4012, "Seat number must be >= 1",             HttpStatus.BAD_REQUEST),
+    SEAT_MULTIPLIER_INVALID(4013, "Price multiplier must be >= 0",        HttpStatus.BAD_REQUEST),
+    SEAT_ROW_SIZE_INVALID  (4014, "Row labels must have 1-26 entries",    HttpStatus.BAD_REQUEST),
     ;
 
     ErrorCode(int code, String message, HttpStatusCode statusCode) {
