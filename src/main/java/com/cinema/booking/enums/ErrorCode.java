@@ -61,6 +61,18 @@ public enum ErrorCode {
     SEAT_NUMBER_INVALID    (4012, "Seat number must be >= 1",             HttpStatus.BAD_REQUEST),
     SEAT_MULTIPLIER_INVALID(4013, "Price multiplier must be >= 0",        HttpStatus.BAD_REQUEST),
     SEAT_ROW_SIZE_INVALID  (4014, "Row labels must have 1-26 entries",    HttpStatus.BAD_REQUEST),
+
+    // ── Showtime ────────────────────────────────────────────────────────────
+    SHOWTIME_NOT_FOUND         (5001, "Showtime not found",                    HttpStatus.NOT_FOUND),
+    SHOWTIME_TIME_OVERLAPPING  (5002, "Time overlaps with an existing showtime in this room", HttpStatus.CONFLICT),
+    SHOWTIME_END_TIME_INVALID  (5003, "End time must be after start time",     HttpStatus.BAD_REQUEST),
+    MOVIE_ID_REQUIRED          (5010, "Movie ID is required",                  HttpStatus.BAD_REQUEST),
+    START_TIME_REQUIRED        (5011, "Start time is required",                HttpStatus.BAD_REQUEST),
+    END_TIME_REQUIRED          (5012, "End time is required",                  HttpStatus.BAD_REQUEST),
+    BASE_PRICE_REQUIRED        (5013, "Base price is required",                HttpStatus.BAD_REQUEST),
+    START_TIME_FUTURE          (5014, "Start time must be in the future",      HttpStatus.BAD_REQUEST),
+    END_TIME_FUTURE            (5015, "End time must be in the future",        HttpStatus.BAD_REQUEST),
+    BASE_PRICE_INVALID         (5016, "Base price must be valid",              HttpStatus.BAD_REQUEST),
     ;
 
     ErrorCode(int code, String message, HttpStatusCode statusCode) {
