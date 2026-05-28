@@ -67,8 +67,39 @@ public enum ErrorCode {
     SHOWTIME_TIME_OVERLAPPING  (5002, "Time overlaps with an existing showtime in this room", HttpStatus.CONFLICT),
     SHOWTIME_END_TIME_INVALID  (5003, "End time must be after start time",     HttpStatus.BAD_REQUEST),
     MOVIE_ID_REQUIRED          (5010, "Movie ID is required",                  HttpStatus.BAD_REQUEST),
-    START_TIME_REQUIRED        (5011, "Start time is required",                HttpStatus.BAD_REQUEST),
-    END_TIME_REQUIRED          (5012, "End time is required",                  HttpStatus.BAD_REQUEST),
+
+    // ── Promotion ────────────────────────────────────────────────────────
+    PROMOTION_CODE_EXISTS      (6001, "Promotion code already exists",         HttpStatus.CONFLICT),
+    PROMOTION_NOT_FOUND        (6002, "Promotion not found",                   HttpStatus.NOT_FOUND),
+    PROMOTION_END_DATE_INVALID (6011, "End date must be after start date",     HttpStatus.BAD_REQUEST),
+    DISCOUNT_VALUE_INVALID     (6014, "Discount value invalid",                HttpStatus.BAD_REQUEST),
+    MIN_ORDER_INVALID          (6015, "Min order value must be >= 0",          HttpStatus.BAD_REQUEST),
+    START_DATE_REQUIRED        (6016, "Start date is required",                HttpStatus.BAD_REQUEST),
+    END_DATE_REQUIRED          (6017, "End date is required",                  HttpStatus.BAD_REQUEST),
+    PROMOTION_NOT_ACTIVE       (6018, "Promotion is not active",               HttpStatus.BAD_REQUEST),
+    PROMOTION_EXPIRED          (6019, "Promotion has expired",                 HttpStatus.BAD_REQUEST),
+    PROMOTION_LIMIT_REACHED    (6020, "Promotion usage limit reached",         HttpStatus.BAD_REQUEST),
+    PROMOTION_MIN_ORDER_NOT_MET(6021, "Order value does not meet minimum requirement", HttpStatus.BAD_REQUEST),
+
+    // ── Seat Availability ────────────────────────────────────────────────
+    SEAT_NOT_AVAILABLE         (4020, "One or more seats are not available",   HttpStatus.CONFLICT),
+    SEAT_NOT_HELD              (4021, "Seat is not in HOLD status",            HttpStatus.CONFLICT),
+    SEAT_HELD_BY_ANOTHER       (4022, "Seat is held by another user",          HttpStatus.CONFLICT),
+    SEAT_HOLD_EXPIRED          (4023, "Seat hold has expired, please reselect",HttpStatus.CONFLICT),
+    SEAT_IDS_REQUIRED          (4024, "At least one seat must be selected",    HttpStatus.BAD_REQUEST),
+    SEAT_IDS_SIZE_INVALID      (4025, "Maximum 10 seats per booking",          HttpStatus.BAD_REQUEST),
+    SHOWTIME_NOT_BOOKABLE      (5020, "Showtime is not open for booking",      HttpStatus.BAD_REQUEST),
+    SHOWTIME_ID_REQUIRED       (5021, "Showtime ID is required",               HttpStatus.BAD_REQUEST),
+
+    // ── Booking ───────────────────────────────────────────────────────────
+    BOOKING_NOT_FOUND          (7001, "Booking not found",                     HttpStatus.NOT_FOUND),
+    BOOKING_ALREADY_PROCESSED  (7002, "Booking has already been processed",    HttpStatus.CONFLICT),
+    BOOKING_CANNOT_CANCEL      (7003, "Only PENDING bookings can be cancelled", HttpStatus.CONFLICT),
+
+    // ── Ticket ───────────────────────────────────────────────────────────
+    TICKET_NOT_FOUND           (8001, "Ticket not found",                      HttpStatus.NOT_FOUND),
+    TICKET_ALREADY_USED        (8002, "Ticket has already been used",          HttpStatus.CONFLICT),
+    TICKET_CANCELLED           (8003, "Ticket has been cancelled",             HttpStatus.CONFLICT),
     BASE_PRICE_REQUIRED        (5013, "Base price is required",                HttpStatus.BAD_REQUEST),
     START_TIME_FUTURE          (5014, "Start time must be in the future",      HttpStatus.BAD_REQUEST),
     END_TIME_FUTURE            (5015, "End time must be in the future",        HttpStatus.BAD_REQUEST),
