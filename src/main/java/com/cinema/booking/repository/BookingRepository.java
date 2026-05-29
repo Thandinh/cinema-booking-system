@@ -15,12 +15,20 @@ import java.util.UUID;
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
-    Optional<Booking> findBySecureToken(String secureToken);
+    // JOIN FETCH đầy đủ để tránh LazyInitializationException khi xử lý payment callback
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.showtime s JOIN FETCH s.movie JOIN FETCH s.room r JOIN FETCH r.cinema " +
+           "LEFT JOIN FETCH b.bookingDetails bd LEFT JOIN FETCH bd.seat " +
+           "WHERE b.secureToken = :secureToken")
+    Optional<Booking> findBySecureToken(@Param("secureToken") String secureToken);
 
-    @Query("SELECT b FROM Booking b JOIN FETCH b.showtime s JOIN FETCH s.movie JOIN FETCH s.room r JOIN FETCH r.cinema WHERE b.user.id = :userId")
+    // Tách countQuery riêng để tránh Spring load toàn bộ data vào memory khi phân trang
+    @Query(value = "SELECT b FROM Booking b JOIN FETCH b.showtime s JOIN FETCH s.movie JOIN FETCH s.room r JOIN FETCH r.cinema WHERE b.user.id = :userId",
+           countQuery = "SELECT COUNT(b) FROM Booking b WHERE b.user.id = :userId")
     Page<Booking> findByUserId(@Param("userId") UUID userId, Pageable pageable);
 
-    @Query("SELECT b FROM Booking b JOIN FETCH b.showtime s JOIN FETCH s.movie JOIN FETCH s.room r JOIN FETCH r.cinema WHERE (:status IS NULL OR b.status = :status)")
+    @Query(value = "SELECT b FROM Booking b JOIN FETCH b.showtime s JOIN FETCH s.movie JOIN FETCH s.room r JOIN FETCH r.cinema WHERE (:status IS NULL OR b.status = :status)",
+           countQuery = "SELECT COUNT(b) FROM Booking b WHERE (:status IS NULL OR b.status = :status)")
     Page<Booking> findAllByStatus(@Param("status") BookingStatus status, Pageable pageable);
 
     @Query("SELECT b FROM Booking b LEFT JOIN FETCH b.bookingDetails bd LEFT JOIN FETCH bd.seat WHERE b.id = :id")

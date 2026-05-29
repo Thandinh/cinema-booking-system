@@ -73,10 +73,9 @@ public class BookingServiceImpl implements BookingService {
         }
 
         // Kiểm tra từng ghế phải AVAILABLE
-        List<SeatStatus> notAvailable = seatStatuses.stream()
-                .filter(ss -> ss.getStatus() != SeatStatusType.AVAILABLE)
-                .collect(Collectors.toList());
-        if (!notAvailable.isEmpty()) {
+        boolean hasUnavailable = seatStatuses.stream()
+                .anyMatch(ss -> ss.getStatus() != SeatStatusType.AVAILABLE);
+        if (hasUnavailable) {
             throw new AppException(ErrorCode.SEAT_NOT_AVAILABLE);
         }
 
@@ -102,7 +101,7 @@ public class BookingServiceImpl implements BookingService {
 
         return HoldSeatResponse.builder()
                 .showtimeId(request.getShowtimeId())
-                .heldSeatIds(seatStatuses.stream().map(ss -> ss.getSeat().getId()).collect(Collectors.toList()))
+                .heldSeatIds(seatStatuses.stream().map(ss -> ss.getSeat().getId()).toList())
                 .holdUntil(holdUntil)
                 .estimatedTotalPrice(estimatedTotal)
                 .message("Ghế đã được giữ trong " + HOLD_MINUTES + " phút")
@@ -182,7 +181,7 @@ public class BookingServiceImpl implements BookingService {
                                         .multiply(ss.getSeat().getPriceMultiplier())
                                         .setScale(2, RoundingMode.HALF_UP))
                         .build())
-                .collect(Collectors.toList());
+                .toList();
         booking.getBookingDetails().addAll(details);
 
         Booking saved = bookingRepository.save(booking);
@@ -206,11 +205,11 @@ public class BookingServiceImpl implements BookingService {
 
         booking.setStatus(BookingStatus.SUCCESS);
 
-        // Bulk-update toàn bộ ghế → BOOKED
+        // Bulk-update toàn bộ ghế → BOOKED (đồng thời xóa hold_by và hold_until)
         List<UUID> seatIds = booking.getBookingDetails().stream()
                 .map(bd -> bd.getSeat().getId())
-                .collect(Collectors.toList());
-        seatStatusRepository.bulkUpdateStatus(booking.getShowtime().getId(), seatIds, SeatStatusType.BOOKED);
+                .toList();
+        seatStatusRepository.bulkUpdateStatusAndClearHold(booking.getShowtime().getId(), seatIds, SeatStatusType.BOOKED);
 
         // Sinh QR Ticket cho từng ghế
         for (BookingDetail detail : booking.getBookingDetails()) {
@@ -224,10 +223,9 @@ public class BookingServiceImpl implements BookingService {
         }
 
         // Tăng used_count của promotion
+        // Không cần gọi save() vì entity đang trong managed state của JPA
         if (booking.getPromotion() != null) {
-            Promotion promo = booking.getPromotion();
-            promo.setUsedCount(promo.getUsedCount() + 1);
-            promotionRepository.save(promo);
+            booking.getPromotion().setUsedCount(booking.getPromotion().getUsedCount() + 1);
         }
 
         Booking saved = bookingRepository.save(booking);
@@ -250,11 +248,11 @@ public class BookingServiceImpl implements BookingService {
 
         booking.setStatus(BookingStatus.FAILED);
 
-        // Nhả ghế về AVAILABLE
+        // Nhả ghế về AVAILABLE, đồng thời xóa thông tin hold
         List<UUID> seatIds = booking.getBookingDetails().stream()
                 .map(bd -> bd.getSeat().getId())
-                .collect(Collectors.toList());
-        seatStatusRepository.bulkUpdateStatus(booking.getShowtime().getId(), seatIds, SeatStatusType.AVAILABLE);
+                .toList();
+        seatStatusRepository.bulkUpdateStatusAndClearHold(booking.getShowtime().getId(), seatIds, SeatStatusType.AVAILABLE);
 
         Booking saved = bookingRepository.save(booking);
         log.info("Payment FAILED for booking id={}", saved.getId());
@@ -288,8 +286,8 @@ public class BookingServiceImpl implements BookingService {
 
         List<UUID> seatIds = booking.getBookingDetails().stream()
                 .map(bd -> bd.getSeat().getId())
-                .collect(Collectors.toList());
-        seatStatusRepository.bulkUpdateStatus(booking.getShowtime().getId(), seatIds, SeatStatusType.AVAILABLE);
+                .toList();
+        seatStatusRepository.bulkUpdateStatusAndClearHold(booking.getShowtime().getId(), seatIds, SeatStatusType.AVAILABLE);
 
         Booking saved = bookingRepository.save(booking);
         log.info("Booking CANCELLED id={} by userId={}", bookingId, userId);
@@ -304,7 +302,7 @@ public class BookingServiceImpl implements BookingService {
     public List<SeatMapItemResponse> getSeatMap(UUID showtimeId) {
         return seatStatusRepository.findAllByShowtimeId(showtimeId).stream()
                 .map(bookingMapper::toSeatMapItemResponse)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     // =========================================================================
@@ -418,11 +416,14 @@ public class BookingServiceImpl implements BookingService {
     }
 
     /**
-     * Sinh QR Code: trong thực tế cần encrypt thêm, ở đây dùng UUID + bookingId để đảm bảo unique.
+     * Sinh QR Code dùng full UUID để đảm bảo unique tuyệt đối.
+     * Format: TKT-{bookingIdPrefix}-{seatIdPrefix}-{randomFull}
+     * Trong production nên ký bằng HMAC-SHA256 để chống giả mạo.
      */
     private String generateQrCode(UUID bookingId, UUID seatId) {
-        return "TKT-" + bookingId.toString().substring(0, 8).toUpperCase()
-                + "-" + seatId.toString().substring(0, 8).toUpperCase()
-                + "-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase();
+        return "TKT-"
+                + bookingId.toString().replace("-", "").substring(0, 12).toUpperCase()
+                + "-" + seatId.toString().replace("-", "").substring(0, 12).toUpperCase()
+                + "-" + UUID.randomUUID().toString().replace("-", "").toUpperCase();
     }
 }
