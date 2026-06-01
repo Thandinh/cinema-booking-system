@@ -23,17 +23,34 @@ import org.springframework.security.web.SecurityFilterChain;
 public class SecurityConfig {
 
     private final CustomJwtDecoder customJwtDecoder;
-    private final String[] PUBLIC_POST_ENDPOINTS = {
+
+    private static final String[] PUBLIC_POST_ENDPOINTS = {
             "/auth/token",
             "/auth/introspect",
             "/auth/logout",
             "/auth/refresh",
-            "/api/v1/users/register"   // public registration
+            "/api/v1/users/register"
+    };
+
+    // WebSocket handshake + SockJS fallback endpoints phải được permit
+    // (dữ liệu push là public: trạng thái ghế ai cũng được xem)
+    private static final String[] PUBLIC_WS_ENDPOINTS = {
+            "/ws/**",           // native WebSocket
+            "/ws/info/**"       // SockJS info endpoint
+    };
+
+    // Các endpoint của Swagger/OpenAPI để xem tài liệu API
+    private static final String[] SWAGGER_ENDPOINTS = {
+            "/v3/api-docs/**",
+            "/swagger-ui/**",
+            "/swagger-ui.html"
     };
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity httpSecurity) throws Exception {
         httpSecurity.authorizeHttpRequests(request -> request
+                .requestMatchers(PUBLIC_WS_ENDPOINTS).permitAll()
+                .requestMatchers(SWAGGER_ENDPOINTS).permitAll()
                 .requestMatchers(HttpMethod.POST, PUBLIC_POST_ENDPOINTS).permitAll()
                 .anyRequest().authenticated());
 

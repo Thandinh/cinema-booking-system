@@ -4,6 +4,7 @@ import com.cinema.booking.dto.response.ApiResponse;
 import com.cinema.booking.dto.response.TicketResponse;
 import com.cinema.booking.repository.TicketRepository;
 import com.cinema.booking.mapper.TicketMapper;
+import com.cinema.booking.service.BookingService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -21,6 +22,28 @@ public class TicketController {
 
     TicketRepository ticketRepository;
     TicketMapper ticketMapper;
+    BookingService bookingService;
+
+    /** USER: Xem danh sách vé của chính mình */
+    @GetMapping("/my")
+    @PreAuthorize("hasAuthority('TICKET_VIEW_OWN')")
+    public ApiResponse<Page<TicketResponse>> getMyTickets(
+            @PageableDefault(size = 20) Pageable pageable) {
+        return ApiResponse.<Page<TicketResponse>>builder()
+                .code(1000)
+                .result(bookingService.getMyTickets(pageable))
+                .build();
+    }
+
+    /** STAFF: Quét mã QR check-in vào rạp */
+    @PostMapping("/check-in")
+    @PreAuthorize("hasAuthority('TICKET_CHECKIN')")
+    public ApiResponse<TicketResponse> checkInTicket(@RequestParam String qrCode) {
+        return ApiResponse.<TicketResponse>builder()
+                .code(1000)
+                .result(bookingService.checkInTicket(qrCode))
+                .build();
+    }
 
     /** ADMIN/STAFF: xem toàn bộ vé với phân trang */
     @GetMapping

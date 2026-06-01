@@ -14,6 +14,7 @@ import com.cinema.booking.mapper.TicketMapper;
 import com.cinema.booking.repository.*;
 import com.cinema.booking.service.BookingService;
 import com.cinema.booking.util.SecurityUtils;
+import com.cinema.booking.websocket.SeatStatusPublisher;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -46,6 +47,7 @@ public class BookingServiceImpl implements BookingService {
     TicketRepository     ticketRepository;
     BookingMapper        bookingMapper;
     TicketMapper         ticketMapper;
+    SeatStatusPublisher  seatStatusPublisher; // WebSocket real-time push
 
     // =========================================================================
     // BƯỚC 1: GIỮ GHẾ
@@ -98,6 +100,14 @@ public class BookingServiceImpl implements BookingService {
         seatStatusRepository.saveAll(seatStatuses);
 
         log.info("User {} held {} seats for showtime {}", userId, seatStatuses.size(), request.getShowtimeId());
+
+        // ── WS: Push HOLD event xuống tất cả client đang xem sơ đồ ghế này ──
+        seatStatuses.forEach(ss ->
+                seatStatusPublisher.publishHold(
+                        request.getShowtimeId(),
+                        ss.getSeat().getId(),
+                        userId,
+                        holdUntil));
 
         return HoldSeatResponse.builder()
                 .showtimeId(request.getShowtimeId())
@@ -211,6 +221,9 @@ public class BookingServiceImpl implements BookingService {
                 .toList();
         seatStatusRepository.bulkUpdateStatusAndClearHold(booking.getShowtime().getId(), seatIds, SeatStatusType.BOOKED);
 
+        // ── WS: Push BOOKED event ──
+        seatStatusPublisher.publishBulk(booking.getShowtime().getId(), seatIds, SeatStatusType.BOOKED);
+
         // Sinh QR Ticket cho từng ghế
         for (BookingDetail detail : booking.getBookingDetails()) {
             String qrCode = generateQrCode(booking.getId(), detail.getSeat().getId());
@@ -254,6 +267,9 @@ public class BookingServiceImpl implements BookingService {
                 .toList();
         seatStatusRepository.bulkUpdateStatusAndClearHold(booking.getShowtime().getId(), seatIds, SeatStatusType.AVAILABLE);
 
+        // ── WS: Push AVAILABLE event (ghế được trả lại) ──
+        seatStatusPublisher.publishBulk(booking.getShowtime().getId(), seatIds, SeatStatusType.AVAILABLE);
+
         Booking saved = bookingRepository.save(booking);
         log.info("Payment FAILED for booking id={}", saved.getId());
         return bookingMapper.toBookingResponse(saved);
@@ -288,6 +304,9 @@ public class BookingServiceImpl implements BookingService {
                 .map(bd -> bd.getSeat().getId())
                 .toList();
         seatStatusRepository.bulkUpdateStatusAndClearHold(booking.getShowtime().getId(), seatIds, SeatStatusType.AVAILABLE);
+
+        // ── WS: Push AVAILABLE event (hủy đơn, trả ghế về pool) ──
+        seatStatusPublisher.publishBulk(booking.getShowtime().getId(), seatIds, SeatStatusType.AVAILABLE);
 
         Booking saved = bookingRepository.save(booking);
         log.info("Booking CANCELLED id={} by userId={}", bookingId, userId);
