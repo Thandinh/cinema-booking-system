@@ -21,6 +21,19 @@ spring:
     serialization:
       FAIL_ON_EMPTY_BEANS: false
 
+  # Cấu hình gửi Email (Sử dụng Mailtrap.io để test môi trường dev)
+  mail:
+    host: ${MAIL_HOST:sandbox.smtp.mailtrap.io}
+    port: ${MAIL_PORT:2525}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
 server:
   port: ${SERVER_PORT:8080}
 

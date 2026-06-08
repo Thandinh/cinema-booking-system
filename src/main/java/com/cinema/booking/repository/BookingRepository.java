@@ -33,4 +33,17 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
     @Query("SELECT b FROM Booking b LEFT JOIN FETCH b.bookingDetails bd LEFT JOIN FETCH bd.seat WHERE b.id = :id")
     Optional<Booking> findWithDetailsById(@Param("id") UUID id);
+
+    /**
+     * Query chuyên dùng cho tác vụ gửi Email.
+     * JOIN FETCH tất cả các quan hệ cần thiết: user, showtime-movie-room-cinema,
+     * bookingDetails-seat, ticket (có chứa QR code).
+     * Được gọi trong luồng @Async nên phải load EAGER để tránh LazyInitializationException.
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.user u " +
+           "JOIN FETCH b.showtime s JOIN FETCH s.movie JOIN FETCH s.room r JOIN FETCH r.cinema " +
+           "LEFT JOIN FETCH b.bookingDetails bd LEFT JOIN FETCH bd.seat LEFT JOIN FETCH bd.ticket " +
+           "WHERE b.id = :id")
+    Optional<Booking> findByIdForEmail(@Param("id") UUID id);
 }

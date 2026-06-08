@@ -13,6 +13,7 @@ import com.cinema.booking.mapper.BookingMapper;
 import com.cinema.booking.mapper.TicketMapper;
 import com.cinema.booking.repository.*;
 import com.cinema.booking.service.BookingService;
+import com.cinema.booking.service.EmailService;
 import com.cinema.booking.util.SecurityUtils;
 import com.cinema.booking.websocket.SeatStatusPublisher;
 import lombok.AccessLevel;
@@ -48,6 +49,7 @@ public class BookingServiceImpl implements BookingService {
     BookingMapper        bookingMapper;
     TicketMapper         ticketMapper;
     SeatStatusPublisher  seatStatusPublisher; // WebSocket real-time push
+    EmailService         emailService;        // Gửi email vé
 
     // =========================================================================
     // BƯỚC 1: GIỮ GHẾ
@@ -243,6 +245,11 @@ public class BookingServiceImpl implements BookingService {
 
         Booking saved = bookingRepository.save(booking);
         log.info("Payment SUCCESS for booking id={}", saved.getId());
+        
+        // Gửi email bất đồng bộ — truyền UUID, không truyền entity
+        // để tránh LazyInitializationException khi @Async chạy trong thread khác
+        emailService.sendTicketEmail(saved.getId());
+        
         return bookingMapper.toBookingResponse(saved);
     }
 
