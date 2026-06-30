@@ -16,6 +16,7 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.Arrays;
@@ -30,6 +31,9 @@ public class ApplicationInitConfig {
 
     PasswordEncoder passwordEncoder;
     JwtProperties jwtProperties;
+    
+    @Value("${app.admin.default-password:admin123}")
+    String adminDefaultPassword;
 
 
     @Bean
@@ -43,9 +47,6 @@ public class ApplicationInitConfig {
             PermissionRepository permissionRepository) {
 
         return args -> {
-
-            System.out.println(jwtProperties.getSignerKey());
-            System.out.println(jwtProperties.getSignerKey().length());
 
 
             log.info("--- BẮT ĐẦU KHỞI TẠO DỮ LIỆU CINEMA (RBAC) ---");
@@ -111,7 +112,8 @@ public class ApplicationInitConfig {
                         PermissionName.TICKET_VIEW_ALL.name(),
                         PermissionName.TICKET_CHECKIN.name(),
                         PermissionName.DASHBOARD_VIEW.name(),
-                        PermissionName.REPORT_VIEW.name()
+                        PermissionName.REPORT_VIEW.name(),
+                        PermissionName.ANALYTICS_VIEW.name()
                 );
                 Set<Permission> staffPermissions = new HashSet<>(permissionRepository.findAllByNameIn(staffPermNames));
                 roleRepository.save(Role.builder()
@@ -122,15 +124,14 @@ public class ApplicationInitConfig {
             }
 
             // --- ROLE: ADMIN (Quản trị viên) ---
-            if (roleRepository.findByName(RoleName.ADMIN.name()).isEmpty()) {
-                // Admin lấy TẤT CẢ Permissions đang có
-                Set<Permission> allPermissions = new HashSet<>(permissionRepository.findAll());
-                roleRepository.save(Role.builder()
-                        .name(RoleName.ADMIN.name())
-                        .description("Quản trị viên toàn hệ thống")
-                        .permissions(allPermissions)
-                        .build());
-            }
+            // Luôn cập nhật permissions cho ADMIN để đảm bảo có đủ quyền mới
+            Role adminRoleObj = roleRepository.findByName(RoleName.ADMIN.name())
+                    .orElse(Role.builder()
+                            .name(RoleName.ADMIN.name())
+                            .description("Quản trị viên toàn hệ thống")
+                            .build());
+            adminRoleObj.setPermissions(new HashSet<>(permissionRepository.findAll()));
+            roleRepository.save(adminRoleObj);
 
             // 3. Khởi tạo tài khoản ADMIN mặc định
             if (userRepository.findByUsername("admin").isEmpty()) {
@@ -139,13 +140,13 @@ public class ApplicationInitConfig {
 
                 User adminUser = User.builder()
                         .username("admin")
-                        .password(passwordEncoder.encode("admin123"))
+                        .password(passwordEncoder.encode(adminDefaultPassword))
                         .roles(Set.of(adminRole))
                         .isActive(true)
                         .build();
 
                 userRepository.save(adminUser);
-                log.warn("Đã tạo tài khoản ADMIN mặc định: admin / admin123");
+                log.warn("Đã tạo tài khoản ADMIN mặc định: admin. Hãy đổi password ngay!");
             }
 
             log.info("--- KHỞI TẠO DỮ LIỆU HOÀN TẤT ---");

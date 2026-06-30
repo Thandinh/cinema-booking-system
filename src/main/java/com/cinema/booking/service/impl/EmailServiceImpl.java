@@ -24,15 +24,16 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@FieldDefaults(level = lombok.AccessLevel.PRIVATE)
 @Slf4j
 public class EmailServiceImpl implements EmailService {
 
-    private final JavaMailSender     javaMailSender;
-    private final TemplateEngine     templateEngine;
-    private final BookingRepository  bookingRepository;
+    final JavaMailSender     javaMailSender;
+    final TemplateEngine     templateEngine;
+    final BookingRepository  bookingRepository;
 
     @Value("${spring.mail.username:noreply@cinema.com}")
-    private String senderEmail;
+    String senderEmail;
 
     /**
      * Chạy bất đồng bộ (@Async) trong thread pool riêng.

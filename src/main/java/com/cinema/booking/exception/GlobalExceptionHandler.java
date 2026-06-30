@@ -69,7 +69,8 @@ public class GlobalExceptionHandler {
             log.info(attributes.toString());
 
         } catch (IllegalArgumentException e) {
-
+            log.warn("Validation key không khớp ErrorCode enum: {}", enumKey);
+            // errorCode vẫn là INVALID_KEY — response về bad request
         }
 
         ApiResponse apiResponse = new ApiResponse();

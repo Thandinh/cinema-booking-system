@@ -23,7 +23,15 @@ public interface MovieRepository extends JpaRepository<Movie, UUID> {
     /** Tìm phim chưa bị xoá mềm theo ID */
     @Query("SELECT m FROM Movie m WHERE m.id = :id AND m.isDeleted = false")
     Optional<Movie> findActiveById(UUID id);
-    
-    /** Kiểm tra trùng tên phim (tuỳ chọn, nếu cần) */
+
+    /** Kiểm tra trùng tên phim */
     boolean existsByTitleAndIsDeletedFalse(String title);
+
+    // ── Analytics ─────────────────────────────────────────────────────────────
+
+    /** Đếm phim theo trạng thái */
+    Long countByStatusAndIsDeletedFalse(MovieStatus status);
+
+    /** Tổng số phim active */
+    Long countByIsDeletedFalse();
 }

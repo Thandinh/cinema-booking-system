@@ -38,7 +38,7 @@ public class HoldExpireScheduler {
         if (expired.isEmpty()) return;
 
         // Nhóm theo showtimeId để gọi publishBulk hiệu quả hơn
-        Map<UUID, List<UUID>> bySHowtime = expired.stream()
+        Map<UUID, List<UUID>> byShowtime = expired.stream()
                 .collect(Collectors.groupingBy(
                         ss -> ss.getShowtime().getId(),
                         Collectors.mapping(ss -> ss.getSeat().getId(), Collectors.toList())
@@ -53,7 +53,7 @@ public class HoldExpireScheduler {
         log.info("Released {} expired seat holds", expired.size());
 
         // ── WS: Push AVAILABLE cho từng nhóm showtime ──
-        bySHowtime.forEach((showtimeId, seatIds) ->
+        byShowtime.forEach((showtimeId, seatIds) ->
                 seatStatusPublisher.publishBulk(showtimeId, seatIds, SeatStatusType.AVAILABLE));
     }
 }

@@ -29,11 +29,12 @@ public class PaymentController {
     public ApiResponse<String> initiatePayment(
             @RequestParam UUID bookingId,
             @RequestParam PaymentMethod method,
-            @RequestParam BigDecimal amount) {
+            @RequestParam BigDecimal amount,
+            jakarta.servlet.http.HttpServletRequest request) {
         return ApiResponse.<String>builder()
                 .code(1000)
                 .message("Payment URL generated")
-                .result(paymentService.initiatePayment(bookingId, method, amount))
+                .result(paymentService.initiatePayment(bookingId, method, amount, request))
                 .build();
     }
 
@@ -55,5 +56,20 @@ public class PaymentController {
                 .code(1000)
                 .result(paymentService.getAllPayments(pageable))
                 .build();
+    }
+
+    @GetMapping("/vnpay-callback")
+    public void vnpayCallback(
+            jakarta.servlet.http.HttpServletRequest request,
+            jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+        String result = paymentService.handleVNPayCallback(request);
+        String frontendUrl = "http://localhost:5173";
+        
+        if (result.startsWith("redirect:")) {
+            String path = result.substring("redirect:".length());
+            response.sendRedirect(frontendUrl + path);
+        } else {
+            response.sendRedirect(frontendUrl + "/payment-failed?reason=invalid_callback");
+        }
     }
 }

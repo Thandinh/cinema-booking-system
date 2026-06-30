@@ -34,6 +34,14 @@ spring:
           starttls:
             enable: true
 
+vnpay:
+  tmnCode: ${VNP_TMN_CODE:YOUR_TMN_CODE}
+  hashSecret: ${VNP_HASH_SECRET:YOUR_HASH_SECRET}
+  url: ${VNP_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+  returnUrl: ${VNP_RETURN_URL:http://localhost:8080/api/v1/payments/vnpay-callback}
+  version: 2.1.0
+  command: pay
+
 server:
   port: ${SERVER_PORT:8080}
 

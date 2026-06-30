@@ -32,6 +32,14 @@ public class SecurityConfig {
             "/api/v1/users/register"
     };
 
+    private static final String[] PUBLIC_GET_ENDPOINTS = {
+            "/api/v1/payments/vnpay-callback",
+            "/api/v1/movies/**",
+            "/api/v1/showtimes/**",
+            "/api/v1/cinemas/map",      // Leaflet: lấy tất cả rạp có tọa độ
+            "/api/v1/cinemas/nearest"   // Leaflet: tìm rạp gần nhất (Haversine)
+    };
+
     // WebSocket handshake + SockJS fallback endpoints phải được permit
     // (dữ liệu push là public: trạng thái ghế ai cũng được xem)
     private static final String[] PUBLIC_WS_ENDPOINTS = {
@@ -52,6 +60,7 @@ public class SecurityConfig {
                 .requestMatchers(PUBLIC_WS_ENDPOINTS).permitAll()
                 .requestMatchers(SWAGGER_ENDPOINTS).permitAll()
                 .requestMatchers(HttpMethod.POST, PUBLIC_POST_ENDPOINTS).permitAll()
+                .requestMatchers(HttpMethod.GET, PUBLIC_GET_ENDPOINTS).permitAll()
                 .anyRequest().authenticated());
 
         httpSecurity.oauth2ResourceServer(oauth2 -> oauth2

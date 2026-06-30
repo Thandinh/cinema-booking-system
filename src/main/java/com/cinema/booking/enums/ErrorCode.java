@@ -15,7 +15,6 @@ public enum ErrorCode {
     EMAIL_EXISTED          (1003, "Email already exists",                 HttpStatus.CONFLICT),
     ROLE_NOT_FOUND         (1004, "Role not found",                       HttpStatus.NOT_FOUND),
     USER_NOT_FOUND         (1005, "User not found",                       HttpStatus.NOT_FOUND),
-    USER_NOT_EXISTED       (1005, "User not found",                       HttpStatus.NOT_FOUND),  // backward-compat alias
     UNAUTHENTICATED        (1006, "Unauthenticated",                      HttpStatus.UNAUTHORIZED),
     UNAUTHORIZED           (1007, "You do not have permission",           HttpStatus.FORBIDDEN),
     USER_NOT_ACTIVE        (1008, "User account is inactive or blocked",  HttpStatus.FORBIDDEN),

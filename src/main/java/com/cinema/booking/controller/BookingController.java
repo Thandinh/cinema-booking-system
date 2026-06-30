@@ -104,23 +104,6 @@ public class BookingController {
                 .build();
     }
 
-    // ── PAYMENT CALLBACKS (gọi nội bộ từ PaymentService sau khi nhận webhook) ──
-    @PostMapping("/payment/success")
-    public ApiResponse<BookingResponse> paymentSuccess(@RequestParam String token) {
-        return ApiResponse.<BookingResponse>builder()
-                .code(1000)
-                .result(bookingService.handlePaymentSuccess(token))
-                .build();
-    }
-
-    @PostMapping("/payment/fail")
-    public ApiResponse<BookingResponse> paymentFail(@RequestParam String token) {
-        return ApiResponse.<BookingResponse>builder()
-                .code(1000)
-                .result(bookingService.handlePaymentFailure(token))
-                .build();
-    }
-
     // ── TICKETS ──────────────────────────────────────────────────────────────
     @GetMapping("/tickets/my")
     @PreAuthorize("hasAuthority('TICKET_VIEW_OWN')")

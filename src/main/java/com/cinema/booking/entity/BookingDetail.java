@@ -30,7 +30,7 @@ public class BookingDetail extends BaseEntity {
     Seat seat;
 
     // Lưu giá tại thời điểm booking để đảm bảo dữ liệu lịch sử không thay đổi
-    @Column(precision = 10, scale = 2)
+    @Column(nullable = false, precision = 10, scale = 2)
     BigDecimal priceAtBooking;
 
     // Mối quan hệ 1-1 với Ticket, cascade để tạo ticket khi booking thành công

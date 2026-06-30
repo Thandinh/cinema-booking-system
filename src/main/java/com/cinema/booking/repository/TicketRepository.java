@@ -1,6 +1,7 @@
 package com.cinema.booking.repository;
 
 import com.cinema.booking.entity.Ticket;
+import com.cinema.booking.enums.TicketStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -21,4 +22,9 @@ public interface TicketRepository extends JpaRepository<Ticket, UUID> {
 
     @Query("SELECT t FROM Ticket t JOIN FETCH t.bookingDetail bd JOIN FETCH bd.booking b JOIN FETCH b.showtime s JOIN FETCH s.movie JOIN FETCH s.room r JOIN FETCH r.cinema")
     Page<Ticket> findAllWithDetails(Pageable pageable);
+
+    // ── Analytics ─────────────────────────────────────────────────────────────
+
+    /** Tổng số vé theo trạng thái */
+    Long countByStatus(TicketStatus status);
 }

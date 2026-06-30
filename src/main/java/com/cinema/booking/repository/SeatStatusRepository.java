@@ -34,7 +34,11 @@ public interface SeatStatusRepository extends JpaRepository<SeatStatus, UUID> {
     @Query("UPDATE SeatStatus ss SET ss.status = :status WHERE ss.showtime.id = :showtimeId AND ss.seat.id IN :seatIds")
     void bulkUpdateStatus(@Param("showtimeId") UUID showtimeId, @Param("seatIds") List<UUID> seatIds, @Param("status") SeatStatusType status);
 
-    // Xóa cả hold_by và hold_until khi nhả ghế — query hướng đi ừ DB clean state
+    /**
+     * QUAN TRỌNG: Query này bypass @Version (Optimistic Lock).
+     * Điều này là có chủ ý: khi BOOKED/AVAILABLE, race condition không còn là rủi ro
+     * vì ghế đã được hold bởi PESSIMISTIC_WRITE ở bước trước.
+     */
     @Modifying
     @Query("UPDATE SeatStatus ss SET ss.status = :status, ss.holdBy = null, ss.holdUntil = null WHERE ss.showtime.id = :showtimeId AND ss.seat.id IN :seatIds")
     void bulkUpdateStatusAndClearHold(@Param("showtimeId") UUID showtimeId, @Param("seatIds") List<UUID> seatIds, @Param("status") SeatStatusType status);

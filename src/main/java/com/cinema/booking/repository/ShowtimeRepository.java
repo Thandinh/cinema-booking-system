@@ -75,4 +75,14 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, UUID> {
             """,
            countQuery = "SELECT COUNT(s) FROM Showtime s WHERE s.room.cinema.id = :cinemaId AND s.isDeleted = false")
     Page<Showtime> findActiveByCinemaId(@Param("cinemaId") UUID cinemaId, Pageable pageable);
+
+    // ── Analytics ─────────────────────────────────────────────────────────────
+
+    /** Tổng số suất chiếu active */
+    Long countByIsDeletedFalse();
+
+    /** Đếm suất chiếu theo trạng thái */
+    @Query("SELECT COUNT(s) FROM Showtime s WHERE s.status = com.cinema.booking.enums.ShowtimeStatus.UPCOMING AND s.isDeleted = false")
+    Long countUpcomingShowtimes();
 }
+

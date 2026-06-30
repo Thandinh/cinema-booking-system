@@ -2,6 +2,7 @@ package com.cinema.booking.service.impl;
 
 import com.cinema.booking.dto.request.CinemaCreationRequest;
 import com.cinema.booking.dto.request.CinemaUpdateRequest;
+import com.cinema.booking.dto.response.CinemaMapResponse;
 import com.cinema.booking.dto.response.CinemaResponse;
 import com.cinema.booking.entity.Cinema;
 import com.cinema.booking.enums.ErrorCode;
@@ -22,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -102,8 +104,72 @@ public class CinemaServiceImpl implements CinemaService {
         return page.map(c -> cinemaMapper.toCinemaResponse(c, false));
     }
 
+    // =========================================================================
+    // MAP DATA
+    // =========================================================================
+
+    /**
+     * Trả về danh sách rạp đang active và có tọa độ để Leaflet render markers.
+     * Không cần auth — public endpoint cho cả khách chưa đăng nhập.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public List<CinemaMapResponse> getMapData() {
+        return cinemaRepository.findAllForMap()
+                .stream()
+                .map(c -> CinemaMapResponse.builder()
+                        .id(c.getId())
+                        .name(c.getName())
+                        .address(c.getAddress())
+                        .city(c.getCity())
+                        .latitude(c.getLatitude())
+                        .longitude(c.getLongitude())
+                        .isActive(c.getIsActive())
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Tìm rạp gần nhất bằng Haversine formula (native query PostgreSQL).
+     * Kết quả Object[] được map thủ công để tránh thêm entity mới.
+     * Clamp limit 1-20 để tránh abuse.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public List<CinemaMapResponse> getNearestCinemas(double lat, double lng, int limit) {
+        int safeLimit = Math.min(Math.max(limit, 1), 20);
+        List<Object[]> rows = cinemaRepository.findNearest(lat, lng, safeLimit);
+        return rows.stream()
+                .map(row -> CinemaMapResponse.builder()
+                        .id(toUUID(row[0]))
+                        .name(row[1] != null ? row[1].toString() : null)
+                        .address(row[2] != null ? row[2].toString() : null)
+                        .city(row[3] != null ? row[3].toString() : null)
+                        .latitude(toDouble(row[4]))
+                        .longitude(toDouble(row[5]))
+                        .isActive(true)
+                        .distanceKm(toDouble(row[6]))
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
     private Cinema findActiveCinemaById(UUID id) {
         return cinemaRepository.findActiveById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.CINEMA_NOT_FOUND));
+    }
+
+    private UUID toUUID(Object val) {
+        if (val == null) return null;
+        if (val instanceof UUID u) return u;
+        return UUID.fromString(val.toString());
+    }
+
+    private Double toDouble(Object val) {
+        if (val == null) return null;
+        if (val instanceof Double d) return d;
+        if (val instanceof Number n) return n.doubleValue();
+        return Double.parseDouble(val.toString());
     }
 }
