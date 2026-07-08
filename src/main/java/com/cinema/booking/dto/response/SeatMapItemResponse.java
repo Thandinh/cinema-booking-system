@@ -22,5 +22,6 @@ public class SeatMapItemResponse {
     Integer rowIndex;
     Integer colIndex;
     BigDecimal priceMultiplier;
+    BigDecimal price; // Giá thực tế = basePrice * priceMultiplier
     SeatStatusType status; // AVAILABLE, HOLD, BOOKED
 }

@@ -8,6 +8,7 @@ import com.cinema.booking.service.EmailService;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
+import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -18,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
 
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -74,11 +76,12 @@ public class EmailServiceImpl implements EmailService {
 
             // Thymeleaf context
             Context context = new Context();
+            DateTimeFormatter fmt = DateTimeFormatter.ofPattern("HH:mm - dd/MM/yyyy");
             context.setVariable("userName",    userName.trim());
             context.setVariable("movieTitle",  booking.getShowtime().getMovie().getTitle());
             context.setVariable("cinemaName",  booking.getShowtime().getRoom().getCinema().getName());
             context.setVariable("roomName",    booking.getShowtime().getRoom().getName());
-            context.setVariable("showTime",    booking.getShowtime().getStartTime().toString());
+            context.setVariable("showTime",    booking.getShowtime().getStartTime().format(fmt));
             context.setVariable("seats",       seats);
             context.setVariable("totalPrice",  booking.getTotalPrice());
             context.setVariable("qrCodes",     qrCodes);

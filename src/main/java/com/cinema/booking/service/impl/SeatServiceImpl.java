@@ -37,6 +37,7 @@ public class SeatServiceImpl implements SeatService {
     SeatRepository seatRepository;
     RoomRepository roomRepository;
     SeatMapper seatMapper;
+    com.cinema.booking.repository.SeatStatusRepository seatStatusRepository;
 
     // ─────────────────────────────────────────────────────────────────────────
     // CREATE SINGLE
@@ -140,6 +141,15 @@ public class SeatServiceImpl implements SeatService {
     @Transactional
     public void deleteSeat(UUID id) {
         Seat seat = findActiveSeat(id);
+        
+        boolean isInUse = seatStatusRepository.existsBySeatIdAndStatusIn(
+                id, 
+                List.of(com.cinema.booking.enums.SeatStatusType.HOLD, com.cinema.booking.enums.SeatStatusType.BOOKED)
+        );
+        if (isInUse) {
+            throw new AppException(ErrorCode.SEAT_IN_USE);
+        }
+
         seat.setIsDeleted(true);
         seatRepository.save(seat);
         log.info("Soft-deleted seat id={}", id);

@@ -46,10 +46,12 @@ public interface SeatStatusRepository extends JpaRepository<SeatStatus, UUID> {
     // ===================================================================================
     // SCHEDULER: Tìm ghế đã quá thời gian HOLD
     // ===================================================================================
-    @Query("SELECT ss FROM SeatStatus ss WHERE ss.status = :status AND ss.holdUntil < :now")
+    @Query("SELECT ss FROM SeatStatus ss JOIN FETCH ss.seat JOIN FETCH ss.showtime WHERE ss.status = :status AND ss.holdUntil < :now")
     List<SeatStatus> findExpiredHolds(@Param("status") SeatStatusType status, @Param("now") LocalDateTime now);
 
     @Modifying
     @Query("DELETE FROM SeatStatus ss WHERE ss.showtime.id = :showtimeId")
     void deleteByShowtimeId(@Param("showtimeId") UUID showtimeId);
+
+    boolean existsBySeatIdAndStatusIn(UUID seatId, List<SeatStatusType> statuses);
 }

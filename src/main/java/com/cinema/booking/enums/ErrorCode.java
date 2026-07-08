@@ -103,6 +103,10 @@ public enum ErrorCode {
     START_TIME_FUTURE          (5014, "Start time must be in the future",      HttpStatus.BAD_REQUEST),
     END_TIME_FUTURE            (5015, "End time must be in the future",        HttpStatus.BAD_REQUEST),
     BASE_PRICE_INVALID         (5016, "Base price must be valid",              HttpStatus.BAD_REQUEST),
+    
+    // ── Payment ───────────────────────────────────────────────────────────
+    INVALID_SECURE_TOKEN       (9001, "Invalid or expired secure token",       HttpStatus.BAD_REQUEST),
+    PAYMENT_AMOUNT_MISMATCH    (9002, "Payment amount does not match total",   HttpStatus.BAD_REQUEST),
     ;
 
     ErrorCode(int code, String message, HttpStatusCode statusCode) {

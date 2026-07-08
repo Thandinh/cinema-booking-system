@@ -39,7 +39,6 @@ public class ShowtimeController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('SHOWTIME_VIEW')")
     public ApiResponse<ShowtimeResponse> getShowtimeById(@PathVariable UUID id) {
         return ApiResponse.<ShowtimeResponse>builder()
                 .code(1000)
@@ -48,7 +47,6 @@ public class ShowtimeController {
     }
 
     @GetMapping("/movie/{movieId}")
-    @PreAuthorize("hasAuthority('SHOWTIME_VIEW')")
     public ApiResponse<List<ShowtimeResponse>> getShowtimesByMovieId(@PathVariable UUID movieId) {
         return ApiResponse.<List<ShowtimeResponse>>builder()
                 .code(1000)
@@ -57,7 +55,6 @@ public class ShowtimeController {
     }
 
     @GetMapping("/cinema/{cinemaId}")
-    @PreAuthorize("hasAuthority('SHOWTIME_VIEW')")
     public ApiResponse<Page<ShowtimeResponse>> getShowtimesByCinemaId(
             @PathVariable UUID cinemaId,
             @PageableDefault(size = 20, sort = "startTime") Pageable pageable) {

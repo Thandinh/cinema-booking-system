@@ -103,7 +103,7 @@ public class AuthenticationService {
         PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(10);
         // 1. Tìm user theo username
         var user = userRepository.findByUsername(request.getUsername())
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
         // 2. Kiểm tra mật khẩu (Sử dụng PasswordEncoder đã inject)
         boolean authenticated = passwordEncoder.matches(request.getPassword(), user.getPassword());

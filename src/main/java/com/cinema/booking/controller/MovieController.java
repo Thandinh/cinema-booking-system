@@ -47,7 +47,6 @@ public class MovieController {
      * Yêu cầu quyền: MOVIE_VIEW
      */
     @GetMapping
-    @PreAuthorize("hasAuthority('MOVIE_VIEW')")
     public ApiResponse<Page<MovieResponse>> getAllMovies(
             @PageableDefault(size = 20, sort = "createdAt") Pageable pageable,
             @RequestParam(required = false) MovieStatus status) {
@@ -67,7 +66,6 @@ public class MovieController {
      * Yêu cầu quyền: MOVIE_VIEW
      */
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('MOVIE_VIEW')")
     public ApiResponse<MovieResponse> getMovieById(@PathVariable UUID id) {
         return ApiResponse.<MovieResponse>builder()
                 .code(1000)

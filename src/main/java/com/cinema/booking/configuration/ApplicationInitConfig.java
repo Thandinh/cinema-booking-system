@@ -30,11 +30,6 @@ import java.util.Set;
 public class ApplicationInitConfig {
 
     PasswordEncoder passwordEncoder;
-    JwtProperties jwtProperties;
-    
-    @Value("${app.admin.default-password:admin123}")
-    String adminDefaultPassword;
-
 
     @Bean
     @ConditionalOnProperty(
@@ -44,7 +39,8 @@ public class ApplicationInitConfig {
     ApplicationRunner applicationRunner(
             UserRepository userRepository,
             RoleRepository roleRepository,
-            PermissionRepository permissionRepository) {
+            PermissionRepository permissionRepository,
+            @Value("${app.admin.default-password:admin123}") String adminDefaultPassword) {
 
         return args -> {
 

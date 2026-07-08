@@ -143,14 +143,17 @@ public class BookingServiceImpl implements BookingService {
         }
 
         for (SeatStatus ss : seatStatuses) {
+            // 1. Kiểm tra hold đã hết hạn trước — rõ ràng hơn cho client
+            if (ss.getHoldUntil() != null && ss.getHoldUntil().isBefore(LocalDateTime.now())) {
+                throw new AppException(ErrorCode.SEAT_HOLD_EXPIRED);
+            }
+            // 2. Ghế phải đang ở trạng thái HOLD
             if (ss.getStatus() != SeatStatusType.HOLD) {
                 throw new AppException(ErrorCode.SEAT_NOT_HELD);
             }
+            // 3. Ghế phải được giữ bởi chính user đang thao tác
             if (!userId.equals(ss.getHoldBy().getId())) {
                 throw new AppException(ErrorCode.SEAT_HELD_BY_ANOTHER);
-            }
-            if (ss.getHoldUntil() == null || ss.getHoldUntil().isBefore(LocalDateTime.now())) {
-                throw new AppException(ErrorCode.SEAT_HOLD_EXPIRED);
             }
         }
 

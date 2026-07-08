@@ -50,6 +50,12 @@ public class BookingMapper {
     }
 
     public SeatMapItemResponse toSeatMapItemResponse(SeatStatus ss) {
+        java.math.BigDecimal basePrice = ss.getShowtime().getBasePrice();
+        java.math.BigDecimal multiplier = ss.getSeat().getPriceMultiplier() != null
+                ? ss.getSeat().getPriceMultiplier()
+                : java.math.BigDecimal.ONE;
+        java.math.BigDecimal price = basePrice.multiply(multiplier);
+
         return SeatMapItemResponse.builder()
                 .seatStatusId(ss.getId())
                 .seatId(ss.getSeat().getId())
@@ -58,7 +64,8 @@ public class BookingMapper {
                 .seatType(ss.getSeat().getSeatType())
                 .rowIndex(ss.getSeat().getRowIndex())
                 .colIndex(ss.getSeat().getColIndex())
-                .priceMultiplier(ss.getSeat().getPriceMultiplier())
+                .priceMultiplier(multiplier)
+                .price(price)
                 .status(ss.getStatus())
                 .build();
     }
