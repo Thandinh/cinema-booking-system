@@ -61,6 +61,10 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         // Tạo record Payment PENDING
+        if (amount == null || amount.compareTo(booking.getTotalPrice()) != 0) {
+            throw new AppException(ErrorCode.PAYMENT_AMOUNT_MISMATCH);
+        }
+
         String txnNo = VNPayUtil.getRandomNumber(8);
         Payment payment = Payment.builder()
                 .booking(booking)
@@ -208,7 +212,9 @@ public class PaymentServiceImpl implements PaymentService {
 
         if (payment.getStatus() != PaymentStatus.PENDING) {
             log.warn("Payment {} already processed", txnRef);
-            return "redirect:/payment-success?txn=" + txnRef;
+            return "redirect:/payment/result?status=" + payment.getStatus()
+                    + "&bookingId=" + payment.getBooking().getId()
+                    + "&txn=" + txnRef;
         }
 
         if ("00".equals(responseCode)) {
@@ -218,14 +224,18 @@ public class PaymentServiceImpl implements PaymentService {
             
             // Xử lý booking success (gửi email, đổi trạng thái vé...)
             bookingService.handlePaymentSuccess(secureToken);
-            return "redirect:/payment-success?txn=" + txnRef;
+            return "redirect:/payment/result?status=SUCCESS"
+                    + "&bookingId=" + payment.getBooking().getId()
+                    + "&txn=" + txnRef;
         } else {
             payment.setStatus(PaymentStatus.FAILED);
             paymentRepository.save(payment);
             
             // Xử lý booking failed (nhả ghế...)
             bookingService.handlePaymentFailure(secureToken);
-            return "redirect:/payment-failed?txn=" + txnRef;
+            return "redirect:/payment/result?status=FAILED"
+                    + "&bookingId=" + payment.getBooking().getId()
+                    + "&txn=" + txnRef;
         }
     }
 }

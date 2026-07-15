@@ -28,10 +28,14 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
+        // Endpoint 1: SockJS — fallback cho môi trường corporate proxy, firewall chặn WS thuần
         registry.addEndpoint("/ws")
-                // Cho phép tất cả origin kết nối (production nên giới hạn lại)
                 .setAllowedOriginPatterns("*")
-                // SockJS fallback cho browser cũ không hỗ trợ WebSocket thuần
                 .withSockJS();
+
+        // Endpoint 2: Native WebSocket — cho modern browser, mobile app, không cần SockJS
+        // Frontend kết nối: new Client({ brokerURL: 'ws://host/ws-native' })
+        registry.addEndpoint("/ws-native")
+                .setAllowedOriginPatterns("*");
     }
 }

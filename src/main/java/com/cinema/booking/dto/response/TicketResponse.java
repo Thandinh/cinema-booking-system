@@ -15,6 +15,7 @@ import java.util.UUID;
 public class TicketResponse {
     UUID id;
     String qrCode;
+    String qrImage;
     TicketStatus status;
     LocalDateTime checkInTime;
 

@@ -30,6 +30,8 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
 
     Optional<Payment> findByTransactionNo(String transactionNo);
 
+    List<Payment> findByBookingIdInAndStatus(List<UUID> bookingIds, PaymentStatus status);
+
     // ── Analytics Queries ────────────────────────────────────────────────────
 
     /**

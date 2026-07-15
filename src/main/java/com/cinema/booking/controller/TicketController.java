@@ -1,10 +1,14 @@
 package com.cinema.booking.controller;
 
+import com.cinema.booking.dto.request.TicketCheckInRequest;
 import com.cinema.booking.dto.response.ApiResponse;
 import com.cinema.booking.dto.response.TicketResponse;
-import com.cinema.booking.repository.TicketRepository;
+import com.cinema.booking.enums.ErrorCode;
+import com.cinema.booking.exception.AppException;
 import com.cinema.booking.mapper.TicketMapper;
+import com.cinema.booking.repository.TicketRepository;
 import com.cinema.booking.service.BookingService;
+import jakarta.validation.Valid;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -38,10 +42,12 @@ public class TicketController {
     /** STAFF: Quét mã QR check-in vào rạp */
     @PostMapping("/check-in")
     @PreAuthorize("hasAuthority('TICKET_CHECKIN')")
-    public ApiResponse<TicketResponse> checkInTicket(@RequestParam String qrCode) {
+    public ApiResponse<TicketResponse> checkInTicket(
+            @RequestParam(required = false) String qrCode,
+            @Valid @RequestBody(required = false) TicketCheckInRequest request) {
         return ApiResponse.<TicketResponse>builder()
                 .code(1000)
-                .result(bookingService.checkInTicket(qrCode))
+                .result(bookingService.checkInTicket(resolveQrCode(qrCode, request)))
                 .build();
     }
 
@@ -55,5 +61,13 @@ public class TicketController {
                 .result(ticketRepository.findAllWithDetails(pageable)
                         .map(ticketMapper::toTicketResponse))
                 .build();
+    }
+
+    private String resolveQrCode(String qrCode, TicketCheckInRequest request) {
+        String value = request != null ? request.getQrCode() : qrCode;
+        if (value == null || value.isBlank()) {
+            throw new AppException(ErrorCode.TICKET_QR_REQUIRED);
+        }
+        return value;
     }
 }

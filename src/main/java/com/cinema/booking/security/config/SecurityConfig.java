@@ -36,6 +36,7 @@ public class SecurityConfig {
             "/api/v1/payments/vnpay-callback",
             "/api/v1/movies/**",
             "/api/v1/showtimes/**",
+            "/api/v1/bookings/showtimes/**",
             "/api/v1/cinemas/map",      // Leaflet: lấy tất cả rạp có tọa độ
             "/api/v1/cinemas/nearest"   // Leaflet: tìm rạp gần nhất (Haversine)
     };
@@ -43,8 +44,9 @@ public class SecurityConfig {
     // WebSocket handshake + SockJS fallback endpoints phải được permit
     // (dữ liệu push là public: trạng thái ghế ai cũng được xem)
     private static final String[] PUBLIC_WS_ENDPOINTS = {
-            "/ws/**",           // native WebSocket
-            "/ws/info/**"       // SockJS info endpoint
+            "/ws/**",           // SockJS endpoint và tất cả sub-paths
+            "/ws/info/**",      // SockJS info endpoint
+            "/ws-native/**"     // Native WebSocket endpoint (không cần SockJS)
     };
 
     // Các endpoint của Swagger/OpenAPI để xem tài liệu API

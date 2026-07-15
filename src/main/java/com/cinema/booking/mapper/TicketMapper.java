@@ -2,10 +2,15 @@ package com.cinema.booking.mapper;
 
 import com.cinema.booking.dto.response.TicketResponse;
 import com.cinema.booking.entity.Ticket;
+import com.cinema.booking.service.QrCodeImageService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class TicketMapper {
+
+    private final QrCodeImageService qrCodeImageService;
 
     public TicketResponse toTicketResponse(Ticket ticket) {
         var bd = ticket.getBookingDetail();
@@ -14,6 +19,7 @@ public class TicketMapper {
         return TicketResponse.builder()
                 .id(ticket.getId())
                 .qrCode(ticket.getQrCode())
+                .qrImage(qrCodeImageService.toPngDataUri(ticket.getQrCode(), 360))
                 .status(ticket.getStatus())
                 .checkInTime(ticket.getCheckInTime())
                 .movieTitle(showtime.getMovie().getTitle())

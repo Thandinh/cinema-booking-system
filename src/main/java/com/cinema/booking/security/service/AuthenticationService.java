@@ -96,6 +96,11 @@ public class AuthenticationService {
         if (invalidatedTokenRepository.existsById(signedJWT.getJWTClaimsSet().getJWTID()))
             throw new AppException(ErrorCode.UNAUTHENTICATED);
 
+        var username = signedJWT.getJWTClaimsSet().getSubject();
+        var user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHENTICATED));
+        validateUserCanAuthenticate(user);
+
         return signedJWT;
     }
 
@@ -104,6 +109,7 @@ public class AuthenticationService {
         // 1. Tìm user theo username
         var user = userRepository.findByUsername(request.getUsername())
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        validateUserCanAuthenticate(user);
 
         // 2. Kiểm tra mật khẩu (Sử dụng PasswordEncoder đã inject)
         boolean authenticated = passwordEncoder.matches(request.getPassword(), user.getPassword());
@@ -166,6 +172,12 @@ public class AuthenticationService {
             invalidatedTokenRepository.save(invalidatedToken);
         } catch (AppException e) {
             log.info("Token already expired or invalid");
+        }
+    }
+
+    private void validateUserCanAuthenticate(User user) {
+        if (Boolean.FALSE.equals(user.getIsActive()) || Boolean.TRUE.equals(user.getIsDeleted())) {
+            throw new AppException(ErrorCode.USER_NOT_ACTIVE);
         }
     }
 

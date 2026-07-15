@@ -5,6 +5,7 @@ import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Data
@@ -19,5 +20,9 @@ public class BookingDetailResponse {
     Integer seatNumber;
     SeatType seatType;
     BigDecimal priceAtBooking;
-    String ticketQrCode;   // null nếu booking chưa thành công
+    UUID ticketId;
+    String ticketStatus;
+    LocalDateTime ticketCheckInTime;
+    String ticketQrCode;
+    String ticketQrImage;
 }

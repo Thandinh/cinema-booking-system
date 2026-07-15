@@ -17,7 +17,13 @@ import java.util.UUID;
 @Repository
 public interface SeatStatusRepository extends JpaRepository<SeatStatus, UUID> {
 
-    @Query("SELECT ss FROM SeatStatus ss JOIN FETCH ss.seat WHERE ss.showtime.id = :showtimeId")
+    @Query("""
+            SELECT ss FROM SeatStatus ss
+            JOIN FETCH ss.seat s
+            JOIN FETCH ss.showtime
+            WHERE ss.showtime.id = :showtimeId
+            ORDER BY s.rowIndex ASC, s.colIndex ASC, s.rowLabel ASC, s.seatNumber ASC
+            """)
     List<SeatStatus> findAllByShowtimeId(@Param("showtimeId") UUID showtimeId);
 
     // ===================================================================================

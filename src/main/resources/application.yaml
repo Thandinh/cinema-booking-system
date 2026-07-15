@@ -42,6 +42,9 @@ vnpay:
   version: 2.1.0
   command: pay
 
+booking:
+  pending-timeout-minutes: ${BOOKING_PENDING_TIMEOUT_MINUTES:15}
+
 server:
   port: ${SERVER_PORT:8080}
 
@@ -50,7 +53,13 @@ jwt:
   access-token-valid-duration: 3600
   refresh-token-valid-duration: 604800
 
+ticket:
+  qr-secret: ${TICKET_QR_SECRET:${JWT_SECRET:default-dev-secret-key-32-chars-minimum}}
+  check-in-early-minutes: ${TICKET_CHECK_IN_EARLY_MINUTES:30}
+
 logging:
+  file:
+    name: logs/application.log
   level:
     org.hibernate.SQL: debug
     org.hibernate.type.descriptor.sql.BasicBinder: trace

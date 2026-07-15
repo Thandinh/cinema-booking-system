@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html>
 <head>
     <meta charset="UTF-8">
     <title>Vé Xem Phim Của Bạn</title>
@@ -90,27 +90,24 @@
         
         <div class="content">
             <div class="greeting">
-                Xin chào <strong th:text="${userName}">Khách hàng</strong>, <br/>
+                Xin chào <strong>sadv ab</strong>, <br/>
                 Cảm ơn bạn đã đặt vé tại Cinema Booking System. Đây là thông tin vé của bạn:
             </div>
             
             <div class="movie-info">
-                <h2 th:text="${movieTitle}">Tên Phim</h2>
-                <div class="info-row"><strong>Rạp:</strong> <span th:text="${cinemaName}">Tên Rạp</span></div>
-                <div class="info-row"><strong>Phòng chiếu:</strong> <span th:text="${roomName}">Phòng số</span></div>
-                <div class="info-row"><strong>Thời gian:</strong> <span th:text="${showTime}">Giờ chiếu</span></div>
-                <div class="info-row"><strong>Ghế:</strong> <span th:text="${seats}">Danh sách ghế</span></div>
-                <div class="price">Tổng tiền: <span th:text="${totalPrice} + ' VND'">100.000 VND</span></div>
+                <h2>Lật Mặt 7: Một Điều Ước</h2>
+                <div class="info-row"><strong>Rạp:</strong> <span>CGV Sư Vạn Hạnh</span></div>
+                <div class="info-row"><strong>Phòng chiếu:</strong> <span>RAP 1</span></div>
+                <div class="info-row"><strong>Thời gian:</strong> <span>22:50 - 15/07/2026</span></div>
+                <div class="info-row"><strong>Ghế:</strong> <span>F12, E12, F11</span></div>
+                <div class="price">Tổng tiền: <span>280000.00 VND</span></div>
             </div>
             
             <div class="qr-section">
                 <h3>MÃ QR CHECK-IN CỦA BẠN</h3>
                 <p style="color: #666; font-size: 14px; margin-bottom: 20px;">Vui lòng đưa mã QR này cho nhân viên rạp để quét khi vào cổng.</p>
                 
-                <div class="qr-code" th:each="qr : ${qrCodes}">
-                    <img class="qr-image" th:src="${qr.image}" alt="QR Code" />
-                    <p style="font-family: monospace; font-size: 12px; color: #888;" th:text="${qr.code}"></p>
-                </div>
+                
             </div>
         </div>
         

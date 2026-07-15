@@ -3,7 +3,9 @@ package com.cinema.booking.controller;
 import com.cinema.booking.dto.request.ShowtimeCreationRequest;
 import com.cinema.booking.dto.request.ShowtimeUpdateRequest;
 import com.cinema.booking.dto.response.ApiResponse;
+import com.cinema.booking.dto.response.SeatMapItemResponse;
 import com.cinema.booking.dto.response.ShowtimeResponse;
+import com.cinema.booking.service.BookingService;
 import com.cinema.booking.service.ShowtimeService;
 import jakarta.validation.Valid;
 import lombok.AccessLevel;
@@ -26,6 +28,7 @@ import java.util.UUID;
 public class ShowtimeController {
 
     ShowtimeService showtimeService;
+    BookingService bookingService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -43,6 +46,14 @@ public class ShowtimeController {
         return ApiResponse.<ShowtimeResponse>builder()
                 .code(1000)
                 .result(showtimeService.getShowtimeById(id))
+                .build();
+    }
+
+    @GetMapping("/{id}/seats")
+    public ApiResponse<List<SeatMapItemResponse>> getSeatMap(@PathVariable UUID id) {
+        return ApiResponse.<List<SeatMapItemResponse>>builder()
+                .code(1000)
+                .result(bookingService.getSeatMap(id))
                 .build();
     }
 

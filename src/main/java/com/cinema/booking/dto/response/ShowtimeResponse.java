@@ -28,6 +28,8 @@ public class ShowtimeResponse {
     // Cinema Info
     UUID cinemaId;
     String cinemaName;
+    String cinemaAddress;
+    String cinemaCity;
 
     LocalDateTime startTime;
     LocalDateTime endTime;

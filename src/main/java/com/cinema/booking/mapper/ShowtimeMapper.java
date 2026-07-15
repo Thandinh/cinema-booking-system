@@ -34,6 +34,8 @@ public class ShowtimeMapper {
                 .roomName(showtime.getRoom().getName())
                 .cinemaId(showtime.getRoom().getCinema().getId())
                 .cinemaName(showtime.getRoom().getCinema().getName())
+                .cinemaAddress(showtime.getRoom().getCinema().getAddress())
+                .cinemaCity(showtime.getRoom().getCinema().getCity())
                 .startTime(showtime.getStartTime())
                 .endTime(showtime.getEndTime())
                 .basePrice(showtime.getBasePrice())

@@ -6,15 +6,23 @@ import com.cinema.booking.dto.response.SeatMapItemResponse;
 import com.cinema.booking.entity.Booking;
 import com.cinema.booking.entity.BookingDetail;
 import com.cinema.booking.entity.SeatStatus;
+import com.cinema.booking.service.QrCodeImageService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
 @Component
+@RequiredArgsConstructor
 public class BookingMapper {
 
+    private final QrCodeImageService qrCodeImageService;
+
     public BookingDetailResponse toBookingDetailResponse(BookingDetail detail) {
+        String ticketQrCode = detail.getTicket() != null ? detail.getTicket().getQrCode() : null;
+        String ticketStatus = detail.getTicket() != null ? detail.getTicket().getStatus().name() : null;
+
         return BookingDetailResponse.builder()
                 .id(detail.getId())
                 .seatId(detail.getSeat().getId())
@@ -22,8 +30,12 @@ public class BookingMapper {
                 .seatNumber(detail.getSeat().getSeatNumber())
                 .seatType(detail.getSeat().getSeatType())
                 .priceAtBooking(detail.getPriceAtBooking())
+                .ticketId(detail.getTicket() != null ? detail.getTicket().getId() : null)
+                .ticketStatus(ticketStatus)
+                .ticketCheckInTime(detail.getTicket() != null ? detail.getTicket().getCheckInTime() : null)
                 // QR code chỉ có khi booking thành công và ticket đã được tạo
-                .ticketQrCode(detail.getTicket() != null ? detail.getTicket().getQrCode() : null)
+                .ticketQrCode(ticketQrCode)
+                .ticketQrImage(ticketQrCode != null ? qrCodeImageService.toPngDataUri(ticketQrCode, 360) : null)
                 .build();
     }
 
@@ -39,6 +51,8 @@ public class BookingMapper {
                 .showtimeId(booking.getShowtime().getId())
                 .movieTitle(booking.getShowtime().getMovie().getTitle())
                 .cinemaName(booking.getShowtime().getRoom().getCinema().getName())
+                .cinemaAddress(booking.getShowtime().getRoom().getCinema().getAddress())
+                .cinemaCity(booking.getShowtime().getRoom().getCinema().getCity())
                 .roomName(booking.getShowtime().getRoom().getName())
                 .startTime(booking.getShowtime().getStartTime())
                 .totalPrice(booking.getTotalPrice())

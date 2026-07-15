@@ -10,6 +10,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -34,6 +35,17 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
     @Query("SELECT b FROM Booking b LEFT JOIN FETCH b.bookingDetails bd LEFT JOIN FETCH bd.seat WHERE b.id = :id")
     Optional<Booking> findWithDetailsById(@Param("id") UUID id);
+
+    @Query("""
+            SELECT DISTINCT b FROM Booking b
+            JOIN FETCH b.showtime st
+            LEFT JOIN FETCH b.bookingDetails bd
+            LEFT JOIN FETCH bd.seat
+            WHERE b.status = :status
+              AND b.createdAt < :cutoff
+            """)
+    List<Booking> findExpiredPendingBookings(@Param("status") BookingStatus status,
+                                              @Param("cutoff") LocalDateTime cutoff);
 
     /**
      * Query chuyên dùng cho tác vụ gửi Email.

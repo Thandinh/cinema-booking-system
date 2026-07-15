@@ -14,12 +14,15 @@ import com.cinema.booking.mapper.TicketMapper;
 import com.cinema.booking.repository.*;
 import com.cinema.booking.service.BookingService;
 import com.cinema.booking.service.EmailService;
+import com.cinema.booking.service.TicketQrCodeService;
 import com.cinema.booking.util.SecurityUtils;
 import com.cinema.booking.websocket.SeatStatusPublisher;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import lombok.experimental.NonFinal;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -29,6 +32,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -42,6 +46,7 @@ public class BookingServiceImpl implements BookingService {
 
     BookingRepository    bookingRepository;
     SeatStatusRepository seatStatusRepository;
+    SeatRepository       seatRepository;
     ShowtimeRepository   showtimeRepository;
     UserRepository       userRepository;
     PromotionRepository  promotionRepository;
@@ -50,6 +55,15 @@ public class BookingServiceImpl implements BookingService {
     TicketMapper         ticketMapper;
     SeatStatusPublisher  seatStatusPublisher; // WebSocket real-time push
     EmailService         emailService;        // Gửi email vé
+    TicketQrCodeService  ticketQrCodeService;
+
+    @Value("${ticket.check-in-early-minutes:30}")
+    @NonFinal
+    int checkInEarlyMinutes;
+
+    @Value("${booking.pending-timeout-minutes:15}")
+    @NonFinal
+    int bookingPendingTimeoutMinutes;
 
     // =========================================================================
     // BƯỚC 1: GIỮ GHẾ
@@ -200,6 +214,13 @@ public class BookingServiceImpl implements BookingService {
         booking.getBookingDetails().addAll(details);
 
         Booking saved = bookingRepository.save(booking);
+
+        LocalDateTime paymentHoldUntil = LocalDateTime.now().plusMinutes(bookingPendingTimeoutMinutes);
+        for (SeatStatus ss : seatStatuses) {
+            ss.setHoldUntil(paymentHoldUntil);
+        }
+        seatStatusRepository.saveAll(seatStatuses);
+
         log.info("Booking created id={} for user={}, total={}", saved.getId(), userId, totalPrice);
 
         return bookingMapper.toBookingResponse(saved);
@@ -231,7 +252,7 @@ public class BookingServiceImpl implements BookingService {
 
         // Sinh QR Ticket cho từng ghế
         for (BookingDetail detail : booking.getBookingDetails()) {
-            String qrCode = generateQrCode(booking.getId(), detail.getSeat().getId());
+            String qrCode = ticketQrCodeService.generate(detail.getId());
             Ticket ticket = Ticket.builder()
                     .bookingDetail(detail)
                     .qrCode(qrCode)
@@ -327,9 +348,20 @@ public class BookingServiceImpl implements BookingService {
     // SƠ ĐỒ GHẾ
     // =========================================================================
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public List<SeatMapItemResponse> getSeatMap(UUID showtimeId) {
-        return seatStatusRepository.findAllByShowtimeId(showtimeId).stream()
+        Showtime showtime = showtimeRepository.findActiveById(showtimeId)
+                .orElseThrow(() -> new AppException(ErrorCode.SHOWTIME_NOT_FOUND));
+
+        List<SeatStatus> seatStatuses = seatStatusRepository.findAllByShowtimeId(showtimeId);
+        long activeSeatCount = seatRepository.countActiveByRoomId(showtime.getRoom().getId());
+
+        if (seatStatuses.size() < activeSeatCount) {
+            seedMissingSeatStatuses(showtime, seatStatuses);
+            seatStatuses = seatStatusRepository.findAllByShowtimeId(showtimeId);
+        }
+
+        return seatStatuses.stream()
                 .map(bookingMapper::toSeatMapItemResponse)
                 .toList();
     }
@@ -353,11 +385,21 @@ public class BookingServiceImpl implements BookingService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public BookingResponse getBookingById(UUID id) {
-        return bookingRepository.findWithDetailsById(id)
-                .map(bookingMapper::toBookingResponse)
+        UUID userId = SecurityUtils.getCurrentUserId();
+        Booking booking = bookingRepository.findWithDetailsById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.BOOKING_NOT_FOUND));
+
+        boolean isOwner = booking.getUser().getId().equals(userId);
+        boolean canViewAll = SecurityUtils.hasAuthority("BOOKING_VIEW_ALL");
+        if (!isOwner && !canViewAll) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+
+        upgradeLegacyTicketQrCodes(booking);
+
+        return bookingMapper.toBookingResponse(booking);
     }
 
     // =========================================================================
@@ -374,7 +416,8 @@ public class BookingServiceImpl implements BookingService {
     @Override
     @Transactional
     public TicketResponse checkInTicket(String qrCode) {
-        Ticket ticket = ticketRepository.findByQrCode(qrCode)
+        String normalizedQrCode = ticketQrCodeService.normalizeAndValidate(qrCode);
+        Ticket ticket = ticketRepository.findByQrCodeForCheckIn(normalizedQrCode)
                 .orElseThrow(() -> new AppException(ErrorCode.TICKET_NOT_FOUND));
 
         if (ticket.getStatus() == TicketStatus.USED) {
@@ -383,12 +426,29 @@ public class BookingServiceImpl implements BookingService {
         if (ticket.getStatus() == TicketStatus.CANCELLED) {
             throw new AppException(ErrorCode.TICKET_CANCELLED);
         }
+        if (ticket.getStatus() != TicketStatus.ACTIVE) {
+            throw new AppException(ErrorCode.TICKET_NOT_ACTIVE);
+        }
+
+        Booking booking = ticket.getBookingDetail().getBooking();
+        if (booking.getStatus() != BookingStatus.SUCCESS) {
+            throw new AppException(ErrorCode.TICKET_NOT_ACTIVE);
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        Showtime showtime = booking.getShowtime();
+        if (now.isBefore(showtime.getStartTime().minusMinutes(checkInEarlyMinutes))) {
+            throw new AppException(ErrorCode.TICKET_CHECKIN_TOO_EARLY);
+        }
+        if (now.isAfter(showtime.getEndTime())) {
+            throw new AppException(ErrorCode.TICKET_CHECKIN_EXPIRED);
+        }
 
         ticket.setStatus(TicketStatus.USED);
-        ticket.setCheckInTime(LocalDateTime.now());
+        ticket.setCheckInTime(now);
         ticketRepository.save(ticket);
 
-        log.info("Ticket checked-in qrCode={}", qrCode);
+        log.info("Ticket checked in id={} bookingId={}", ticket.getId(), booking.getId());
         return ticketMapper.toTicketResponse(ticket);
     }
 
@@ -422,7 +482,6 @@ public class BookingServiceImpl implements BookingService {
 
         return promo;
     }
-
     /**
      * Tính tiền giảm theo loại PERCENT hoặc FIXED.
      * Áp dụng maxDiscountAmount nếu có (chỉ với PERCENT).
@@ -444,15 +503,39 @@ public class BookingServiceImpl implements BookingService {
         }
     }
 
-    /**
-     * Sinh QR Code dùng full UUID để đảm bảo unique tuyệt đối.
-     * Format: TKT-{bookingIdPrefix}-{seatIdPrefix}-{randomFull}
-     * Trong production nên ký bằng HMAC-SHA256 để chống giả mạo.
-     */
-    private String generateQrCode(UUID bookingId, UUID seatId) {
-        return "TKT-"
-                + bookingId.toString().replace("-", "").substring(0, 12).toUpperCase()
-                + "-" + seatId.toString().replace("-", "").substring(0, 12).toUpperCase()
-                + "-" + UUID.randomUUID().toString().replace("-", "").toUpperCase();
+    private void seedMissingSeatStatuses(Showtime showtime, List<SeatStatus> existingStatuses) {
+        Set<UUID> existingSeatIds = existingStatuses.stream()
+                .map(seatStatus -> seatStatus.getSeat().getId())
+                .collect(Collectors.toSet());
+
+        List<SeatStatus> missingStatuses = seatRepository.findActiveByRoomId(showtime.getRoom().getId()).stream()
+                .filter(seat -> !existingSeatIds.contains(seat.getId()))
+                .map(seat -> SeatStatus.builder()
+                        .showtime(showtime)
+                        .seat(seat)
+                        .status(SeatStatusType.AVAILABLE)
+                        .build())
+                .toList();
+
+        if (!missingStatuses.isEmpty()) {
+            seatStatusRepository.saveAll(missingStatuses);
+            log.warn("Auto-generated {} missing seat_status rows for showtime={}",
+                    missingStatuses.size(), showtime.getId());
+        }
     }
+
+    private void upgradeLegacyTicketQrCodes(Booking booking) {
+        if (booking.getStatus() != BookingStatus.SUCCESS) {
+            return;
+        }
+
+        for (BookingDetail detail : booking.getBookingDetails()) {
+            Ticket ticket = detail.getTicket();
+            if (ticket != null && !ticketQrCodeService.isValidSignedToken(ticket.getQrCode())) {
+                ticket.setQrCode(ticketQrCodeService.generate(detail.getId()));
+                log.info("Upgraded legacy ticket QR id={} bookingId={}", ticket.getId(), booking.getId());
+            }
+        }
+    }
+
 }

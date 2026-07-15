@@ -2,8 +2,11 @@ package com.cinema.booking.controller;
 
 import com.cinema.booking.dto.request.CreateBookingRequest;
 import com.cinema.booking.dto.request.HoldSeatRequest;
+import com.cinema.booking.dto.request.TicketCheckInRequest;
 import com.cinema.booking.dto.response.*;
 import com.cinema.booking.enums.BookingStatus;
+import com.cinema.booking.enums.ErrorCode;
+import com.cinema.booking.exception.AppException;
 import com.cinema.booking.service.BookingService;
 import jakarta.validation.Valid;
 import lombok.AccessLevel;
@@ -29,7 +32,6 @@ public class BookingController {
 
     // ── SEAT MAP ─────────────────────────────────────────────────────────────
     @GetMapping("/showtimes/{showtimeId}/seats")
-    @PreAuthorize("hasAuthority('SEAT_VIEW')")
     public ApiResponse<List<SeatMapItemResponse>> getSeatMap(@PathVariable UUID showtimeId) {
         return ApiResponse.<List<SeatMapItemResponse>>builder()
                 .code(1000)
@@ -117,11 +119,21 @@ public class BookingController {
 
     @PostMapping("/tickets/check-in")
     @PreAuthorize("hasAuthority('TICKET_CHECKIN')")
-    public ApiResponse<TicketResponse> checkIn(@RequestParam String qrCode) {
+    public ApiResponse<TicketResponse> checkIn(
+            @RequestParam(required = false) String qrCode,
+            @Valid @RequestBody(required = false) TicketCheckInRequest request) {
         return ApiResponse.<TicketResponse>builder()
                 .code(1000)
                 .message("Check-in successful")
-                .result(bookingService.checkInTicket(qrCode))
+                .result(bookingService.checkInTicket(resolveQrCode(qrCode, request)))
                 .build();
+    }
+
+    private String resolveQrCode(String qrCode, TicketCheckInRequest request) {
+        String value = request != null ? request.getQrCode() : qrCode;
+        if (value == null || value.isBlank()) {
+            throw new AppException(ErrorCode.TICKET_QR_REQUIRED);
+        }
+        return value;
     }
 }
