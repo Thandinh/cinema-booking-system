@@ -57,6 +57,15 @@ public class ShowtimeController {
                 .build();
     }
 
+    @GetMapping
+    public ApiResponse<Page<ShowtimeResponse>> getAllShowtimes(
+            @PageableDefault(size = 20, sort = "startTime") Pageable pageable) {
+        return ApiResponse.<Page<ShowtimeResponse>>builder()
+                .code(1000)
+                .result(showtimeService.getAllShowtimes(pageable))
+                .build();
+    }
+
     @GetMapping("/movie/{movieId}")
     public ApiResponse<List<ShowtimeResponse>> getShowtimesByMovieId(@PathVariable UUID movieId) {
         return ApiResponse.<List<ShowtimeResponse>>builder()

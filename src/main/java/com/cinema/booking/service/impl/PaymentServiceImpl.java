@@ -30,6 +30,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.*;
 
 @Service
@@ -60,6 +61,11 @@ public class PaymentServiceImpl implements PaymentService {
             throw new AppException(ErrorCode.BOOKING_ALREADY_PROCESSED);
         }
 
+        if (isPaymentWindowExpired(booking)) {
+            bookingService.expirePendingBooking(booking.getId());
+            throw new AppException(ErrorCode.BOOKING_EXPIRED);
+        }
+
         // Tạo record Payment PENDING
         if (amount == null || amount.compareTo(booking.getTotalPrice()) != 0) {
             throw new AppException(ErrorCode.PAYMENT_AMOUNT_MISMATCH);
@@ -77,11 +83,10 @@ public class PaymentServiceImpl implements PaymentService {
         paymentRepository.save(payment);
         log.info("Initiated payment {} for booking {}", txnNo, bookingId);
 
-        if (method == PaymentMethod.VNPAY) {
-            return generateVNPayUrl(payment, booking, request);
-        }
-
-        return "https://mock-payment-gateway.com/pay?txn=" + txnNo + "&token=" + booking.getSecureToken();
+        return switch (method) {
+            case VNPAY -> generateVNPayUrl(payment, booking, request);
+            case MOMO, CREDIT_CARD, CASH -> generateMockPaymentUrl(payment, booking);
+        };
     }
 
     private String generateVNPayUrl(Payment payment, Booking booking, HttpServletRequest request) {
@@ -98,8 +103,10 @@ public class PaymentServiceImpl implements PaymentService {
         String vnpCreateDate = formatter.format(calendar.getTime());
         vnpParamsMap.put("vnp_CreateDate", vnpCreateDate);
 
-        calendar.add(Calendar.MINUTE, 15);
-        String vnp_ExpireDate = formatter.format(calendar.getTime());
+        Date expireDate = booking.getPaymentExpiresAt() != null
+                ? Date.from(booking.getPaymentExpiresAt().atZone(ZoneId.systemDefault()).toInstant())
+                : new Date(System.currentTimeMillis() + 15 * 60 * 1000L);
+        String vnp_ExpireDate = formatter.format(expireDate);
         vnpParamsMap.put("vnp_ExpireDate", vnp_ExpireDate);
 
         // Build hash data
@@ -131,6 +138,12 @@ public class PaymentServiceImpl implements PaymentService {
         String vnpSecureHash = VNPayUtil.hmacSHA512(hashSecret, hashData.toString());
         queryUrl += "&vnp_SecureHash=" + vnpSecureHash;
         return vnpayConfig.getUrl() + "?" + queryUrl;
+    }
+
+    private String generateMockPaymentUrl(Payment payment, Booking booking) {
+        return "https://mock-payment-gateway.com/pay?method=" + payment.getMethod()
+                + "&txn=" + payment.getTransactionNo()
+                + "&token=" + booking.getSecureToken();
     }
 
     @Override
@@ -217,6 +230,15 @@ public class PaymentServiceImpl implements PaymentService {
                     + "&txn=" + txnRef;
         }
 
+        if (isPaymentWindowExpired(payment.getBooking())) {
+            payment.setStatus(PaymentStatus.EXPIRED);
+            paymentRepository.save(payment);
+            bookingService.expirePendingBooking(payment.getBooking().getId());
+            return "redirect:/payment/result?status=EXPIRED"
+                    + "&bookingId=" + payment.getBooking().getId()
+                    + "&txn=" + txnRef;
+        }
+
         if ("00".equals(responseCode)) {
             payment.setStatus(PaymentStatus.SUCCESS);
             payment.setPaymentTime(LocalDateTime.now());
@@ -237,5 +259,10 @@ public class PaymentServiceImpl implements PaymentService {
                     + "&bookingId=" + payment.getBooking().getId()
                     + "&txn=" + txnRef;
         }
+    }
+
+    private boolean isPaymentWindowExpired(Booking booking) {
+        return booking.getPaymentExpiresAt() != null
+                && !booking.getPaymentExpiresAt().isAfter(LocalDateTime.now());
     }
 }

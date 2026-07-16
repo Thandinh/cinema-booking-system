@@ -49,11 +49,41 @@ public interface SeatStatusRepository extends JpaRepository<SeatStatus, UUID> {
     @Query("UPDATE SeatStatus ss SET ss.status = :status, ss.holdBy = null, ss.holdUntil = null WHERE ss.showtime.id = :showtimeId AND ss.seat.id IN :seatIds")
     void bulkUpdateStatusAndClearHold(@Param("showtimeId") UUID showtimeId, @Param("seatIds") List<UUID> seatIds, @Param("status") SeatStatusType status);
 
+    @Modifying
+    @Query("""
+            UPDATE SeatStatus ss
+            SET ss.status = :status, ss.holdBy = null, ss.holdUntil = null
+            WHERE ss.showtime.id = :showtimeId
+              AND ss.seat.id IN :seatIds
+              AND ss.status = com.cinema.booking.enums.SeatStatusType.HOLD
+              AND ss.holdBy.id = :userId
+              AND ss.holdUntil <= :holdUntilBeforeOrAt
+            """)
+    int releaseHeldSeatsForBooking(
+            @Param("showtimeId") UUID showtimeId,
+            @Param("seatIds") List<UUID> seatIds,
+            @Param("userId") UUID userId,
+            @Param("holdUntilBeforeOrAt") LocalDateTime holdUntilBeforeOrAt,
+            @Param("status") SeatStatusType status);
+
     // ===================================================================================
     // SCHEDULER: Tìm ghế đã quá thời gian HOLD
     // ===================================================================================
-    @Query("SELECT ss FROM SeatStatus ss JOIN FETCH ss.seat JOIN FETCH ss.showtime WHERE ss.status = :status AND ss.holdUntil < :now")
+    @Query("SELECT ss FROM SeatStatus ss JOIN FETCH ss.seat JOIN FETCH ss.showtime WHERE ss.status = :status AND ss.holdUntil <= :now")
     List<SeatStatus> findExpiredHolds(@Param("status") SeatStatusType status, @Param("now") LocalDateTime now);
+
+    @Query("""
+            SELECT ss FROM SeatStatus ss
+            JOIN FETCH ss.seat
+            JOIN FETCH ss.showtime
+            WHERE ss.showtime.id = :showtimeId
+              AND ss.status = :status
+              AND ss.holdUntil <= :now
+            """)
+    List<SeatStatus> findExpiredHoldsByShowtime(
+            @Param("showtimeId") UUID showtimeId,
+            @Param("status") SeatStatusType status,
+            @Param("now") LocalDateTime now);
 
     @Modifying
     @Query("DELETE FROM SeatStatus ss WHERE ss.showtime.id = :showtimeId")

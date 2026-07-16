@@ -25,15 +25,26 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     Optional<Booking> findBySecureToken(@Param("secureToken") String secureToken);
 
     // Tách countQuery riêng để tránh Spring load toàn bộ data vào memory khi phân trang
-    @Query(value = "SELECT b FROM Booking b JOIN FETCH b.showtime s JOIN FETCH s.movie JOIN FETCH s.room r JOIN FETCH r.cinema WHERE b.user.id = :userId",
+    @Query(value = "SELECT b FROM Booking b JOIN FETCH b.user JOIN FETCH b.showtime s JOIN FETCH s.movie JOIN FETCH s.room r JOIN FETCH r.cinema WHERE b.user.id = :userId",
            countQuery = "SELECT COUNT(b) FROM Booking b WHERE b.user.id = :userId")
     Page<Booking> findByUserId(@Param("userId") UUID userId, Pageable pageable);
 
-    @Query(value = "SELECT b FROM Booking b JOIN FETCH b.showtime s JOIN FETCH s.movie JOIN FETCH s.room r JOIN FETCH r.cinema WHERE (:status IS NULL OR b.status = :status)",
+    @Query(value = "SELECT b FROM Booking b JOIN FETCH b.user JOIN FETCH b.showtime s JOIN FETCH s.movie JOIN FETCH s.room r JOIN FETCH r.cinema WHERE (:status IS NULL OR b.status = :status)",
            countQuery = "SELECT COUNT(b) FROM Booking b WHERE (:status IS NULL OR b.status = :status)")
     Page<Booking> findAllByStatus(@Param("status") BookingStatus status, Pageable pageable);
 
-    @Query("SELECT b FROM Booking b LEFT JOIN FETCH b.bookingDetails bd LEFT JOIN FETCH bd.seat WHERE b.id = :id")
+    @Query("""
+            SELECT DISTINCT b FROM Booking b
+            JOIN FETCH b.user
+            JOIN FETCH b.showtime s
+            JOIN FETCH s.movie
+            JOIN FETCH s.room r
+            JOIN FETCH r.cinema
+            LEFT JOIN FETCH b.bookingDetails bd
+            LEFT JOIN FETCH bd.seat
+            LEFT JOIN FETCH bd.ticket
+            WHERE b.id = :id
+            """)
     Optional<Booking> findWithDetailsById(@Param("id") UUID id);
 
     @Query("""
@@ -42,10 +53,14 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             LEFT JOIN FETCH b.bookingDetails bd
             LEFT JOIN FETCH bd.seat
             WHERE b.status = :status
-              AND b.createdAt < :cutoff
+              AND (
+                    (b.paymentExpiresAt IS NOT NULL AND b.paymentExpiresAt <= :now)
+                    OR (b.paymentExpiresAt IS NULL AND b.createdAt < :legacyCutoff)
+                  )
             """)
     List<Booking> findExpiredPendingBookings(@Param("status") BookingStatus status,
-                                              @Param("cutoff") LocalDateTime cutoff);
+                                              @Param("now") LocalDateTime now,
+                                              @Param("legacyCutoff") LocalDateTime legacyCutoff);
 
     /**
      * Query chuyên dùng cho tác vụ gửi Email.

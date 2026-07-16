@@ -136,6 +136,13 @@ public class ShowtimeServiceImpl implements ShowtimeService {
 
     @Override
     @Transactional(readOnly = true)
+    public Page<ShowtimeResponse> getAllShowtimes(Pageable pageable) {
+        return showtimeRepository.findAllActive(pageable)
+                .map(showtimeMapper::toShowtimeResponse);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public ShowtimeResponse getShowtimeById(UUID id) {
         return showtimeRepository.findActiveById(id)
                 .map(showtimeMapper::toShowtimeResponse)

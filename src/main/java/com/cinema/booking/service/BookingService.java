@@ -30,6 +30,9 @@ public interface BookingService {
     /** Hủy booking (BOOKING_CANCEL_OWN / BOOKING_CANCEL_ALL). */
     BookingResponse cancelBooking(UUID bookingId);
 
+    /** Hết hạn thanh toán, nhả ghế và đánh dấu EXPIRED. */
+    BookingResponse expirePendingBooking(UUID bookingId);
+
     /** Xem sơ đồ ghế của suất chiếu. */
     List<SeatMapItemResponse> getSeatMap(UUID showtimeId);
 

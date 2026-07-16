@@ -7,6 +7,25 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+-- Schema patch cho luồng giữ vé/thanh toán hết hạn.
+-- Dùng IF NOT EXISTS để chạy lại seed nhiều lần không lỗi.
+ALTER TABLE bookings
+    ADD COLUMN IF NOT EXISTS payment_expires_at TIMESTAMP;
+
+ALTER TABLE bookings
+    DROP CONSTRAINT IF EXISTS chk_booking_status;
+
+ALTER TABLE bookings
+    ADD CONSTRAINT chk_booking_status
+    CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'CANCELLED', 'EXPIRED'));
+
+ALTER TABLE payments
+    DROP CONSTRAINT IF EXISTS chk_payment_status;
+
+ALTER TABLE payments
+    ADD CONSTRAINT chk_payment_status
+    CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'EXPIRED'));
+
 -- 1. DỌN DẸP DỮ LIỆU NGHIỆP VỤ CŨ
 -- Không truncate users/roles/permissions để tránh xoá dữ liệu do ApplicationInitConfig tạo.
 TRUNCATE TABLE

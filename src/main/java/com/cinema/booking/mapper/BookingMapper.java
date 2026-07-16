@@ -43,11 +43,19 @@ public class BookingMapper {
         List<BookingDetailResponse> detailResponses = booking.getBookingDetails().stream()
                 .map(this::toBookingDetailResponse)
                 .collect(Collectors.toList());
+        String customerName = java.util.stream.Stream
+                .of(booking.getUser().getFirstName(), booking.getUser().getLastName())
+                .filter(value -> value != null && !value.isBlank())
+                .collect(Collectors.joining(" "));
 
         return BookingResponse.builder()
                 .id(booking.getId())
                 .secureToken(booking.getSecureToken())
                 .status(booking.getStatus())
+                .customerId(booking.getUser().getId())
+                .customerUsername(booking.getUser().getUsername())
+                .customerName(customerName.isBlank() ? booking.getUser().getUsername() : customerName)
+                .customerEmail(booking.getUser().getEmail())
                 .showtimeId(booking.getShowtime().getId())
                 .movieTitle(booking.getShowtime().getMovie().getTitle())
                 .cinemaName(booking.getShowtime().getRoom().getCinema().getName())
@@ -55,6 +63,7 @@ public class BookingMapper {
                 .cinemaCity(booking.getShowtime().getRoom().getCinema().getCity())
                 .roomName(booking.getShowtime().getRoom().getName())
                 .startTime(booking.getShowtime().getStartTime())
+                .paymentExpiresAt(booking.getPaymentExpiresAt())
                 .totalPrice(booking.getTotalPrice())
                 .discountAmount(booking.getDiscountAmount())
                 .promotionCode(booking.getPromotion() != null ? booking.getPromotion().getCode() : null)

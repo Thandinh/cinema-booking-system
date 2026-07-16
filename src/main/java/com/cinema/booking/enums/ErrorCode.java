@@ -94,6 +94,7 @@ public enum ErrorCode {
     BOOKING_NOT_FOUND          (7001, "Booking not found",                     HttpStatus.NOT_FOUND),
     BOOKING_ALREADY_PROCESSED  (7002, "Booking has already been processed",    HttpStatus.CONFLICT),
     BOOKING_CANNOT_CANCEL      (7003, "Only PENDING bookings can be cancelled", HttpStatus.CONFLICT),
+    BOOKING_EXPIRED            (7004, "Booking payment window has expired",    HttpStatus.CONFLICT),
 
     // ── Ticket ───────────────────────────────────────────────────────────
     TICKET_NOT_FOUND           (8001, "Ticket not found",                      HttpStatus.NOT_FOUND),

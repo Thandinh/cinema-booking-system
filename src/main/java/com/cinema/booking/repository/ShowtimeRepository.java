@@ -26,6 +26,16 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, UUID> {
             """)
     Optional<Showtime> findActiveById(@Param("id") UUID id);
 
+    @Query(value = """
+            SELECT s FROM Showtime s
+            JOIN FETCH s.movie
+            JOIN FETCH s.room r
+            JOIN FETCH r.cinema
+            WHERE s.isDeleted = false
+            """,
+           countQuery = "SELECT COUNT(s) FROM Showtime s WHERE s.isDeleted = false")
+    Page<Showtime> findAllActive(Pageable pageable);
+
     /**
      * Thuật toán Overlapping nâng cấp (15p dọn phòng).
      * Để tránh lỗi parse HQL, startTimeCheck và endTimeCheck (+/- 15p) sẽ được truyền trực tiếp từ Service.
@@ -85,4 +95,3 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, UUID> {
     @Query("SELECT COUNT(s) FROM Showtime s WHERE s.status = com.cinema.booking.enums.ShowtimeStatus.UPCOMING AND s.isDeleted = false")
     Long countUpcomingShowtimes();
 }
-

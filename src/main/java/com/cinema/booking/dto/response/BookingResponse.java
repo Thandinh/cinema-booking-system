@@ -19,6 +19,11 @@ public class BookingResponse {
     String secureToken;
     BookingStatus status;
 
+    UUID customerId;
+    String customerUsername;
+    String customerName;
+    String customerEmail;
+
     // Showtime info
     UUID showtimeId;
     String movieTitle;
@@ -27,6 +32,7 @@ public class BookingResponse {
     String cinemaCity;
     String roomName;
     LocalDateTime startTime;
+    LocalDateTime paymentExpiresAt;
 
     // Financial
     BigDecimal totalPrice;

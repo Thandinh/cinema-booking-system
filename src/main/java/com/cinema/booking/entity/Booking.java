@@ -6,6 +6,7 @@ import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -51,6 +52,8 @@ public class Booking extends BaseEntity {
     // Token bảo mật dùng để xác thực callback thanh toán từ VNPay/MoMo
     @Column(unique = true, nullable = false, length = 255)
     String secureToken;
+
+    LocalDateTime paymentExpiresAt;
 
     @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default

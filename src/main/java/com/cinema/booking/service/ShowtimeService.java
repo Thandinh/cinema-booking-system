@@ -17,6 +17,8 @@ public interface ShowtimeService {
 
     void deleteShowtime(UUID id);
 
+    Page<ShowtimeResponse> getAllShowtimes(Pageable pageable);
+
     ShowtimeResponse getShowtimeById(UUID id);
 
     List<ShowtimeResponse> getShowtimesByMovieId(UUID movieId);

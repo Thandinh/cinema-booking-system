@@ -26,6 +26,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -56,6 +57,7 @@ public class BookingServiceImpl implements BookingService {
     SeatStatusPublisher  seatStatusPublisher; // WebSocket real-time push
     EmailService         emailService;        // Gửi email vé
     TicketQrCodeService  ticketQrCodeService;
+    PaymentRepository    paymentRepository;
 
     @Value("${ticket.check-in-early-minutes:30}")
     @NonFinal
@@ -188,6 +190,7 @@ public class BookingServiceImpl implements BookingService {
         }
 
         BigDecimal totalPrice = totalBeforeDiscount.subtract(discountAmount).max(BigDecimal.ZERO);
+        LocalDateTime paymentHoldUntil = LocalDateTime.now().plusMinutes(bookingPendingTimeoutMinutes);
 
         // Tạo Booking
         Booking booking = Booking.builder()
@@ -198,6 +201,7 @@ public class BookingServiceImpl implements BookingService {
                 .discountAmount(discountAmount)
                 .status(BookingStatus.PENDING)
                 .secureToken(UUID.randomUUID().toString())
+                .paymentExpiresAt(paymentHoldUntil)
                 .build();
 
         // Tạo BookingDetails
@@ -215,7 +219,6 @@ public class BookingServiceImpl implements BookingService {
 
         Booking saved = bookingRepository.save(booking);
 
-        LocalDateTime paymentHoldUntil = LocalDateTime.now().plusMinutes(bookingPendingTimeoutMinutes);
         for (SeatStatus ss : seatStatuses) {
             ss.setHoldUntil(paymentHoldUntil);
         }
@@ -237,6 +240,10 @@ public class BookingServiceImpl implements BookingService {
 
         if (booking.getStatus() != BookingStatus.PENDING) {
             throw new AppException(ErrorCode.BOOKING_ALREADY_PROCESSED);
+        }
+
+        if (isPaymentExpired(booking)) {
+            throw new AppException(ErrorCode.BOOKING_EXPIRED);
         }
 
         booking.setStatus(BookingStatus.SUCCESS);
@@ -296,10 +303,17 @@ public class BookingServiceImpl implements BookingService {
         List<UUID> seatIds = booking.getBookingDetails().stream()
                 .map(bd -> bd.getSeat().getId())
                 .toList();
-        seatStatusRepository.bulkUpdateStatusAndClearHold(booking.getShowtime().getId(), seatIds, SeatStatusType.AVAILABLE);
+        int releasedSeatCount = seatStatusRepository.releaseHeldSeatsForBooking(
+                booking.getShowtime().getId(),
+                seatIds,
+                booking.getUser().getId(),
+                paymentReleaseCutoff(booking),
+                SeatStatusType.AVAILABLE);
 
         // ── WS: Push AVAILABLE event (ghế được trả lại) ──
-        seatStatusPublisher.publishBulk(booking.getShowtime().getId(), seatIds, SeatStatusType.AVAILABLE);
+        if (releasedSeatCount == seatIds.size()) {
+            seatStatusPublisher.publishBulk(booking.getShowtime().getId(), seatIds, SeatStatusType.AVAILABLE);
+        }
 
         Booking saved = bookingRepository.save(booking);
         log.info("Payment FAILED for booking id={}", saved.getId());
@@ -334,13 +348,58 @@ public class BookingServiceImpl implements BookingService {
         List<UUID> seatIds = booking.getBookingDetails().stream()
                 .map(bd -> bd.getSeat().getId())
                 .toList();
-        seatStatusRepository.bulkUpdateStatusAndClearHold(booking.getShowtime().getId(), seatIds, SeatStatusType.AVAILABLE);
+        int releasedSeatCount = seatStatusRepository.releaseHeldSeatsForBooking(
+                booking.getShowtime().getId(),
+                seatIds,
+                booking.getUser().getId(),
+                paymentReleaseCutoff(booking),
+                SeatStatusType.AVAILABLE);
 
         // ── WS: Push AVAILABLE event (hủy đơn, trả ghế về pool) ──
-        seatStatusPublisher.publishBulk(booking.getShowtime().getId(), seatIds, SeatStatusType.AVAILABLE);
+        if (releasedSeatCount == seatIds.size()) {
+            seatStatusPublisher.publishBulk(booking.getShowtime().getId(), seatIds, SeatStatusType.AVAILABLE);
+        }
 
         Booking saved = bookingRepository.save(booking);
         log.info("Booking CANCELLED id={} by userId={}", bookingId, userId);
+        return bookingMapper.toBookingResponse(saved);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public BookingResponse expirePendingBooking(UUID bookingId) {
+        Booking booking = bookingRepository.findWithDetailsById(bookingId)
+                .orElseThrow(() -> new AppException(ErrorCode.BOOKING_NOT_FOUND));
+
+        if (booking.getStatus() != BookingStatus.PENDING) {
+            return bookingMapper.toBookingResponse(booking);
+        }
+
+        booking.setStatus(BookingStatus.EXPIRED);
+
+        List<UUID> seatIds = booking.getBookingDetails().stream()
+                .map(bd -> bd.getSeat().getId())
+                .toList();
+
+        if (!seatIds.isEmpty()) {
+            int releasedSeatCount = seatStatusRepository.releaseHeldSeatsForBooking(
+                    booking.getShowtime().getId(),
+                    seatIds,
+                    booking.getUser().getId(),
+                    paymentReleaseCutoff(booking),
+                    SeatStatusType.AVAILABLE);
+            if (releasedSeatCount == seatIds.size()) {
+                seatStatusPublisher.publishBulk(booking.getShowtime().getId(), seatIds, SeatStatusType.AVAILABLE);
+            }
+        }
+
+        List<Payment> pendingPayments = paymentRepository.findByBookingIdInAndStatus(
+                List.of(booking.getId()), PaymentStatus.PENDING);
+        pendingPayments.forEach(payment -> payment.setStatus(PaymentStatus.EXPIRED));
+        paymentRepository.saveAll(pendingPayments);
+
+        Booking saved = bookingRepository.save(booking);
+        log.info("Booking EXPIRED id={} after payment timeout", bookingId);
         return bookingMapper.toBookingResponse(saved);
     }
 
@@ -352,6 +411,8 @@ public class BookingServiceImpl implements BookingService {
     public List<SeatMapItemResponse> getSeatMap(UUID showtimeId) {
         Showtime showtime = showtimeRepository.findActiveById(showtimeId)
                 .orElseThrow(() -> new AppException(ErrorCode.SHOWTIME_NOT_FOUND));
+
+        releaseExpiredHoldsForShowtime(showtimeId);
 
         List<SeatStatus> seatStatuses = seatStatusRepository.findAllByShowtimeId(showtimeId);
         long activeSeatCount = seatRepository.countActiveByRoomId(showtime.getRoom().getId());
@@ -503,6 +564,32 @@ public class BookingServiceImpl implements BookingService {
         }
     }
 
+    private void releaseExpiredHoldsForShowtime(UUID showtimeId) {
+        List<SeatStatus> expiredHolds = seatStatusRepository.findExpiredHoldsByShowtime(
+                showtimeId,
+                SeatStatusType.HOLD,
+                LocalDateTime.now());
+
+        if (expiredHolds.isEmpty()) {
+            return;
+        }
+
+        List<UUID> releasedSeatIds = expiredHolds.stream()
+                .map(seatStatus -> seatStatus.getSeat().getId())
+                .toList();
+
+        for (SeatStatus seatStatus : expiredHolds) {
+            seatStatus.setStatus(SeatStatusType.AVAILABLE);
+            seatStatus.setHoldBy(null);
+            seatStatus.setHoldUntil(null);
+        }
+
+        seatStatusRepository.saveAll(expiredHolds);
+        seatStatusPublisher.publishBulk(showtimeId, releasedSeatIds, SeatStatusType.AVAILABLE);
+        log.info("Released {} expired holds while loading seat map for showtime={}",
+                releasedSeatIds.size(), showtimeId);
+    }
+
     private void seedMissingSeatStatuses(Showtime showtime, List<SeatStatus> existingStatuses) {
         Set<UUID> existingSeatIds = existingStatuses.stream()
                 .map(seatStatus -> seatStatus.getSeat().getId())
@@ -536,6 +623,17 @@ public class BookingServiceImpl implements BookingService {
                 log.info("Upgraded legacy ticket QR id={} bookingId={}", ticket.getId(), booking.getId());
             }
         }
+    }
+
+    private boolean isPaymentExpired(Booking booking) {
+        return booking.getPaymentExpiresAt() != null
+                && !booking.getPaymentExpiresAt().isAfter(LocalDateTime.now());
+    }
+
+    private LocalDateTime paymentReleaseCutoff(Booking booking) {
+        return booking.getPaymentExpiresAt() != null
+                ? booking.getPaymentExpiresAt()
+                : LocalDateTime.now();
     }
 
 }
