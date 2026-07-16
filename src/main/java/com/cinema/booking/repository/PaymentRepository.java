@@ -57,11 +57,13 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             SELECT TO_CHAR(p.payment_time, 'YYYY-MM-DD') AS period,
                    COALESCE(SUM(p.amount), 0)             AS revenue,
                    COUNT(DISTINCT p.booking_id)            AS total_bookings,
-                   COUNT(t.id)                             AS total_tickets
+                   COALESCE(SUM((
+                       SELECT COUNT(t.id)
+                       FROM booking_details bd
+                       JOIN tickets t ON t.booking_detail_id = bd.id
+                       WHERE bd.booking_id = p.booking_id
+                   )), 0)                                  AS total_tickets
             FROM payments p
-            LEFT JOIN bookings b     ON b.id = p.booking_id
-            LEFT JOIN booking_details bd ON bd.booking_id = b.id
-            LEFT JOIN tickets t      ON t.booking_detail_id = bd.id
             WHERE p.status = 'SUCCESS'
               AND p.payment_time BETWEEN :from AND :to
             GROUP BY TO_CHAR(p.payment_time, 'YYYY-MM-DD')
@@ -78,11 +80,13 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             SELECT TO_CHAR(p.payment_time, 'YYYY-MM') AS period,
                    COALESCE(SUM(p.amount), 0)          AS revenue,
                    COUNT(DISTINCT p.booking_id)         AS total_bookings,
-                   COUNT(t.id)                          AS total_tickets
+                   COALESCE(SUM((
+                       SELECT COUNT(t.id)
+                       FROM booking_details bd
+                       JOIN tickets t ON t.booking_detail_id = bd.id
+                       WHERE bd.booking_id = p.booking_id
+                   )), 0)                               AS total_tickets
             FROM payments p
-            LEFT JOIN bookings b     ON b.id = p.booking_id
-            LEFT JOIN booking_details bd ON bd.booking_id = b.id
-            LEFT JOIN tickets t      ON t.booking_detail_id = bd.id
             WHERE p.status = 'SUCCESS'
               AND p.payment_time BETWEEN :from AND :to
             GROUP BY TO_CHAR(p.payment_time, 'YYYY-MM')
@@ -102,13 +106,16 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
                    m.poster_url                 AS poster_url,
                    COALESCE(SUM(p.amount), 0)   AS revenue,
                    COUNT(DISTINCT b.id)          AS total_bookings,
-                   COUNT(t.id)                  AS total_tickets
+                   COALESCE(SUM((
+                       SELECT COUNT(t.id)
+                       FROM booking_details bd
+                       JOIN tickets t ON t.booking_detail_id = bd.id
+                       WHERE bd.booking_id = b.id
+                   )), 0)                        AS total_tickets
             FROM payments p
             JOIN bookings b    ON p.booking_id  = b.id
             JOIN showtimes st  ON b.showtime_id = st.id
             JOIN movies m      ON st.movie_id   = m.id
-            JOIN booking_details bd ON bd.booking_id = b.id
-            JOIN tickets t     ON t.booking_detail_id = bd.id
             WHERE p.status = 'SUCCESS'
               AND p.payment_time BETWEEN :from AND :to
             GROUP BY m.id, m.title, m.poster_url

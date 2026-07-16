@@ -18,13 +18,15 @@ public class UserCreationRequest {
     String username;
 
     @NotBlank(message = "PASSWORD_REQUIRED")
-    @Size(min = 6, max = 100, message = "PASSWORD_INVALID")
+    @Size(min = 8, max = 72, message = "PASSWORD_INVALID")
+    @Pattern(
+            regexp = "^(?=\\S+$)(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9\\s]).+$",
+            message = "PASSWORD_INVALID"
+    )
     String password;
 
-    @NotBlank(message = "FIRSTNAME_REQUIRED")
     String firstName;
 
-    @NotBlank(message = "LASTNAME_REQUIRED")
     String lastName;
 
     @Past(message = "DOB_INVALID")
@@ -36,4 +38,7 @@ public class UserCreationRequest {
     @NotBlank(message = "EMAIL_REQUIRED")
     @Email(message = "EMAIL_INVALID")
     String email;
+
+    @Size(max = 500, message = "AVATAR_URL_INVALID")
+    String avatarUrl;
 }

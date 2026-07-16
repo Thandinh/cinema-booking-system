@@ -22,7 +22,7 @@ public enum ErrorCode {
 
     // ── Validation keys — matched by GlobalExceptionHandler via Enum.valueOf() ─
     USERNAME_INVALID       (1010, "Username must be between {min} and 50 characters", HttpStatus.BAD_REQUEST),
-    PASSWORD_INVALID       (1011, "Password must be at least {min} characters",       HttpStatus.BAD_REQUEST),
+    PASSWORD_INVALID       (1011, "Password must be 8-72 characters and include uppercase, lowercase, number, special character, and no spaces", HttpStatus.BAD_REQUEST),
     EMAIL_INVALID          (1012, "Invalid email format",                             HttpStatus.BAD_REQUEST),
     PHONE_INVALID          (1013, "Invalid Vietnamese phone number",                  HttpStatus.BAD_REQUEST),
     DOB_INVALID            (1014, "Date of birth must be in the past",               HttpStatus.BAD_REQUEST),
@@ -31,6 +31,8 @@ public enum ErrorCode {
     FIRSTNAME_REQUIRED     (1017, "First name is required",                           HttpStatus.BAD_REQUEST),
     LASTNAME_REQUIRED      (1018, "Last name is required",                            HttpStatus.BAD_REQUEST),
     EMAIL_REQUIRED         (1019, "Email is required",                                HttpStatus.BAD_REQUEST),
+    EMAIL_NOT_VERIFIED     (1020, "Please verify your email before signing in",       HttpStatus.FORBIDDEN),
+    EMAIL_VERIFICATION_INVALID(1021, "Email verification link is invalid or expired", HttpStatus.BAD_REQUEST),
 
     // ── Movie ────────────────────────────────────────────────────────────────
     MOVIE_NOT_FOUND        (2001, "Movie not found",                      HttpStatus.NOT_FOUND),

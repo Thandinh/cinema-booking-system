@@ -135,6 +135,9 @@ public class ApplicationInitConfig {
                 .username("admin")
                 .password(passwordEncoder.encode(adminDefaultPassword))
                 .roles(Set.of(adminRole))
+                .emailVerified(true)
+                .emailVerificationTokenHash(null)
+                .emailVerificationExpiresAt(null)
                 .isActive(true)
                 .isDeleted(false)
                 .build();
@@ -168,6 +171,9 @@ public class ApplicationInitConfig {
         user.setFirstName(firstName);
         user.setLastName(lastName);
         user.setEmail(email);
+        user.setEmailVerified(true);
+        user.setEmailVerificationTokenHash(null);
+        user.setEmailVerificationExpiresAt(null);
         user.setIsActive(true);
         user.setIsDeleted(false);
 

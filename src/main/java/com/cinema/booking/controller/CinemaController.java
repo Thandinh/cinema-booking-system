@@ -42,7 +42,6 @@ public class CinemaController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('CINEMA_VIEW')")
     public ApiResponse<Page<CinemaResponse>> getAllCinemas(
             @PageableDefault(size = 20, sort = "createdAt") Pageable pageable,
             @RequestParam(defaultValue = "false") boolean onlyActive) {
@@ -53,7 +52,6 @@ public class CinemaController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('CINEMA_VIEW')")
     public ApiResponse<CinemaResponse> getCinemaById(@PathVariable UUID id) {
         return ApiResponse.<CinemaResponse>builder()
                 .code(1000)

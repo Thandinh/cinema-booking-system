@@ -26,10 +26,13 @@ public class SecurityConfig {
 
     private static final String[] PUBLIC_POST_ENDPOINTS = {
             "/auth/token",
+            "/auth/google",
             "/auth/introspect",
             "/auth/logout",
             "/auth/refresh",
-            "/api/v1/users/register"
+            "/api/v1/users/register",
+            "/api/v1/users/verify-email",
+            "/api/v1/users/resend-verification"
     };
 
     private static final String[] PUBLIC_GET_ENDPOINTS = {
@@ -37,6 +40,8 @@ public class SecurityConfig {
             "/api/v1/movies/**",
             "/api/v1/showtimes/**",
             "/api/v1/bookings/showtimes/**",
+            "/api/v1/cinemas",
+            "/api/v1/cinemas/**",
             "/api/v1/cinemas/map",      // Leaflet: lấy tất cả rạp có tọa độ
             "/api/v1/cinemas/nearest"   // Leaflet: tìm rạp gần nhất (Haversine)
     };

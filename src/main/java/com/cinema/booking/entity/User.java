@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
@@ -37,6 +38,16 @@ public class User extends BaseEntity {
 
     @Column(unique = true)
     private String email;
+
+    @Column(length = 500)
+    private String avatarUrl;
+
+    private Boolean emailVerified = true;
+
+    @Column(length = 64)
+    private String emailVerificationTokenHash;
+
+    private LocalDateTime emailVerificationExpiresAt;
 
     private Boolean isActive = true;
 

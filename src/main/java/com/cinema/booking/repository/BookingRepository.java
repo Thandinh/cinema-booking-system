@@ -68,7 +68,7 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
      * bookingDetails-seat, ticket (có chứa QR code).
      * Được gọi trong luồng @Async nên phải load EAGER để tránh LazyInitializationException.
      */
-    @Query("SELECT b FROM Booking b " +
+    @Query("SELECT DISTINCT b FROM Booking b " +
            "JOIN FETCH b.user u " +
            "JOIN FETCH b.showtime s JOIN FETCH s.movie JOIN FETCH s.room r JOIN FETCH r.cinema " +
            "LEFT JOIN FETCH b.bookingDetails bd LEFT JOIN FETCH bd.seat LEFT JOIN FETCH bd.ticket " +

@@ -1,6 +1,7 @@
 package com.cinema.booking.service.impl;
 
 import com.cinema.booking.entity.Booking;
+import com.cinema.booking.entity.Cinema;
 import com.cinema.booking.enums.ErrorCode;
 import com.cinema.booking.exception.AppException;
 import com.cinema.booking.repository.BookingRepository;
@@ -25,11 +26,14 @@ import org.thymeleaf.context.Context;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -50,6 +54,9 @@ public class EmailServiceImpl implements EmailService {
 
     @Value("${spring.mail.password:}")
     String senderPassword;
+
+    @Value("${app.frontend-url:http://localhost:5173}")
+    String frontendUrl;
 
     /**
      * Chạy bất đồng bộ (@Async) trong thread pool riêng.
@@ -77,6 +84,8 @@ public class EmailServiceImpl implements EmailService {
             String seats = booking.getBookingDetails().stream()
                     .map(bd -> bd.getSeat().getRowLabel() + bd.getSeat().getSeatNumber())
                     .collect(Collectors.joining(", "));
+            Cinema cinema = booking.getShowtime().getRoom().getCinema();
+            String cinemaAddress = buildCinemaAddress(cinema);
 
             List<Map<String, String>> qrCodes = new ArrayList<>();
             List<Map<String, String>> localQrCodes = new ArrayList<>();
@@ -88,14 +97,20 @@ public class EmailServiceImpl implements EmailService {
                 }
 
                 String qrCode = detail.getTicket().getQrCode();
+                String seatLabel = detail.getSeat().getRowLabel() + detail.getSeat().getSeatNumber();
                 byte[] pngBytes = qrCodeImageService.toPngBytes(qrCode, 360);
                 String contentId = "ticket-qr-" + qrIndex++;
 
-                qrCodes.add(Map.of("code", qrCode, "image", "cid:" + contentId));
+                qrCodes.add(Map.of("code", qrCode, "image", "cid:" + contentId, "seat", seatLabel));
                 localQrCodes.add(Map.of(
                         "code", qrCode,
+                        "seat", seatLabel,
                         "image", "data:image/png;base64," + Base64.getEncoder().encodeToString(pngBytes)));
                 inlineQrImages.put(contentId, pngBytes);
+            }
+
+            if (qrCodes.isEmpty()) {
+                log.warn("[Async] Booking {} has no ticket QR codes. Ticket email will show a support warning.", bookingId);
             }
 
             // Thymeleaf context
@@ -104,10 +119,11 @@ public class EmailServiceImpl implements EmailService {
             context.setVariable("userName",    userName.trim());
             context.setVariable("movieTitle",  booking.getShowtime().getMovie().getTitle());
             context.setVariable("cinemaName",  booking.getShowtime().getRoom().getCinema().getName());
+            context.setVariable("cinemaAddress", cinemaAddress);
             context.setVariable("roomName",    booking.getShowtime().getRoom().getName());
-            context.setVariable("showTime",    booking.getShowtime().getStartTime().format(fmt));
+            context.setVariable("showTime",    booking.getShowtime().getStartTime().format(fmt).replace(" - ", " · "));
             context.setVariable("seats",       seats);
-            context.setVariable("totalPrice",  booking.getTotalPrice());
+            context.setVariable("totalPrice",  formatVnd(booking.getTotalPrice()));
             context.setVariable("qrCodes",     qrCodes);
 
             // Render HTML
@@ -153,6 +169,50 @@ public class EmailServiceImpl implements EmailService {
         }
     }
 
+    @Async
+    @Override
+    public void sendEmailVerification(String recipientEmail, String username, String rawToken) {
+        try {
+            if (recipientEmail == null || recipientEmail.isBlank()) {
+                log.warn("[Async] Skip verification email because recipient is blank for user {}", username);
+                return;
+            }
+
+            String verificationUrl = frontendUrl.replaceAll("/+$", "")
+                    + "/verify-email?token="
+                    + URLEncoder.encode(rawToken, StandardCharsets.UTF_8);
+
+            Context context = new Context();
+            context.setVariable("username", username);
+            context.setVariable("verificationUrl", verificationUrl);
+            context.setVariable("expiresIn", "24 giờ");
+
+            String htmlContent = templateEngine.process("email-verification", context);
+            saveLocalVerificationEmail(recipientEmail, context);
+
+            if (!isMailConfigured()) {
+                log.warn("SMTP credentials are not configured. Local verification email was saved for {}.", recipientEmail);
+                return;
+            }
+
+            MimeMessage message = javaMailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(senderEmail);
+            helper.setTo(recipientEmail);
+            helper.setSubject("Xác thực tài khoản cinemabooking.vn");
+            helper.setText(htmlContent, true);
+
+            javaMailSender.send(message);
+            log.info("[Async] Verification email sent successfully to {}", recipientEmail);
+        } catch (MailAuthenticationException e) {
+            log.error("[Async] SMTP authentication failed while sending verification email to {}.", recipientEmail);
+        } catch (MailException | MessagingException e) {
+            log.error("[Async] Verification email send failed for {}: {}", recipientEmail, e.getMessage());
+        } catch (Exception e) {
+            log.error("[Async] Unexpected error while sending verification email to {}: {}", recipientEmail, e.getMessage());
+        }
+    }
+
     private void saveLocalTicketEmail(UUID bookingId, Context context, List<Map<String, String>> localQrCodes) {
         try {
             context.setVariable("qrCodes", localQrCodes);
@@ -167,6 +227,20 @@ public class EmailServiceImpl implements EmailService {
         }
     }
 
+    private void saveLocalVerificationEmail(String recipientEmail, Context context) {
+        try {
+            String localHtmlContent = templateEngine.process("email-verification", context);
+            Path outboxDir = Path.of("logs", "emails");
+            Files.createDirectories(outboxDir);
+            String safeEmail = recipientEmail.replaceAll("[^a-zA-Z0-9._-]", "_");
+            Path emailPath = outboxDir.resolve("verify-" + safeEmail + ".html");
+            Files.writeString(emailPath, localHtmlContent);
+            log.info("[Async] Local verification email saved at {}", emailPath.toAbsolutePath());
+        } catch (Exception e) {
+            log.warn("[Async] Could not save local verification email for {}: {}", recipientEmail, e.getMessage());
+        }
+    }
+
     private boolean isMailConfigured() {
         return senderEmail != null
                 && !senderEmail.isBlank()
@@ -175,6 +249,22 @@ public class EmailServiceImpl implements EmailService {
                 && senderPassword != null
                 && !senderPassword.isBlank()
                 && !isPlaceholder(senderPassword);
+    }
+
+    private String buildCinemaAddress(Cinema cinema) {
+        if (cinema == null) return "";
+        String address = cinema.getAddress() == null ? "" : cinema.getAddress().trim();
+        String city = cinema.getCity() == null ? "" : cinema.getCity().trim();
+        if (address.isBlank()) return city;
+        if (city.isBlank() || address.toLowerCase().contains(city.toLowerCase())) return address;
+        return address + ", " + city;
+    }
+
+    private String formatVnd(java.math.BigDecimal amount) {
+        if (amount == null) return "0 đ";
+        return java.text.NumberFormat.getNumberInstance(Locale.forLanguageTag("vi-VN"))
+                .format(amount.setScale(0, java.math.RoundingMode.HALF_UP))
+                + " đ";
     }
 
     private boolean isPlaceholder(String value) {

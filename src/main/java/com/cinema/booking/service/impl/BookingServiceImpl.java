@@ -27,6 +27,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -265,7 +267,8 @@ public class BookingServiceImpl implements BookingService {
                     .qrCode(qrCode)
                     .status(TicketStatus.ACTIVE)
                     .build();
-            detail.setTicket(ticket);
+            Ticket savedTicket = ticketRepository.save(ticket);
+            detail.setTicket(savedTicket);
         }
 
         // Tăng used_count của promotion
@@ -277,9 +280,14 @@ public class BookingServiceImpl implements BookingService {
         Booking saved = bookingRepository.save(booking);
         log.info("Payment SUCCESS for booking id={}", saved.getId());
         
-        // Gửi email bất đồng bộ — truyền UUID, không truyền entity
-        // để tránh LazyInitializationException khi @Async chạy trong thread khác
-        emailService.sendTicketEmail(saved.getId());
+        // Gửi email sau khi transaction commit để thread async nhìn thấy đầy đủ ticket/QR trong DB.
+        UUID bookingId = saved.getId();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                emailService.sendTicketEmail(bookingId);
+            }
+        });
         
         return bookingMapper.toBookingResponse(saved);
     }

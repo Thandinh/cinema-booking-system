@@ -1,5 +1,7 @@
 package com.cinema.booking.controller;
 
+import com.cinema.booking.dto.request.EmailVerificationRequest;
+import com.cinema.booking.dto.request.ResendEmailVerificationRequest;
 import com.cinema.booking.dto.request.UserCreationRequest;
 import com.cinema.booking.dto.request.UserUpdateRequest;
 import com.cinema.booking.dto.response.ApiResponse;
@@ -61,8 +63,26 @@ public class UserController {
         UserResponse response = userService.register(request);
         return ApiResponse.<UserResponse>builder()
                 .code(1000)
-                .message("Registration successful")
+                .message("Registration successful. Please verify your email before signing in.")
                 .result(response)
+                .build();
+    }
+
+    @PostMapping("/verify-email")
+    public ApiResponse<Void> verifyEmail(@Valid @RequestBody EmailVerificationRequest request) {
+        userService.verifyEmail(request.getToken());
+        return ApiResponse.<Void>builder()
+                .code(1000)
+                .message("Email verified successfully")
+                .build();
+    }
+
+    @PostMapping("/resend-verification")
+    public ApiResponse<Void> resendEmailVerification(@Valid @RequestBody ResendEmailVerificationRequest request) {
+        userService.resendEmailVerification(request.getEmail());
+        return ApiResponse.<Void>builder()
+                .code(1000)
+                .message("If the email exists and is not verified, a new verification email has been sent")
                 .build();
     }
 

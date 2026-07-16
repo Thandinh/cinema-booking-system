@@ -6,6 +6,7 @@ import com.cinema.booking.dto.response.UserResponse;
 import com.cinema.booking.entity.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.util.Collections;
 import java.util.stream.Collectors;
@@ -29,11 +30,13 @@ public class UserMapper {
         return User.builder()
                 .username(request.getUsername())
                 .password(request.getPassword()) // raw password — Service sẽ encode
-                .firstName(request.getFirstName())
-                .lastName(request.getLastName())
+                .firstName(resolveFirstName(request))
+                .lastName(StringUtils.hasText(request.getLastName()) ? request.getLastName().trim() : "")
                 .dob(request.getDob())
                 .phone(request.getPhone())
                 .email(request.getEmail())
+                .avatarUrl(request.getAvatarUrl())
+                .emailVerified(true)
                 .isActive(true)
                 .isDeleted(false)
                 .build();
@@ -52,6 +55,8 @@ public class UserMapper {
                 .dob(user.getDob())
                 .phone(user.getPhone())
                 .email(user.getEmail())
+                .avatarUrl(user.getAvatarUrl())
+                .emailVerified(user.getEmailVerified())
                 .isActive(user.getIsActive())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
@@ -78,6 +83,13 @@ public class UserMapper {
         if (request.getDob() != null) user.setDob(request.getDob());
         if (request.getPhone() != null) user.setPhone(request.getPhone());
         if (request.getEmail() != null) user.setEmail(request.getEmail());
+        if (request.getAvatarUrl() != null) user.setAvatarUrl(request.getAvatarUrl());
         // roleIds được xử lý riêng trong Service để fetch entity từ DB
+    }
+    private String resolveFirstName(UserCreationRequest request) {
+        if (StringUtils.hasText(request.getFirstName())) {
+            return request.getFirstName().trim();
+        }
+        return request.getUsername().trim();
     }
 }

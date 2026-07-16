@@ -24,6 +24,8 @@ public class UserResponse {
     LocalDate dob;
     String phone;
     String email;
+    String avatarUrl;
+    Boolean emailVerified;
     Boolean isActive;
     LocalDateTime createdAt;
     LocalDateTime updatedAt;

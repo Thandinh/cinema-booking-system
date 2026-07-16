@@ -1,123 +1,213 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
 <head>
-    <meta charset="UTF-8">
-    <title>Vé Xem Phim Của Bạn</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vé xem phim của bạn</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
-            background-color: #f4f7f6;
             margin: 0;
-            padding: 20px;
+            background: #f5f7fb;
+            color: #111827;
+            font-family: Arial, Helvetica, sans-serif;
         }
-        .ticket-container {
-            max-width: 600px;
+        .wrap {
+            max-width: 680px;
             margin: 0 auto;
-            background-color: #ffffff;
-            border-radius: 10px;
+            padding: 28px 14px;
+        }
+        .card {
             overflow: hidden;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            border: 1px solid #e5e7eb;
+            border-radius: 18px;
+            background: #ffffff;
         }
-        .header {
-            background-color: #e50914;
-            color: white;
-            text-align: center;
-            padding: 20px;
+        .head {
+            padding: 24px;
+            background: #0f172a;
+            color: #ffffff;
         }
-        .header h1 {
+        .brand {
+            margin: 0 0 10px;
+            font-size: 24px;
+            font-weight: 900;
+            letter-spacing: -.02em;
+            line-height: 1;
+        }
+        .brand-main {
+            color: #ffffff;
+        }
+        .brand-sub {
+            color: rgba(255, 255, 255, .55);
+        }
+        .brand-vn {
+            display: inline-block;
+            margin-left: 3px;
+            padding: 4px 7px;
+            border-radius: 7px;
+            background: #fbbf24;
+            color: #0f172a;
+            font-size: 16px;
+            line-height: 1;
+            vertical-align: 2px;
+        }
+        .head h1 {
             margin: 0;
             font-size: 24px;
+            line-height: 1.25;
         }
-        .content {
-            padding: 30px;
+        .body {
+            padding: 24px;
         }
-        .greeting {
-            font-size: 18px;
-            margin-bottom: 20px;
+        .hello {
+            margin: 0 0 18px;
+            line-height: 1.6;
         }
-        .movie-info {
-            background-color: #f9f9f9;
-            border-left: 4px solid #e50914;
-            padding: 15px;
-            margin-bottom: 20px;
+        .summary {
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            background: #f8fafc;
+            padding: 18px;
         }
-        .movie-info h2 {
-            margin: 0 0 10px 0;
-            color: #333;
+        .summary h2 {
+            margin: 0 0 14px;
+            font-size: 20px;
         }
-        .info-row {
-            margin-bottom: 8px;
-            color: #555;
+        .row {
+            margin: 9px 0;
+            color: #4b5563;
+            line-height: 1.5;
         }
-        .info-row strong {
-            color: #333;
-        }
-        .qr-section {
-            text-align: center;
-            margin-top: 30px;
-            border-top: 1px dashed #ccc;
-            padding-top: 30px;
-        }
-        .qr-code {
-            margin-bottom: 20px;
-        }
-        .qr-image {
-            width: 260px;
-            height: 260px;
-            border: 5px solid #fff;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-        }
-        .footer {
-            background-color: #333;
-            color: #ccc;
-            text-align: center;
-            padding: 15px;
-            font-size: 12px;
+        .row strong {
+            color: #111827;
         }
         .price {
-            font-size: 20px;
-            color: #e50914;
-            font-weight: bold;
-            margin-top: 10px;
+            margin-top: 14px;
+            color: #b45309;
+            font-size: 18px;
+            font-weight: 800;
+        }
+        .qr-section {
+            margin-top: 22px;
+            padding-top: 20px;
+            border-top: 1px dashed #d1d5db;
+        }
+        .qr-title {
+            margin: 0 0 6px;
+            font-size: 18px;
+        }
+        .qr-note {
+            margin: 0 0 16px;
+            color: #6b7280;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .qr-grid {
+            display: block;
+        }
+        .qr-card {
+            margin: 0 0 16px;
+            padding: 16px;
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            text-align: center;
+            background: #ffffff;
+        }
+        .seat {
+            display: inline-block;
+            margin-bottom: 10px;
+            padding: 5px 10px;
+            border-radius: 999px;
+            background: #111827;
+            color: #ffffff;
+            font-size: 13px;
+            font-weight: 800;
+        }
+        .qr-image {
+            width: 230px;
+            height: 230px;
+            max-width: 100%;
+            border: 8px solid #ffffff;
+            box-shadow: 0 8px 22px rgba(15, 23, 42, .12);
+        }
+        .qr-code-text {
+            margin: 10px auto 0;
+            max-width: 480px;
+            color: #6b7280;
+            font-family: Consolas, Monaco, monospace;
+            font-size: 11px;
+            line-height: 1.45;
+            word-break: break-all;
+        }
+        .warning {
+            margin-top: 12px;
+            padding: 12px;
+            border-radius: 12px;
+            background: #fff7ed;
+            color: #9a3412;
+            font-size: 13px;
+            font-weight: 700;
+        }
+        .footer {
+            padding: 16px 24px;
+            background: #111827;
+            color: #cbd5e1;
+            text-align: center;
+            font-size: 12px;
+            line-height: 1.5;
         }
     </style>
 </head>
 <body>
-    <div class="ticket-container">
-        <div class="header">
-            <h1>🎟️ VÉ XEM PHIM ĐIỆN TỬ</h1>
+<div class="wrap">
+    <div class="card">
+        <div class="head">
+            <p class="brand">
+                <span class="brand-main">cinema</span><span class="brand-sub">booking</span><span class="brand-vn">.vn</span>
+            </p>
+            <h1>Vé xem phim điện tử của bạn</h1>
         </div>
-        
-        <div class="content">
-            <div class="greeting">
-                Xin chào <strong th:text="${userName}">Khách hàng</strong>, <br/>
-                Cảm ơn bạn đã đặt vé tại Cinema Booking System. Đây là thông tin vé của bạn:
+
+        <div class="body">
+            <p class="hello">
+                Xin chào <strong th:text="${userName}">Khách hàng</strong>,<br />
+                Cảm ơn bạn đã đặt vé. Vui lòng xuất trình QR bên dưới cho nhân viên rạp khi check-in.
+            </p>
+
+            <div class="summary">
+                <h2 th:text="${movieTitle}">Tên phim</h2>
+                <div class="row"><strong>Rạp:</strong> <span th:text="${cinemaName}">Tên rạp</span> - <span th:text="${roomName}">Phòng chiếu</span></div>
+                <div class="row"><strong>Địa chỉ:</strong> <span th:text="${cinemaAddress}">Địa chỉ rạp</span></div>
+                <div class="row"><strong>Suất chiếu:</strong> <span th:text="${showTime}">22:50 · 15/07/2026</span></div>
+                <div class="row"><strong>Ghế:</strong> <span th:text="${seats}">A1, A2</span></div>
+                <div class="price">Tổng tiền: <span th:text="${totalPrice}">100.000 đ</span></div>
             </div>
-            
-            <div class="movie-info">
-                <h2 th:text="${movieTitle}">Tên Phim</h2>
-                <div class="info-row"><strong>Rạp:</strong> <span th:text="${cinemaName}">Tên Rạp</span></div>
-                <div class="info-row"><strong>Phòng chiếu:</strong> <span th:text="${roomName}">Phòng số</span></div>
-                <div class="info-row"><strong>Thời gian:</strong> <span th:text="${showTime}">Giờ chiếu</span></div>
-                <div class="info-row"><strong>Ghế:</strong> <span th:text="${seats}">Danh sách ghế</span></div>
-                <div class="price">Tổng tiền: <span th:text="${totalPrice} + ' VND'">100.000 VND</span></div>
-            </div>
-            
+
             <div class="qr-section">
-                <h3>MÃ QR CHECK-IN CỦA BẠN</h3>
-                <p style="color: #666; font-size: 14px; margin-bottom: 20px;">Vui lòng đưa mã QR này cho nhân viên rạp để quét khi vào cổng.</p>
-                
-                <div class="qr-code" th:each="qr : ${qrCodes}">
-                    <img class="qr-image" th:src="${qr.image}" alt="QR Code" />
-                    <p style="font-family: monospace; font-size: 12px; color: #888;" th:text="${qr.code}"></p>
+                <h3 class="qr-title">QR check-in</h3>
+                <p class="qr-note">Mỗi ghế có một mã QR riêng. Nếu đặt nhiều ghế, vui lòng quét lần lượt từng mã.</p>
+
+                <div class="warning" th:if="${#lists.isEmpty(qrCodes)}">
+                    Chưa tìm thấy mã QR cho vé này. Vui lòng mở vé trong tài khoản hoặc liên hệ nhân viên rạp để được hỗ trợ.
+                </div>
+
+                <div class="qr-grid">
+                    <div class="qr-card" th:each="qr : ${qrCodes}">
+                        <div class="seat">Ghế <span th:text="${qr.seat}">A1</span></div>
+                        <div>
+                            <img class="qr-image" th:src="${qr.image}" alt="QR check-in" />
+                        </div>
+                        <p class="qr-code-text" th:text="${qr.code}">QR_CODE</p>
+                    </div>
                 </div>
             </div>
         </div>
-        
+
         <div class="footer">
-            Đây là email tự động, vui lòng không trả lời. <br/>
-            © 2026 Cinema Booking System. Mọi quyền được bảo lưu.
+            Đây là email tự động, vui lòng không trả lời.<br />
+            © 2026 cinemabooking.vn.
         </div>
     </div>
+</div>
 </body>
 </html>

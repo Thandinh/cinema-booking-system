@@ -11,11 +11,13 @@ import com.cinema.booking.exception.AppException;
 import com.cinema.booking.mapper.UserMapper;
 import com.cinema.booking.repository.RoleRepository;
 import com.cinema.booking.repository.UserRepository;
+import com.cinema.booking.service.EmailService;
 import com.cinema.booking.service.UserService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.env.Environment;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.Authentication;
@@ -24,6 +26,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.time.LocalDateTime;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
@@ -51,6 +58,10 @@ public class UserServiceImpl implements UserService {
     RoleRepository   roleRepository;
     UserMapper       userMapper;
     PasswordEncoder  passwordEncoder;
+    EmailService     emailService;
+    Environment      environment;
+
+    static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     // =========================================================================
     // PUBLIC / ADMIN – TẠO TÀI KHOẢN
@@ -68,10 +79,51 @@ public class UserServiceImpl implements UserService {
         User user = userMapper.toUser(request);
         user.setPassword(passwordEncoder.encode(request.getPassword()));
         user.setRoles(Set.of(getDefaultUserRole()));
+        String rawVerificationToken = prepareEmailVerification(user);
 
         User saved = userRepository.save(user);
+        emailService.sendEmailVerification(saved.getEmail(), saved.getUsername(), rawVerificationToken);
         log.info("Registered new user: {}", saved.getUsername());
         return userMapper.toUserResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public void verifyEmail(String token) {
+        User user = userRepository.findByEmailVerificationTokenHash(hashToken(token))
+                .orElseThrow(() -> new AppException(ErrorCode.EMAIL_VERIFICATION_INVALID));
+
+        if (Boolean.TRUE.equals(user.getEmailVerified())) {
+            clearEmailVerification(user);
+            userRepository.save(user);
+            return;
+        }
+
+        if (user.getEmailVerificationExpiresAt() == null
+                || user.getEmailVerificationExpiresAt().isBefore(LocalDateTime.now())) {
+            clearEmailVerification(user);
+            userRepository.save(user);
+            throw new AppException(ErrorCode.EMAIL_VERIFICATION_INVALID);
+        }
+
+        user.setEmailVerified(true);
+        clearEmailVerification(user);
+        userRepository.save(user);
+        log.info("Verified email for user: {}", user.getUsername());
+    }
+
+    @Override
+    @Transactional
+    public void resendEmailVerification(String email) {
+        userRepository.findByEmailIgnoreCase(email)
+                .filter(user -> !Boolean.TRUE.equals(user.getIsDeleted()))
+                .filter(user -> !Boolean.TRUE.equals(user.getEmailVerified()))
+                .ifPresent(user -> {
+                    String rawVerificationToken = createVerificationTokenFor(user);
+                    userRepository.save(user);
+                    emailService.sendEmailVerification(user.getEmail(), user.getUsername(), rawVerificationToken);
+                    log.info("Resent verification email for user: {}", user.getUsername());
+                });
     }
 
     /**
@@ -86,6 +138,8 @@ public class UserServiceImpl implements UserService {
         User user = userMapper.toUser(request);
         user.setPassword(passwordEncoder.encode(request.getPassword()));
         user.setRoles(Set.of(getDefaultUserRole())); // Admin sẽ assign role qua updateUser nếu cần
+        user.setEmailVerified(true);
+        clearEmailVerification(user);
 
         User saved = userRepository.save(user);
         log.info("Admin created user: {}", saved.getUsername());
@@ -304,5 +358,42 @@ public class UserServiceImpl implements UserService {
     private Role getDefaultUserRole() {
         return roleRepository.findByName(RoleName.USER.name())
                 .orElseThrow(() -> new AppException(ErrorCode.ROLE_NOT_FOUND));
+    }
+
+    private String prepareEmailVerification(User user) {
+        user.setEmailVerified(false);
+        return createVerificationTokenFor(user);
+    }
+
+    private String createVerificationTokenFor(User user) {
+        byte[] randomBytes = new byte[32];
+        SECURE_RANDOM.nextBytes(randomBytes);
+        String rawToken = Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
+        user.setEmailVerificationTokenHash(hashToken(rawToken));
+        user.setEmailVerificationExpiresAt(LocalDateTime.now().plusMinutes(getVerificationExpiresMinutes()));
+        return rawToken;
+    }
+
+    private void clearEmailVerification(User user) {
+        user.setEmailVerificationTokenHash(null);
+        user.setEmailVerificationExpiresAt(null);
+    }
+
+    private long getVerificationExpiresMinutes() {
+        return environment.getProperty("app.email-verification.expires-minutes", Long.class, 1440L);
+    }
+
+    private String hashToken(String rawToken) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(rawToken.getBytes(StandardCharsets.UTF_8));
+            StringBuilder builder = new StringBuilder(hash.length * 2);
+            for (byte b : hash) {
+                builder.append(String.format("%02x", b));
+            }
+            return builder.toString();
+        } catch (Exception e) {
+            throw new IllegalStateException("Could not hash verification token", e);
+        }
     }
 }

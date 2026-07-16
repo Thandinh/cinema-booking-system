@@ -9,6 +9,22 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- Schema patch cho luồng giữ vé/thanh toán hết hạn.
 -- Dùng IF NOT EXISTS để chạy lại seed nhiều lần không lỗi.
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(500);
+
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT TRUE;
+
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS email_verification_token_hash VARCHAR(64);
+
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS email_verification_expires_at TIMESTAMP;
+
+UPDATE users
+SET email_verified = TRUE
+WHERE email_verified IS NULL;
+
 ALTER TABLE bookings
     ADD COLUMN IF NOT EXISTS payment_expires_at TIMESTAMP;
 

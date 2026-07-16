@@ -15,7 +15,11 @@ import java.util.UUID;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class UserUpdateRequest {
 
-    @Size(min = 6, max = 100, message = "PASSWORD_INVALID")
+    @Size(min = 8, max = 72, message = "PASSWORD_INVALID")
+    @Pattern(
+            regexp = "^(?=\\S+$)(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9\\s]).+$",
+            message = "PASSWORD_INVALID"
+    )
     String password;
 
     String firstName;
@@ -30,6 +34,9 @@ public class UserUpdateRequest {
 
     @Email(message = "EMAIL_INVALID")
     String email;
+
+    @Size(max = 500, message = "AVATAR_URL_INVALID")
+    String avatarUrl;
 
     /** Chỉ ADMIN mới được phép cập nhật roles */
     Set<UUID> roleIds;

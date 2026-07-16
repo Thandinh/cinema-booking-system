@@ -27,6 +27,10 @@ public interface UserService {
      */
     UserResponse register(UserCreationRequest request);
 
+    void verifyEmail(String token);
+
+    void resendEmailVerification(String email);
+
     /**
      * Admin tạo tài khoản với roles tuỳ chỉnh.
      * Nếu request.roleIds rỗng → gán role USER mặc định.

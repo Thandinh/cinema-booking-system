@@ -1,6 +1,7 @@
 package com.cinema.booking.controller;
 
 import com.cinema.booking.dto.request.AuthenticationRequest;
+import com.cinema.booking.dto.request.GoogleLoginRequest;
 import com.cinema.booking.dto.request.IntrospectRequest;
 import com.cinema.booking.dto.request.LogoutRequest;
 import com.cinema.booking.dto.request.RefreshRequest;
@@ -29,6 +30,12 @@ public class AuthenticationController {
     @PostMapping("/token")
     ApiResponse<AuthenticationResponse> authenticate(@RequestBody AuthenticationRequest request) {
         var result = authenticationService.authenticate(request);
+        return ApiResponse.<AuthenticationResponse>builder().result(result).build();
+    }
+
+    @PostMapping("/google")
+    ApiResponse<AuthenticationResponse> authenticateWithGoogle(@RequestBody GoogleLoginRequest request) {
+        var result = authenticationService.authenticateWithGoogle(request);
         return ApiResponse.<AuthenticationResponse>builder().result(result).build();
     }
 
