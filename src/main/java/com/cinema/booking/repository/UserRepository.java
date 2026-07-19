@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -30,6 +31,18 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     /** Lấy danh sách user chưa bị xoá mềm, hỗ trợ phân trang */
     @Query("SELECT u FROM User u WHERE u.isDeleted = false OR u.isDeleted IS NULL")
     Page<User> findAllByIsDeletedFalse(Pageable pageable);
+
+    @Query(value = "SELECT u.id FROM User u WHERE u.isDeleted = false OR u.isDeleted IS NULL",
+           countQuery = "SELECT COUNT(u) FROM User u WHERE u.isDeleted = false OR u.isDeleted IS NULL")
+    Page<UUID> findActiveIds(Pageable pageable);
+
+    @Query("""
+            SELECT DISTINCT u FROM User u
+            LEFT JOIN FETCH u.roles r
+            LEFT JOIN FETCH r.permissions
+            WHERE u.id IN :ids
+            """)
+    List<User> findAllWithRolesByIdIn(@Param("ids") List<UUID> ids);
 
     /** Tìm user chưa bị xoá mềm theo UUID */
     @Query("SELECT u FROM User u WHERE u.id = :id AND (u.isDeleted = false OR u.isDeleted IS NULL)")

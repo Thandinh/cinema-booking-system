@@ -33,6 +33,29 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
            countQuery = "SELECT COUNT(b) FROM Booking b WHERE (:status IS NULL OR b.status = :status)")
     Page<Booking> findAllByStatus(@Param("status") BookingStatus status, Pageable pageable);
 
+    @Query(value = "SELECT b.id FROM Booking b WHERE b.user.id = :userId",
+           countQuery = "SELECT COUNT(b) FROM Booking b WHERE b.user.id = :userId")
+    Page<UUID> findIdsByUserId(@Param("userId") UUID userId, Pageable pageable);
+
+    @Query(value = "SELECT b.id FROM Booking b WHERE (:status IS NULL OR b.status = :status)",
+           countQuery = "SELECT COUNT(b) FROM Booking b WHERE (:status IS NULL OR b.status = :status)")
+    Page<UUID> findIdsByStatus(@Param("status") BookingStatus status, Pageable pageable);
+
+    @Query("""
+            SELECT DISTINCT b FROM Booking b
+            JOIN FETCH b.user
+            JOIN FETCH b.showtime s
+            JOIN FETCH s.movie
+            JOIN FETCH s.room r
+            JOIN FETCH r.cinema
+            LEFT JOIN FETCH b.promotion
+            LEFT JOIN FETCH b.bookingDetails bd
+            LEFT JOIN FETCH bd.seat
+            LEFT JOIN FETCH bd.ticket
+            WHERE b.id IN :ids
+            """)
+    List<Booking> findAllWithDetailsByIdIn(@Param("ids") List<UUID> ids);
+
     @Query("""
             SELECT DISTINCT b FROM Booking b
             JOIN FETCH b.user

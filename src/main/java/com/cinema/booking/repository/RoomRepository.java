@@ -14,7 +14,14 @@ import java.util.UUID;
 @Repository
 public interface RoomRepository extends JpaRepository<Room, UUID> {
 
-    List<Room> findAllByCinemaIdAndIsDeletedFalse(UUID cinemaId);
+    @Query("""
+            SELECT r FROM Room r
+            JOIN FETCH r.cinema
+            WHERE r.cinema.id = :cinemaId
+              AND r.isDeleted = false
+            ORDER BY r.name ASC
+            """)
+    List<Room> findAllByCinemaIdAndIsDeletedFalse(@Param("cinemaId") UUID cinemaId);
 
     @Query("SELECT r FROM Room r WHERE r.id = :id AND r.isDeleted = false")
     Optional<Room> findActiveById(@Param("id") UUID id);

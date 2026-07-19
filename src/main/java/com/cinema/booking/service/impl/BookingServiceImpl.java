@@ -24,6 +24,7 @@ import lombok.experimental.NonFinal;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -35,8 +36,11 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -442,15 +446,31 @@ public class BookingServiceImpl implements BookingService {
     @Transactional(readOnly = true)
     public Page<BookingResponse> getMyBookings(Pageable pageable) {
         UUID userId = SecurityUtils.getCurrentUserId();
-        return bookingRepository.findByUserId(userId, pageable)
-                .map(bookingMapper::toBookingResponse);
+        return mapBookingPage(bookingRepository.findIdsByUserId(userId, pageable));
     }
 
     @Override
     @Transactional(readOnly = true)
     public Page<BookingResponse> getAllBookings(BookingStatus status, Pageable pageable) {
-        return bookingRepository.findAllByStatus(status, pageable)
-                .map(bookingMapper::toBookingResponse);
+        return mapBookingPage(bookingRepository.findIdsByStatus(status, pageable));
+    }
+
+    private Page<BookingResponse> mapBookingPage(Page<UUID> bookingIdPage) {
+        if (bookingIdPage.isEmpty()) {
+            return new PageImpl<>(List.of(), bookingIdPage.getPageable(), bookingIdPage.getTotalElements());
+        }
+
+        List<UUID> ids = bookingIdPage.getContent();
+        Map<UUID, Booking> bookingsById = bookingRepository.findAllWithDetailsByIdIn(ids).stream()
+                .collect(Collectors.toMap(Booking::getId, Function.identity(), (left, right) -> left));
+
+        List<BookingResponse> content = ids.stream()
+                .map(bookingsById::get)
+                .filter(Objects::nonNull)
+                .map(bookingMapper::toBookingResponse)
+                .toList();
+
+        return new PageImpl<>(content, bookingIdPage.getPageable(), bookingIdPage.getTotalElements());
     }
 
     @Override

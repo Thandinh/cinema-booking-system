@@ -18,6 +18,7 @@ public interface SeatRepository extends JpaRepository<Seat, UUID> {
     /** Lấy toàn bộ ghế chưa xoá của một phòng, sắp xếp theo hàng rồi số ghế */
     @Query("""
             SELECT s FROM Seat s
+            JOIN FETCH s.room
             WHERE s.room.id = :roomId AND s.isDeleted = false
             ORDER BY s.rowLabel ASC, s.seatNumber ASC
             """)

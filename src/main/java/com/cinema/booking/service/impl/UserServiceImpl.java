@@ -19,6 +19,7 @@ import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.env.Environment;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -33,8 +34,13 @@ import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * Triển khai UserService.
@@ -157,8 +163,22 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional(readOnly = true)
     public Page<UserResponse> getAllUsers(Pageable pageable) {
-        return userRepository.findAllByIsDeletedFalse(pageable)
-                .map(userMapper::toUserResponse);
+        Page<UUID> userIdPage = userRepository.findActiveIds(pageable);
+        if (userIdPage.isEmpty()) {
+            return new PageImpl<>(List.of(), pageable, userIdPage.getTotalElements());
+        }
+
+        List<UUID> ids = userIdPage.getContent();
+        Map<UUID, User> usersById = userRepository.findAllWithRolesByIdIn(ids).stream()
+                .collect(Collectors.toMap(User::getId, Function.identity(), (left, right) -> left));
+
+        List<UserResponse> content = ids.stream()
+                .map(usersById::get)
+                .filter(Objects::nonNull)
+                .map(userMapper::toUserResponse)
+                .toList();
+
+        return new PageImpl<>(content, pageable, userIdPage.getTotalElements());
     }
 
     /**

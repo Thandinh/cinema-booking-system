@@ -36,10 +36,12 @@ public interface TicketRepository extends JpaRepository<Ticket, UUID> {
             """)
     Optional<Ticket> findByQrCodeForCheckIn(@Param("qrCode") String qrCode);
 
-    @Query("SELECT t FROM Ticket t JOIN FETCH t.bookingDetail bd JOIN FETCH bd.booking b JOIN FETCH b.showtime s JOIN FETCH s.movie JOIN FETCH s.room r JOIN FETCH r.cinema WHERE b.user.id = :userId")
+    @Query(value = "SELECT t FROM Ticket t JOIN FETCH t.bookingDetail bd JOIN FETCH bd.seat JOIN FETCH bd.booking b JOIN FETCH b.showtime s JOIN FETCH s.movie JOIN FETCH s.room r JOIN FETCH r.cinema WHERE b.user.id = :userId",
+           countQuery = "SELECT COUNT(t) FROM Ticket t WHERE t.bookingDetail.booking.user.id = :userId")
     Page<Ticket> findByUserId(@Param("userId") UUID userId, Pageable pageable);
 
-    @Query("SELECT t FROM Ticket t JOIN FETCH t.bookingDetail bd JOIN FETCH bd.booking b JOIN FETCH b.showtime s JOIN FETCH s.movie JOIN FETCH s.room r JOIN FETCH r.cinema")
+    @Query(value = "SELECT t FROM Ticket t JOIN FETCH t.bookingDetail bd JOIN FETCH bd.seat JOIN FETCH bd.booking b JOIN FETCH b.showtime s JOIN FETCH s.movie JOIN FETCH s.room r JOIN FETCH r.cinema",
+           countQuery = "SELECT COUNT(t) FROM Ticket t")
     Page<Ticket> findAllWithDetails(Pageable pageable);
 
     // ── Analytics ─────────────────────────────────────────────────────────────
