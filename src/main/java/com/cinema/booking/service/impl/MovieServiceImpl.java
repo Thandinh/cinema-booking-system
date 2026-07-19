@@ -5,6 +5,7 @@ import com.cinema.booking.dto.request.MovieUpdateRequest;
 import com.cinema.booking.dto.response.MovieResponse;
 import com.cinema.booking.entity.Movie;
 import com.cinema.booking.enums.ErrorCode;
+import com.cinema.booking.enums.MovieSortMode;
 import com.cinema.booking.enums.MovieStatus;
 import com.cinema.booking.exception.AppException;
 import com.cinema.booking.mapper.MovieMapper;
@@ -15,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -85,8 +87,17 @@ public class MovieServiceImpl implements MovieService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<MovieResponse> getMoviesByStatus(MovieStatus status, Pageable pageable) {
-        return movieRepository.findAllByStatusAndIsDeletedFalse(status, pageable)
+    public Page<MovieResponse> getMoviesByStatus(MovieStatus status, MovieSortMode sortMode, Pageable pageable) {
+        MovieSortMode resolvedSortMode = sortMode == null ? MovieSortMode.DEFAULT : sortMode;
+        Pageable stablePageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
+
+        Page<Movie> movies = switch (resolvedSortMode) {
+            case POPULAR -> movieRepository.findByStatusOrderByPopularity(status.name(), stablePageable);
+            case RELEASE_DATE_ASC -> movieRepository.findByStatusOrderByReleaseDateAsc(status.name(), stablePageable);
+            case DEFAULT -> movieRepository.findAllByStatusAndIsDeletedFalse(status, pageable);
+        };
+
+        return movies
                 .map(movieMapper::toMovieResponse);
     }
 

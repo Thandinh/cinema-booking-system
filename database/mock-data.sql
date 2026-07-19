@@ -125,7 +125,8 @@ INSERT INTO movies (
     age_rating, trailer_url, rating_imdb, created_at, updated_at, is_deleted
 ) VALUES
 (uuid_generate_v4(), 'Lật Mặt 7: Một Điều Ước', 'Câu chuyện gia đình nhiều cảm xúc về tình thân và những lựa chọn khó nói.', 138, 'Tâm lý, Gia đình', '2024-04-26', 'https://image.tmdb.org/t/p/w500/h2mD7e8c6R3wzR9gBvH3qV3r4Z2.jpg', 'NOW_SHOWING', 'Lý Hải', 'Thanh Hiền, Trương Minh Cường, Đinh Y Nhung', 'Tiếng Việt', 'Không', 'Việt Nam', 'P', 'https://youtube.com', 7.8, NOW(), NOW(), false),
-(uuid_generate_v4(), 'Deadpool & Wolverine', 'Bộ đôi dị nhân bước vào một nhiệm vụ hỗn loạn, hài hước và đầy hành động.', 128, 'Hành động, Hài', '2024-07-26', 'https://image.tmdb.org/t/p/w500/8cdWjvZQUExUUTzyp4t6EDMubfO.jpg', 'NOW_SHOWING', 'Shawn Levy', 'Ryan Reynolds, Hugh Jackman, Emma Corrin', 'Tiếng Anh', 'Phụ đề Việt', 'Mỹ', 'C18', 'https://youtube.com', 7.6, NOW(), NOW(), false),
+(uuid_generate_v4(), 'Địa Đạo: Mặt Trời Trong Bóng Tối', 'Những người lính và dân quân trong lòng địa đạo đối mặt hiểm nguy để bảo vệ quê hương.', 128, 'Chiến tranh, Tâm lý', '2025-04-04', 'https://image.tmdb.org/t/p/w500/z1p34vh7dEOnLDmyCrlUVLuoDzd.jpg', 'NOW_SHOWING', 'Bùi Thạc Chuyên', 'Thái Hòa, Quang Tuấn, Diễm Hằng Lamoon', 'Tiếng Việt', 'Không', 'Việt Nam', 'C13', 'https://youtube.com', 7.4, NOW(), NOW(), false),
+(uuid_generate_v4(), 'Mưa Đỏ', 'Câu chuyện về tình đồng đội, lòng quả cảm và những mất mát giữa chiến trường khốc liệt.', 124, 'Chiến tranh, Lịch sử', '2025-08-22', 'https://image.tmdb.org/t/p/w500/pjnD08FlMAIXsfOLKQbvmO0f0MD.jpg', 'NOW_SHOWING', 'Đặng Thái Huyền', 'Đỗ Nhật Hoàng, Lâm Thanh Nhã, Steven Nguyễn', 'Tiếng Việt', 'Không', 'Việt Nam', 'C13', 'https://youtube.com', 7.3, NOW(), NOW(), false),
 (uuid_generate_v4(), 'Kẻ Trộm Mặt Trăng 4', 'Gru và gia đình bước vào cuộc phiêu lưu mới với những rắc rối vui nhộn.', 95, 'Hoạt hình, Hài', '2024-07-05', 'https://image.tmdb.org/t/p/w500/wWba3TaojhK7NlGUJIHOvOBKak7.jpg', 'NOW_SHOWING', 'Chris Renaud', 'Steve Carell, Kristen Wiig, Will Ferrell', 'Lồng tiếng Việt', 'Không', 'Mỹ', 'P', 'https://youtube.com', 6.4, NOW(), NOW(), false),
 (uuid_generate_v4(), 'Dune: Part Two', 'Paul Atreides tiếp tục hành trình trên Arrakis giữa định mệnh, quyền lực và báo thù.', 166, 'Khoa học viễn tưởng, Phiêu lưu', '2024-03-01', 'https://image.tmdb.org/t/p/w500/1pdfLvkbY9ohJlCjQH2JGjjc9CW.jpg', 'NOW_SHOWING', 'Denis Villeneuve', 'Timothée Chalamet, Zendaya, Rebecca Ferguson', 'Tiếng Anh', 'Phụ đề Việt', 'Mỹ', 'C13', 'https://youtube.com', 8.5, NOW(), NOW(), false),
 (uuid_generate_v4(), 'Mai', 'Một người phụ nữ nhiều tổn thương đi tìm cơ hội yêu thương và làm lại cuộc đời.', 131, 'Tâm lý, Tình cảm', '2024-02-10', 'https://image.tmdb.org/t/p/w500/m2E9Q8D4e2fN2hP8tW0kX3vL3S7.jpg', 'NOW_SHOWING', 'Trấn Thành', 'Phương Anh Đào, Tuấn Trần, Trấn Thành', 'Tiếng Việt', 'Không', 'Việt Nam', 'C18', 'https://youtube.com', 7.2, NOW(), NOW(), false),
@@ -133,7 +134,13 @@ INSERT INTO movies (
 (uuid_generate_v4(), 'A Quiet Place: Day One', 'Ngày đầu tiên của thảm họa khi thế giới phải học cách sống trong im lặng.', 99, 'Kinh dị, Giật gân', '2024-06-28', 'https://image.tmdb.org/t/p/w500/yrpPYKijwdMHyTGIOd1iK1h0Xno.jpg', 'NOW_SHOWING', 'Michael Sarnoski', 'Lupita Nyongo, Joseph Quinn, Alex Wolff', 'Tiếng Anh', 'Phụ đề Việt', 'Mỹ', 'C16', 'https://youtube.com', 6.7, NOW(), NOW(), false),
 (uuid_generate_v4(), 'Twisters', 'Một nhóm săn bão đối đầu các siêu lốc xoáy nguy hiểm tại miền trung nước Mỹ.', 122, 'Hành động, Phiêu lưu', '2024-07-19', 'https://image.tmdb.org/t/p/w500/pjnD08FlMAIXsfOLKQbvmO0f0MD.jpg', 'NOW_SHOWING', 'Lee Isaac Chung', 'Daisy Edgar-Jones, Glen Powell, Anthony Ramos', 'Tiếng Anh', 'Phụ đề Việt', 'Mỹ', 'C13', 'https://youtube.com', 6.9, NOW(), NOW(), false),
 (uuid_generate_v4(), 'Conan: Ngôi Sao 5 Cánh 1 Triệu Đô', 'Conan và Hattori Heiji lần theo bí mật xoay quanh một thanh kiếm và kho báu thất lạc.', 111, 'Hoạt hình, Trinh thám', '2024-08-02', 'https://image.tmdb.org/t/p/w500/8p15sLZc7A1QHqk3F6W87LS2pY.jpg', 'NOW_SHOWING', 'Chika Nagaoka', 'Minami Takayama, Kappei Yamaguchi, Rikiya Koyama', 'Lồng tiếng Việt', 'Phụ đề Việt', 'Nhật Bản', 'C13', 'https://youtube.com', 7.1, NOW(), NOW(), false),
-(uuid_generate_v4(), 'Móng Vuốt', 'Một chuyến dã ngoại biến thành cuộc chiến sinh tồn khi nhóm bạn bị săn đuổi trong rừng sâu.', 96, 'Kinh dị, Sinh tồn', '2024-06-07', 'https://image.tmdb.org/t/p/w500/zqV8MGXfpLZiFVObLxpAI7wWonJ.jpg', 'NOW_SHOWING', 'Lê Thanh Sơn', 'Tuấn Trần, Thảo Tâm, Quốc Khánh', 'Tiếng Việt', 'Không', 'Việt Nam', 'C18', 'https://youtube.com', 6.2, NOW(), NOW(), false);
+(uuid_generate_v4(), 'Móng Vuốt', 'Một chuyến dã ngoại biến thành cuộc chiến sinh tồn khi nhóm bạn bị săn đuổi trong rừng sâu.', 96, 'Kinh dị, Sinh tồn', '2024-06-07', 'https://image.tmdb.org/t/p/w500/zqV8MGXfpLZiFVObLxpAI7wWonJ.jpg', 'NOW_SHOWING', 'Lê Thanh Sơn', 'Tuấn Trần, Thảo Tâm, Quốc Khánh', 'Tiếng Việt', 'Không', 'Việt Nam', 'C18', 'https://youtube.com', 6.2, NOW(), NOW(), false),
+(uuid_generate_v4(), 'Nhà Bà Nữ', 'Một gia đình nhiều thế hệ va chạm trong tình yêu, định kiến và những bí mật khó nói.', 102, 'Tâm lý, Gia đình', '2023-01-22', 'https://image.tmdb.org/t/p/w500/vpnVM9B6NMmQpWeZvzLvDESb2QY.jpg', 'NOW_SHOWING', 'Trấn Thành', 'Lê Giang, Uyển Ân, Song Luân', 'Tiếng Việt', 'Không', 'Việt Nam', 'C13', 'https://youtube.com', 6.8, NOW(), NOW(), false),
+(uuid_generate_v4(), 'Bố Già', 'Một người cha lao động bình dân cố gắng giữ gia đình trước những khác biệt thế hệ.', 128, 'Tâm lý, Hài', '2021-03-12', 'https://image.tmdb.org/t/p/w500/m2E9Q8D4e2fN2hP8tW0kX3vL3S7.jpg', 'NOW_SHOWING', 'Trấn Thành, Vũ Ngọc Đãng', 'Trấn Thành, Tuấn Trần, Ngân Chi', 'Tiếng Việt', 'Không', 'Việt Nam', 'C13', 'https://youtube.com', 7.1, NOW(), NOW(), false),
+(uuid_generate_v4(), 'Godzilla x Kong: Đế Chế Mới', 'Hai titan huyền thoại hợp lực trước mối đe dọa cổ đại trỗi dậy từ lòng đất.', 115, 'Hành động, Quái vật', '2024-03-29', 'https://image.tmdb.org/t/p/w500/1pdfLvkbY9ohJlCjQH2JGjjc9CW.jpg', 'NOW_SHOWING', 'Adam Wingard', 'Rebecca Hall, Brian Tyree Henry, Dan Stevens', 'Tiếng Anh', 'Phụ đề Việt', 'Mỹ', 'C13', 'https://youtube.com', 6.4, NOW(), NOW(), false),
+(uuid_generate_v4(), 'Kung Fu Panda 4', 'Po bước vào hành trình tìm người kế nhiệm và đối đầu một phản diện biến hóa khó lường.', 94, 'Hoạt hình, Phiêu lưu', '2024-03-08', 'https://image.tmdb.org/t/p/w500/wWba3TaojhK7NlGUJIHOvOBKak7.jpg', 'NOW_SHOWING', 'Mike Mitchell', 'Jack Black, Awkwafina, Viola Davis', 'Lồng tiếng Việt', 'Không', 'Mỹ', 'P', 'https://youtube.com', 6.3, NOW(), NOW(), false),
+(uuid_generate_v4(), 'Furiosa: Câu Chuyện Từ Max Điên', 'Furiosa trẻ tuổi chiến đấu để sống sót và tìm đường trở về vùng đất của mình.', 148, 'Hành động, Phiêu lưu', '2024-05-24', 'https://image.tmdb.org/t/p/w500/yrpPYKijwdMHyTGIOd1iK1h0Xno.jpg', 'NOW_SHOWING', 'George Miller', 'Anya Taylor-Joy, Chris Hemsworth, Tom Burke', 'Tiếng Anh', 'Phụ đề Việt', 'Mỹ', 'C16', 'https://youtube.com', 7.5, NOW(), NOW(), false),
+(uuid_generate_v4(), 'Thanh Gươm Diệt Quỷ: Đại Trụ Đặc Huấn', 'Tanjiro cùng các kiếm sĩ bước vào đợt đặc huấn khốc liệt trước trận chiến mới.', 104, 'Hoạt hình, Hành động', '2024-02-23', 'https://image.tmdb.org/t/p/w500/8p15sLZc7A1QHqk3F6W87LS2pY.jpg', 'NOW_SHOWING', 'Haruo Sotozaki', 'Natsuki Hanae, Akari Kito, Hiro Shimono', 'Tiếng Nhật', 'Phụ đề Việt', 'Nhật Bản', 'C13', 'https://youtube.com', 7.0, NOW(), NOW(), false);
 
 -- =========================================
 -- 4. CINEMAS, ROOMS, SEATS
@@ -153,7 +160,16 @@ INSERT INTO cinemas (
 
 -- Mỗi rạp 2 phòng. Tổng: 16 phòng.
 INSERT INTO rooms (id, cinema_id, name, created_at, updated_at, is_deleted)
-SELECT uuid_generate_v4(), c.id, 'RAP ' || room_idx, NOW(), NOW(), false
+SELECT
+    uuid_generate_v4(),
+    c.id,
+    CASE
+        WHEN room_idx = 1 THEN 'Phòng 01 - Standard'
+        ELSE 'Phòng 02 - Premium'
+    END,
+    NOW(),
+    NOW(),
+    false
 FROM cinemas c
 CROSS JOIN generate_series(1, 2) AS room_idx;
 
@@ -306,7 +322,7 @@ demo_room AS (
     FROM rooms r
     JOIN cinemas c ON c.id = r.cinema_id
     WHERE c.name = 'CGV Sư Vạn Hạnh'
-      AND r.name = 'RAP 1'
+      AND r.name = 'Phòng 01 - Standard'
     LIMIT 1
 ),
 inserted_showtime AS (
@@ -499,9 +515,9 @@ END $$;
 -- admin: tạo bởi ApplicationInitConfig, mật khẩu mặc định lấy từ app.admin.default-password hoặc admin123.
 -- staff1 / user1 / user2: mật khẩu 123456.
 -- Kỳ vọng dữ liệu:
--- 10 phim NOW_SHOWING, 8 rạp, 16 phòng, 1536 ghế, 321 suất chiếu, 30816 dòng seat_status.
+-- 17 phim NOW_SHOWING, 8 rạp, 16 phòng, 1536 ghế, 321 suất chiếu, 30816 dòng seat_status.
 -- Vé test nhanh:
--- user1 có booking SUCCESS tại CGV Sư Vạn Hạnh, RAP 1, ghế A1/A2, suất chiếu bắt đầu sau 30 phút.
+-- user1 có booking SUCCESS tại CGV Sư Vạn Hạnh, Phòng 01 - Standard, ghế A1/A2, suất chiếu bắt đầu sau 30 phút.
 -- Lấy QR để staff check-in:
 -- SELECT t.qr_code
 -- FROM tickets t

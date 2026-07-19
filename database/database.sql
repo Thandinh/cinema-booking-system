@@ -362,6 +362,10 @@ CREATE INDEX idx_bookings_status_created_at
 CREATE INDEX idx_bookings_showtime_id
     ON bookings(showtime_id);
 
+CREATE INDEX idx_bookings_success_showtime_id
+    ON bookings(showtime_id, id)
+    WHERE status = 'SUCCESS';
+
 CREATE INDEX idx_bookings_pending_expires_at
     ON bookings(payment_expires_at)
     WHERE status = 'PENDING';

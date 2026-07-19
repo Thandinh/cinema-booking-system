@@ -57,6 +57,7 @@ $RECYCLE.BIN/
 ._*
 
 # --- [ Virtual Machine & Logs ] ---
+logs/
 hs_err_pid*
 replay_pid*
 replay_pid*.log

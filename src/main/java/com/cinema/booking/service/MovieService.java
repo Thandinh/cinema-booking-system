@@ -3,6 +3,7 @@ package com.cinema.booking.service;
 import com.cinema.booking.dto.request.MovieCreationRequest;
 import com.cinema.booking.dto.request.MovieUpdateRequest;
 import com.cinema.booking.dto.response.MovieResponse;
+import com.cinema.booking.enums.MovieSortMode;
 import com.cinema.booking.enums.MovieStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -21,5 +22,5 @@ public interface MovieService {
 
     Page<MovieResponse> getAllMovies(Pageable pageable);
 
-    Page<MovieResponse> getMoviesByStatus(MovieStatus status, Pageable pageable);
+    Page<MovieResponse> getMoviesByStatus(MovieStatus status, MovieSortMode sortMode, Pageable pageable);
 }

@@ -4,6 +4,7 @@ import com.cinema.booking.dto.request.MovieCreationRequest;
 import com.cinema.booking.dto.request.MovieUpdateRequest;
 import com.cinema.booking.dto.response.ApiResponse;
 import com.cinema.booking.dto.response.MovieResponse;
+import com.cinema.booking.enums.MovieSortMode;
 import com.cinema.booking.enums.MovieStatus;
 import com.cinema.booking.service.MovieService;
 import jakarta.validation.Valid;
@@ -49,10 +50,11 @@ public class MovieController {
     @GetMapping
     public ApiResponse<Page<MovieResponse>> getAllMovies(
             @PageableDefault(size = 20, sort = "createdAt") Pageable pageable,
-            @RequestParam(required = false) MovieStatus status) {
+            @RequestParam(required = false) MovieStatus status,
+            @RequestParam(defaultValue = "DEFAULT") MovieSortMode sortMode) {
         
         Page<MovieResponse> page = (status != null) 
-                ? movieService.getMoviesByStatus(status, pageable)
+                ? movieService.getMoviesByStatus(status, sortMode, pageable)
                 : movieService.getAllMovies(pageable);
                 
         return ApiResponse.<Page<MovieResponse>>builder()
