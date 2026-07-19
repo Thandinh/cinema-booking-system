@@ -10,16 +10,19 @@ spring:
 
   sql:
     init:
-      mode: always
+      mode: ${SQL_INIT_MODE:always}
 
   jpa:
     hibernate:
       ddl-auto: validate
-    show-sql: true
+    open-in-view: ${JPA_OPEN_IN_VIEW:false}
+    show-sql: ${HIBERNATE_SHOW_SQL:false}
     properties:
       hibernate:
-        format_sql: true
-        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: ${HIBERNATE_FORMAT_SQL:false}
+        default_batch_fetch_size: ${HIBERNATE_DEFAULT_BATCH_FETCH_SIZE:50}
+        query:
+          fail_on_pagination_over_collection_fetch: true
 
   jackson:
     serialization:
@@ -47,7 +50,12 @@ vnpay:
   command: pay
 
 booking:
+  seat-hold-minutes: ${BOOKING_SEAT_HOLD_MINUTES:${BOOKING_PENDING_TIMEOUT_MINUTES:10}}
   pending-timeout-minutes: ${BOOKING_PENDING_TIMEOUT_MINUTES:10}
+  expired-hold-scan-delay-ms: ${BOOKING_EXPIRED_HOLD_SCAN_DELAY_MS:30000}
+  expired-hold-scan-limit: ${BOOKING_EXPIRED_HOLD_SCAN_LIMIT:500}
+  expired-booking-scan-delay-ms: ${BOOKING_EXPIRED_BOOKING_SCAN_DELAY_MS:30000}
+  expired-booking-scan-limit: ${BOOKING_EXPIRED_BOOKING_SCAN_LIMIT:200}
 
 oauth:
   google:
@@ -74,5 +82,5 @@ logging:
   file:
     name: logs/application.log
   level:
-    org.hibernate.SQL: debug
-    org.hibernate.type.descriptor.sql.BasicBinder: trace
+    org.hibernate.SQL: ${HIBERNATE_SQL_LOG_LEVEL:WARN}
+    org.hibernate.orm.jdbc.bind: ${HIBERNATE_BIND_LOG_LEVEL:WARN}

@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vé xem phim của bạn</title>
+    <style>
+        body {
+            margin: 0;
+            background: #f5f7fb;
+            color: #111827;
+            font-family: Arial, Helvetica, sans-serif;
+        }
+        .wrap {
+            max-width: 680px;
+            margin: 0 auto;
+            padding: 28px 14px;
+        }
+        .card {
+            overflow: hidden;
+            border: 1px solid #e5e7eb;
+            border-radius: 18px;
+            background: #ffffff;
+        }
+        .head {
+            padding: 24px;
+            background: #0f172a;
+            color: #ffffff;
+        }
+        .brand {
+            margin: 0 0 10px;
+            font-size: 24px;
+            font-weight: 900;
+            letter-spacing: -.02em;
+            line-height: 1;
+        }
+        .brand-main {
+            color: #ffffff;
+        }
+        .brand-sub {
+            color: rgba(255, 255, 255, .55);
+        }
+        .brand-vn {
+            display: inline-block;
+            margin-left: 3px;
+            padding: 4px 7px;
+            border-radius: 7px;
+            background: #fbbf24;
+            color: #0f172a;
+            font-size: 16px;
+            line-height: 1;
+            vertical-align: 2px;
+        }
+        .head h1 {
+            margin: 0;
+            font-size: 24px;
+            line-height: 1.25;
+        }
+        .body {
+            padding: 24px;
+        }
+        .hello {
+            margin: 0 0 18px;
+            line-height: 1.6;
+        }
+        .summary {
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            background: #f8fafc;
+            padding: 18px;
+        }
+        .summary h2 {
+            margin: 0 0 14px;
+            font-size: 20px;
+        }
+        .row {
+            margin: 9px 0;
+            color: #4b5563;
+            line-height: 1.5;
+        }
+        .row strong {
+            color: #111827;
+        }
+        .price {
+            margin-top: 14px;
+            color: #b45309;
+            font-size: 18px;
+            font-weight: 800;
+        }
+        .qr-section {
+            margin-top: 22px;
+            padding-top: 20px;
+            border-top: 1px dashed #d1d5db;
+        }
+        .qr-title {
+            margin: 0 0 6px;
+            font-size: 18px;
+        }
+        .qr-note {
+            margin: 0 0 16px;
+            color: #6b7280;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .qr-grid {
+            display: block;
+        }
+        .qr-card {
+            margin: 0 0 16px;
+            padding: 16px;
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            text-align: center;
+            background: #ffffff;
+        }
+        .seat {
+            display: inline-block;
+            margin-bottom: 10px;
+            padding: 5px 10px;
+            border-radius: 999px;
+            background: #111827;
+            color: #ffffff;
+            font-size: 13px;
+            font-weight: 800;
+        }
+        .qr-image {
+            width: 230px;
+            height: 230px;
+            max-width: 100%;
+            border: 8px solid #ffffff;
+            box-shadow: 0 8px 22px rgba(15, 23, 42, .12);
+        }
+        .qr-code-text {
+            margin: 10px auto 0;
+            max-width: 480px;
+            color: #6b7280;
+            font-family: Consolas, Monaco, monospace;
+            font-size: 11px;
+            line-height: 1.45;
+            word-break: break-all;
+        }
+        .warning {
+            margin-top: 12px;
+            padding: 12px;
+            border-radius: 12px;
+            background: #fff7ed;
+            color: #9a3412;
+            font-size: 13px;
+            font-weight: 700;
+        }
+        .footer {
+            padding: 16px 24px;
+            background: #111827;
+            color: #cbd5e1;
+            text-align: center;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <div class="card">
+        <div class="head">
+            <p class="brand">
+                <span class="brand-main">cinema</span><span class="brand-sub">booking</span><span class="brand-vn">.vn</span>
+            </p>
+            <h1>Vé xem phim điện tử của bạn</h1>
+        </div>
+
+        <div class="body">
+            <p class="hello">
+                Xin chào <strong>BestTrollGame</strong>,<br />
+                Cảm ơn bạn đã đặt vé. Vui lòng xuất trình QR bên dưới cho nhân viên rạp khi check-in.
+            </p>
+
+            <div class="summary">
+                <h2>Lật Mặt 7: Một Điều Ước</h2>
+                <div class="row"><strong>Rạp:</strong> <span>CGV Sư Vạn Hạnh</span> - <span>RAP 1</span></div>
+                <div class="row"><strong>Địa chỉ:</strong> <span>Tầng 6 Vạn Hạnh Mall, Quận 10, TP Hồ Chí Minh</span></div>
+                <div class="row"><strong>Suất chiếu:</strong> <span>23:04 · 19/07/2026</span></div>
+                <div class="row"><strong>Ghế:</strong> <span>E10, E12</span></div>
+                <div class="price">Tổng tiền: <span>140.000 đ</span></div>
+            </div>
+
+            <div class="qr-section">
+                <h3 class="qr-title">QR check-in</h3>
+                <p class="qr-note">Mỗi ghế có một mã QR riêng. Nếu đặt nhiều ghế, vui lòng quét lần lượt từng mã.</p>
+
+                
+
+                <div class="qr-grid">
+                    <div class="qr-card">
+                        <div class="seat">Ghế <span>E10</span></div>
+                        <div>
+                            <img class="qr-image" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAWgAAAFoAQAAAABSnlx4AAADgklEQVR4Xu2XQY7cMAwEpZOf4Z9a0k/9jDlJ6Wp6N5MYCZIAuSxNGIJEFnVokNRMWX9j5WfHb+2h7/bQd3vouz303R76bv9A9yLbx6tUfTpu8uxyHnKuJb+sJqPlWq99rfP4SGs6vva5rSmOkJlUNNoJ2qUde5JRU8nHdirULWVGep1tnaBIqUwd19SamJ5FX2yora5Fgi4KLiN9uSij6kwd5esbUsY+G41YhU77xUe4JqPD8EqyDTX1Dbk0gKKwLktET6rHaGEEI1h0Gr0X1ebkTHTfPIhfO5JRXvQb+TZ675rUuWh5Gx3leqKYKK9Qtn5el4ke6yy80DxL3ZzXkJXMhoi5aMVK2MZ0PjyAuhSUoOpDPDe9vzo9FV6W6WqwfTpf0OGEEQM6Fa12ekFU1JSI1wBqFBx3ASSjRYC6nabHEFJKRPuV0wuZqWjrpVlMjxEwXQrNNuRf10WpaJ2tF1/lfyOeirJ02vDRzkT0LPtkyiiGUqGa9jZ1oHsvGa1wRzv3mxtv+C0/PI4B3hXMQc/i1uKtouvajwm6a/6odwaahCtAVcWxodrpK+jDloxWSRUZCQzlyQHhSH5xkPmWRDSBxYiRWNU1tFxbOpJGp/GlolVD9UrQsy0U7SSl1hIhOZPRfWMQm94jc0GziZBuqcloEUWmHqPNkE928JzL9u7QSEb3GLuF7urmhossLjocfdc7A60aag6PKCMP4uZJNFiV/1ZVOWiKaXO/EaCYju0sHtBRVXW9KZiDXi+m8DTdPoqsRG2FsutsyejhlIVMZ7OIdmrPFYVme1MwCe0RXInRbIt+Q8dpp46zoGMquhfC0z2GiJ470+1nWWOTix6ELwXj2BbyFQs32O/ZaNmM/4TfJzJVReZLD5h+zbx1Wg66b9fQGfTYZ0kxd6Ti4b8HIx1N6cAt0pqFq+63HlLmo9GrUDpaKjTaCV1+v6f36eiCap01FDyjwhYjqdiDxKnoXggcjBvR/MxFyuVhtHFLzUeHDYYOzVZIZi5XF1N8tkS0JaOMIHQW5HqCvtY9Gz1MkLOdJIaCG/2mOqsuO5hUtGWCsFdHBF28T+LilpqSVswJmjjElNk3nqu2eMZs6WjCUU+FNju8Xmn3qvry9EK74Uf6QKwTeqOqBml79FsquheZtAu9vCdBA0g01dZdZ6noP7aHvttD3+2h7/bQd3vou/1P+hufD4A87nUkqwAAAABJRU5ErkJggg==" alt="QR check-in" />
+                        </div>
+                        <p class="qr-code-text">CBT1.131F621A498A4738987B7FE9370D7C75.ZPZ0eiTd9MDmS9vi3nKxxg.QYSMVKa_o_04V_tlW6HZv7XyuKgfZDBc</p>
+                    </div>
+                    <div class="qr-card">
+                        <div class="seat">Ghế <span>E12</span></div>
+                        <div>
+                            <img class="qr-image" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAWgAAAFoAQAAAABSnlx4AAADc0lEQVR4Xu2XQbLcIAxEYeVj+KYGbupjsIL0azz/z8SVVJKqrGSVQzB6YtHV0vin+TeRfj74bTz0PR76Hg99j4e+x0Pf4x/omhT77Kn0lOepJ22z9X2kfbAhnYPRTf/63vxUc3rlio2Lsl4XE4ruHI2UDuulVXtpSpkEpXKPSddNCaGnaBxme+kpselkESetpfRZ5hy8hqQnRy5jVW4VDDTdrxRgILomS9Z/9ZDOwegVbbVWt2Q4iYncaLmvCETLPVKwuqm0Ly/JqiaRzknRdaHo+t1Unj4TSHPHo0eDia+caPRAsV1QsbG0HstP/XXY3zotBt1soOLuKt5bTX3f4CftGzWx6EpHadawSkFt5aoph12HVLZgtAvkLX6QbKylqTvQ9cf79IlBL7TaUmObEz8xhkDpN6TMwejWdxV8RV05c6VzS3pXMAY9rZGe5B5ray7TXec6uepj0fsksU/04jG3I6LKvG/BaLnKxjot4u4LuMLnKJs/frlD0Mi3zaXXEi7bVUoM6pfVotGIODZG81JzpDWP9CmDguVTwSD02CTi6aPLT8NQYUDz2oLRaqfkmYtwhhQHxShIKh6NmbyCzjPRbGs0oyApb0LRDaWc3vjAPWwjbrGsjVQ4WmZqnC4nkZ6dkzldaRH9Gom2n7Lp4rLkv4vKknXpGIy2n1a/nSLmW0HCYfyXg9GzI9bsSlySMYM2O8x3UR+PJtf5NRqIdQ0gdeCg5kwuCEUPWycjH2XJDvODjoVvGtSMRW+skyPShyB9zaS9IuvlNgOBaF783mygAfryFvoi67eCMWiFPDQwEDVsXmrmTrMl5lEsmqby+3CDaR2JGW1BieNdwRg0pxar+edK67Fo5MNz42rFSHRHJmi6S1JeAyhL00TjJdUEo6unsJ6CmhRrn19uW6kcjB60FkPZHkLB5PRAVhz2oWAQGicR6GVCtB8uqt4bCERXy9ekYGJVDSFI51JT9e9feDHoFY0CZpCLIY6NYZR9XQtGWzLabHj+FqspYp2vfTSaXecdV8lAHQWp8b4BvHVaEPplpoaTVLkEVXdhrGRjcWM8unnQlHnN4uqRVPEWVssh6cFPFLlJgY5tKezFdA5Hz9VpaqdLO0OqTLx6KsFFojlNeEiqHRiINVnNVdC4Kxb9x/HQ93joezz0PR76Hg99j/9J/wArIBdU7padiAAAAABJRU5ErkJggg==" alt="QR check-in" />
+                        </div>
+                        <p class="qr-code-text">CBT1.8D5613F7675A4E149E2D21AF659C175F.qYJfM6gViwlfMsczhs79bQ.coMUCmiYc9N6HZBcCOaL4RX_J3IPNmnL</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            Đây là email tự động, vui lòng không trả lời.<br />
+            © 2026 cinemabooking.vn.
+        </div>
+    </div>
+</div>
+</body>
+</html>

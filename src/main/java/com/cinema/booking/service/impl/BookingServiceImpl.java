@@ -49,8 +49,6 @@ import java.util.stream.Collectors;
 @Slf4j
 public class BookingServiceImpl implements BookingService {
 
-    static final int HOLD_MINUTES = 10;
-
     BookingRepository    bookingRepository;
     SeatStatusRepository seatStatusRepository;
     SeatRepository       seatRepository;
@@ -72,6 +70,10 @@ public class BookingServiceImpl implements BookingService {
     @Value("${booking.pending-timeout-minutes:15}")
     @NonFinal
     int bookingPendingTimeoutMinutes;
+
+    @Value("${booking.seat-hold-minutes:${booking.pending-timeout-minutes:10}}")
+    @NonFinal
+    int seatHoldMinutes;
 
     // =========================================================================
     // BƯỚC 1: GIỮ GHẾ
@@ -106,7 +108,7 @@ public class BookingServiceImpl implements BookingService {
         }
 
         // Đặt HOLD + tính giá ước tính
-        LocalDateTime holdUntil = LocalDateTime.now().plusMinutes(HOLD_MINUTES);
+        LocalDateTime holdUntil = LocalDateTime.now().plusMinutes(seatHoldMinutes);
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
@@ -126,19 +128,18 @@ public class BookingServiceImpl implements BookingService {
         log.info("User {} held {} seats for showtime {}", userId, seatStatuses.size(), request.getShowtimeId());
 
         // ── WS: Push HOLD event xuống tất cả client đang xem sơ đồ ghế này ──
-        seatStatuses.forEach(ss ->
-                seatStatusPublisher.publishHold(
-                        request.getShowtimeId(),
-                        ss.getSeat().getId(),
-                        userId,
-                        holdUntil));
+        publishHoldAfterCommit(
+                request.getShowtimeId(),
+                seatStatuses.stream().map(ss -> ss.getSeat().getId()).toList(),
+                userId,
+                holdUntil);
 
         return HoldSeatResponse.builder()
                 .showtimeId(request.getShowtimeId())
                 .heldSeatIds(seatStatuses.stream().map(ss -> ss.getSeat().getId()).toList())
                 .holdUntil(holdUntil)
                 .estimatedTotalPrice(estimatedTotal)
-                .message("Ghế đã được giữ trong " + HOLD_MINUTES + " phút")
+                .message("Ghế đã được giữ trong " + seatHoldMinutes + " phút")
                 .build();
     }
 
@@ -261,7 +262,7 @@ public class BookingServiceImpl implements BookingService {
         seatStatusRepository.bulkUpdateStatusAndClearHold(booking.getShowtime().getId(), seatIds, SeatStatusType.BOOKED);
 
         // ── WS: Push BOOKED event ──
-        seatStatusPublisher.publishBulk(booking.getShowtime().getId(), seatIds, SeatStatusType.BOOKED);
+        publishBulkAfterCommit(booking.getShowtime().getId(), seatIds, SeatStatusType.BOOKED);
 
         // Sinh QR Ticket cho từng ghế
         for (BookingDetail detail : booking.getBookingDetails()) {
@@ -324,7 +325,7 @@ public class BookingServiceImpl implements BookingService {
 
         // ── WS: Push AVAILABLE event (ghế được trả lại) ──
         if (releasedSeatCount == seatIds.size()) {
-            seatStatusPublisher.publishBulk(booking.getShowtime().getId(), seatIds, SeatStatusType.AVAILABLE);
+            publishBulkAfterCommit(booking.getShowtime().getId(), seatIds, SeatStatusType.AVAILABLE);
         }
 
         Booking saved = bookingRepository.save(booking);
@@ -369,7 +370,7 @@ public class BookingServiceImpl implements BookingService {
 
         // ── WS: Push AVAILABLE event (hủy đơn, trả ghế về pool) ──
         if (releasedSeatCount == seatIds.size()) {
-            seatStatusPublisher.publishBulk(booking.getShowtime().getId(), seatIds, SeatStatusType.AVAILABLE);
+            publishBulkAfterCommit(booking.getShowtime().getId(), seatIds, SeatStatusType.AVAILABLE);
         }
 
         Booking saved = bookingRepository.save(booking);
@@ -401,7 +402,7 @@ public class BookingServiceImpl implements BookingService {
                     paymentReleaseCutoff(booking),
                     SeatStatusType.AVAILABLE);
             if (releasedSeatCount == seatIds.size()) {
-                seatStatusPublisher.publishBulk(booking.getShowtime().getId(), seatIds, SeatStatusType.AVAILABLE);
+                publishBulkAfterCommit(booking.getShowtime().getId(), seatIds, SeatStatusType.AVAILABLE);
             }
         }
 
@@ -593,29 +594,25 @@ public class BookingServiceImpl implements BookingService {
     }
 
     private void releaseExpiredHoldsForShowtime(UUID showtimeId) {
-        List<SeatStatus> expiredHolds = seatStatusRepository.findExpiredHoldsByShowtime(
-                showtimeId,
-                SeatStatusType.HOLD,
-                LocalDateTime.now());
+        List<ExpiredSeatHoldProjection> expiredHolds = seatStatusRepository.findExpiredHoldRowsByShowtime(
+                showtimeId, LocalDateTime.now());
 
         if (expiredHolds.isEmpty()) {
             return;
         }
 
         List<UUID> releasedSeatIds = expiredHolds.stream()
-                .map(seatStatus -> seatStatus.getSeat().getId())
+                .map(ExpiredSeatHoldProjection::getSeatId)
                 .toList();
 
-        for (SeatStatus seatStatus : expiredHolds) {
-            seatStatus.setStatus(SeatStatusType.AVAILABLE);
-            seatStatus.setHoldBy(null);
-            seatStatus.setHoldUntil(null);
-        }
+        List<UUID> expiredHoldIds = expiredHolds.stream()
+                .map(ExpiredSeatHoldProjection::getId)
+                .toList();
 
-        seatStatusRepository.saveAll(expiredHolds);
-        seatStatusPublisher.publishBulk(showtimeId, releasedSeatIds, SeatStatusType.AVAILABLE);
+        int releasedCount = seatStatusRepository.releaseExpiredHoldsByIds(expiredHoldIds);
+        publishBulkAfterCommit(showtimeId, releasedSeatIds, SeatStatusType.AVAILABLE);
         log.info("Released {} expired holds while loading seat map for showtime={}",
-                releasedSeatIds.size(), showtimeId);
+                releasedCount, showtimeId);
     }
 
     private void seedMissingSeatStatuses(Showtime showtime, List<SeatStatus> existingStatuses) {
@@ -662,6 +659,50 @@ public class BookingServiceImpl implements BookingService {
         return booking.getPaymentExpiresAt() != null
                 ? booking.getPaymentExpiresAt()
                 : LocalDateTime.now();
+    }
+
+    private void publishBulkAfterCommit(UUID showtimeId, List<UUID> seatIds, SeatStatusType status) {
+        if (seatIds.isEmpty()) {
+            return;
+        }
+
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            seatStatusPublisher.publishBulk(showtimeId, seatIds, status);
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                seatStatusPublisher.publishBulk(showtimeId, seatIds, status);
+            }
+        });
+    }
+
+    private void publishHoldAfterCommit(
+            UUID showtimeId,
+            List<UUID> seatIds,
+            UUID userId,
+            LocalDateTime holdUntil) {
+
+        if (seatIds.isEmpty()) {
+            return;
+        }
+
+        Runnable publish = () -> seatIds.forEach(seatId ->
+                seatStatusPublisher.publishHold(showtimeId, seatId, userId, holdUntil));
+
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            publish.run();
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                publish.run();
+            }
+        });
     }
 
 }

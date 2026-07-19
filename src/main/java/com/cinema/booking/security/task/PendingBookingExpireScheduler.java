@@ -1,6 +1,5 @@
 package com.cinema.booking.security.task;
 
-import com.cinema.booking.entity.Booking;
 import com.cinema.booking.enums.BookingStatus;
 import com.cinema.booking.repository.BookingRepository;
 import com.cinema.booking.service.BookingService;
@@ -12,6 +11,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
@@ -21,25 +21,29 @@ public class PendingBookingExpireScheduler {
     private final BookingRepository bookingRepository;
     private final BookingService bookingService;
 
-    @Value("${booking.pending-timeout-minutes:15}")
+    @Value("${booking.pending-timeout-minutes:10}")
     int pendingTimeoutMinutes;
 
-    @Scheduled(fixedDelay = 60_000)
+    @Value("${booking.expired-booking-scan-limit:200}")
+    int expiredBookingScanLimit;
+
+    @Scheduled(fixedDelayString = "${booking.expired-booking-scan-delay-ms:30000}")
     public void expirePendingBookings() {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime legacyCutoff = now.minusMinutes(pendingTimeoutMinutes);
-        List<Booking> expiredBookings = bookingRepository.findExpiredPendingBookings(
-                BookingStatus.PENDING, now, legacyCutoff);
 
-        if (expiredBookings.isEmpty()) {
+        List<UUID> expiredBookingIds = bookingRepository.findExpiredPendingBookingIds(
+                BookingStatus.PENDING.name(),
+                now,
+                legacyCutoff,
+                expiredBookingScanLimit);
+
+        if (expiredBookingIds.isEmpty()) {
             return;
         }
 
-        for (Booking booking : expiredBookings) {
-            bookingService.expirePendingBooking(booking.getId());
-        }
+        expiredBookingIds.forEach(bookingService::expirePendingBooking);
 
-        log.info("Expired {} pending bookings after {} minutes",
-                expiredBookings.size(), pendingTimeoutMinutes);
+        log.info("Expired {} pending bookings after payment timeout", expiredBookingIds.size());
     }
 }

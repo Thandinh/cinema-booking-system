@@ -31,6 +31,7 @@ public class DashboardSummaryResponse {
     Long successBookings;
     Long failedBookings;
     Long cancelledBookings;
+    Long expiredBookings;
 
     // ── Người dùng ──────────────────────────────
     Long totalUsers;

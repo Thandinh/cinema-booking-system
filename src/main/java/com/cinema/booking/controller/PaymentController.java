@@ -7,6 +7,8 @@ import com.cinema.booking.service.PaymentService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import lombok.experimental.NonFinal;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
@@ -23,6 +25,10 @@ import java.util.UUID;
 public class PaymentController {
 
     PaymentService paymentService;
+
+    @Value("${app.frontend-url:http://localhost:5173}")
+    @NonFinal
+    String frontendUrl;
 
     @PostMapping("/initiate")
     @PreAuthorize("hasAuthority('PAYMENT_CREATE')")
@@ -63,13 +69,18 @@ public class PaymentController {
             jakarta.servlet.http.HttpServletRequest request,
             jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
         String result = paymentService.handleVNPayCallback(request);
-        String frontendUrl = "http://localhost:5173";
         
         if (result.startsWith("redirect:")) {
             String path = result.substring("redirect:".length());
-            response.sendRedirect(frontendUrl + path);
+            response.sendRedirect(normalizedFrontendUrl() + path);
         } else {
-            response.sendRedirect(frontendUrl + "/payment-failed?reason=invalid_callback");
+            response.sendRedirect(normalizedFrontendUrl() + "/payment-failed?reason=invalid_callback");
         }
+    }
+
+    private String normalizedFrontendUrl() {
+        return frontendUrl == null || frontendUrl.isBlank()
+                ? "http://localhost:5173"
+                : frontendUrl.replaceAll("/+$", "");
     }
 }

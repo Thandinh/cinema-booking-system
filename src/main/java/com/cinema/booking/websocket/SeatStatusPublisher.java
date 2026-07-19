@@ -52,6 +52,10 @@ public class SeatStatusPublisher {
         });
     }
 
+    public void publishAvailable(UUID showtimeId, List<UUID> seatIds) {
+        publishBulk(showtimeId, seatIds, SeatStatusType.AVAILABLE);
+    }
+
     // =====================================================================
     // Private helper: gửi đến đúng topic theo showtimeId
     // =====================================================================

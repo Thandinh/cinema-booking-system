@@ -42,6 +42,17 @@ ALTER TABLE payments
     ADD CONSTRAINT chk_payment_status
     CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'EXPIRED'));
 
+CREATE INDEX IF NOT EXISTS idx_seat_status_hold_release
+    ON seat_status(showtime_id, hold_by, hold_until)
+    WHERE status = 'HOLD';
+
+CREATE INDEX IF NOT EXISTS idx_bookings_pending_expires_id
+    ON bookings(payment_expires_at, id)
+    WHERE status = 'PENDING';
+
+CREATE INDEX IF NOT EXISTS idx_payments_booking_status
+    ON payments(booking_id, status);
+
 -- 1. DỌN DẸP DỮ LIỆU NGHIỆP VỤ CŨ
 -- Không truncate users/roles/permissions để tránh xoá dữ liệu do ApplicationInitConfig tạo.
 TRUNCATE TABLE

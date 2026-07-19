@@ -70,20 +70,21 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             """)
     Optional<Booking> findWithDetailsById(@Param("id") UUID id);
 
-    @Query("""
-            SELECT DISTINCT b FROM Booking b
-            JOIN FETCH b.showtime st
-            LEFT JOIN FETCH b.bookingDetails bd
-            LEFT JOIN FETCH bd.seat
+    @Query(value = """
+            SELECT b.id
+            FROM bookings b
             WHERE b.status = :status
               AND (
-                    (b.paymentExpiresAt IS NOT NULL AND b.paymentExpiresAt <= :now)
-                    OR (b.paymentExpiresAt IS NULL AND b.createdAt < :legacyCutoff)
+                    (b.payment_expires_at IS NOT NULL AND b.payment_expires_at <= :now)
+                    OR (b.payment_expires_at IS NULL AND b.created_at < :legacyCutoff)
                   )
-            """)
-    List<Booking> findExpiredPendingBookings(@Param("status") BookingStatus status,
-                                              @Param("now") LocalDateTime now,
-                                              @Param("legacyCutoff") LocalDateTime legacyCutoff);
+            ORDER BY COALESCE(b.payment_expires_at, b.created_at) ASC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<UUID> findExpiredPendingBookingIds(@Param("status") String status,
+                                             @Param("now") LocalDateTime now,
+                                             @Param("legacyCutoff") LocalDateTime legacyCutoff,
+                                             @Param("limit") int limit);
 
     /**
      * Query chuyên dùng cho tác vụ gửi Email.

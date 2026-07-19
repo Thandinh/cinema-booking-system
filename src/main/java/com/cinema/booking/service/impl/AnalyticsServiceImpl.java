@@ -72,7 +72,8 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         Long successBookings  = bookingRepository.countByStatus(BookingStatus.SUCCESS);
         Long failedBookings   = bookingRepository.countByStatus(BookingStatus.FAILED);
         Long cancelledBookings= bookingRepository.countByStatus(BookingStatus.CANCELLED);
-        Long totalBookings    = (pendingBookings + successBookings + failedBookings + cancelledBookings);
+        Long expiredBookings  = bookingRepository.countByStatus(BookingStatus.EXPIRED);
+        Long totalBookings    = pendingBookings + successBookings + failedBookings + cancelledBookings + expiredBookings;
 
         // Users
         Long totalUsers       = userRepository.countActiveUsers();
@@ -100,6 +101,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
                 .successBookings(successBookings)
                 .failedBookings(failedBookings)
                 .cancelledBookings(cancelledBookings)
+                .expiredBookings(expiredBookings)
                 .totalUsers(totalUsers)
                 .newUsersToday(newUsersToday)
                 .newUsersThisMonth(newUsersThisMonth)
