@@ -11,4 +11,6 @@ public interface EmailService {
     void sendTicketEmail(UUID bookingId);
 
     void sendEmailVerification(String recipientEmail, String username, String rawToken);
+
+    void sendPasswordResetEmail(String recipientEmail, String username, String rawToken, long expiresMinutes);
 }

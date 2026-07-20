@@ -4,6 +4,7 @@ import com.cinema.booking.dto.request.PromotionCreationRequest;
 import com.cinema.booking.dto.request.PromotionUpdateRequest;
 import com.cinema.booking.dto.response.ApiResponse;
 import com.cinema.booking.dto.response.PromotionResponse;
+import com.cinema.booking.enums.PromotionAdminStatus;
 import com.cinema.booking.service.PromotionService;
 import jakarta.validation.Valid;
 import lombok.AccessLevel;
@@ -58,10 +59,12 @@ public class PromotionController {
     @GetMapping
     @PreAuthorize("hasAuthority('PROMOTION_VIEW')")
     public ApiResponse<Page<PromotionResponse>> getAllPromotions(
+            @RequestParam(required = false) PromotionAdminStatus status,
+            @RequestParam(required = false) String keyword,
             @PageableDefault(size = 20) Pageable pageable) {
         return ApiResponse.<Page<PromotionResponse>>builder()
                 .code(1000)
-                .result(promotionService.getAllPromotions(pageable))
+                .result(promotionService.getAdminPromotions(pageable, status, keyword))
                 .build();
     }
 

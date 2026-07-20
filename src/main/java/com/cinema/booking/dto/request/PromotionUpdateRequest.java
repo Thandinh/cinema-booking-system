@@ -2,7 +2,6 @@ package com.cinema.booking.dto.request;
 
 import com.cinema.booking.enums.DiscountType;
 import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.Future;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
@@ -31,7 +30,6 @@ public class PromotionUpdateRequest {
 
     LocalDateTime startDate;
 
-    @Future(message = "END_DATE_FUTURE")
     LocalDateTime endDate;
 
     Integer usageLimit;

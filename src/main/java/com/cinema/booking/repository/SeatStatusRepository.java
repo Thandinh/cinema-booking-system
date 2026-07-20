@@ -113,4 +113,36 @@ public interface SeatStatusRepository extends JpaRepository<SeatStatus, UUID> {
     void deleteByShowtimeId(@Param("showtimeId") UUID showtimeId);
 
     boolean existsBySeatIdAndStatusIn(UUID seatId, List<SeatStatusType> statuses);
+
+    @Modifying
+    @Query(value = """
+            INSERT INTO seat_status (
+                id, seat_id, showtime_id, status, version, created_at, updated_at
+            )
+            SELECT uuid_generate_v4(),
+                   s.id,
+                   st.id,
+                   'AVAILABLE',
+                   0,
+                   CURRENT_TIMESTAMP,
+                   CURRENT_TIMESTAMP
+            FROM seats s
+            JOIN showtimes st ON st.room_id = s.room_id
+            WHERE s.room_id = :roomId
+              AND s.id IN (:seatIds)
+              AND s.is_deleted = false
+              AND st.is_deleted = false
+              AND st.status = 'UPCOMING'
+              AND st.start_time >= :now
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM seat_status ss
+                  WHERE ss.seat_id = s.id
+                    AND ss.showtime_id = st.id
+              )
+            """, nativeQuery = true)
+    int insertMissingAvailableForFutureShowtimes(
+            @Param("roomId") UUID roomId,
+            @Param("seatIds") List<UUID> seatIds,
+            @Param("now") LocalDateTime now);
 }

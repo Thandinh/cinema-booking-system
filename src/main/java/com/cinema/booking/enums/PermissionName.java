@@ -57,6 +57,7 @@ public enum PermissionName {
     DASHBOARD_VIEW,
     REPORT_VIEW,
     ANALYTICS_VIEW,
+    AUDIT_VIEW,
 
     TICKET_VIEW_OWN,
     TICKET_VIEW_ALL,

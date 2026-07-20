@@ -6,6 +6,7 @@ import com.cinema.booking.dto.response.PromotionResponse;
 import com.cinema.booking.entity.Promotion;
 import com.cinema.booking.enums.DiscountType;
 import com.cinema.booking.enums.ErrorCode;
+import com.cinema.booking.enums.PromotionAdminStatus;
 import com.cinema.booking.exception.AppException;
 import com.cinema.booking.mapper.PromotionMapper;
 import com.cinema.booking.repository.PromotionRepository;
@@ -21,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -137,6 +139,35 @@ public class PromotionServiceImpl implements PromotionService {
     @Transactional(readOnly = true)
     public Page<PromotionResponse> getAllPromotions(Pageable pageable) {
         return promotionRepository.findAllActive(pageable)
+                .map(promotionMapper::toPromotionResponse);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<PromotionResponse> getAdminPromotions(
+            Pageable pageable,
+            PromotionAdminStatus status,
+            String keyword) {
+        PromotionAdminStatus effectiveStatus = status == null ? PromotionAdminStatus.ALL : status;
+        String keywordPattern = keyword == null || keyword.isBlank()
+                ? null
+                : "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
+
+        Boolean active = effectiveStatus == PromotionAdminStatus.INACTIVE ? false : null;
+        boolean availableOnly = effectiveStatus == PromotionAdminStatus.AVAILABLE;
+        boolean upcomingOnly = effectiveStatus == PromotionAdminStatus.UPCOMING;
+        boolean expiredOnly = effectiveStatus == PromotionAdminStatus.EXPIRED;
+        boolean exhaustedOnly = effectiveStatus == PromotionAdminStatus.EXHAUSTED;
+
+        return promotionRepository.searchAdminPromotions(
+                        keywordPattern,
+                        active,
+                        availableOnly,
+                        upcomingOnly,
+                        expiredOnly,
+                        exhaustedOnly,
+                        LocalDateTime.now(),
+                        pageable)
                 .map(promotionMapper::toPromotionResponse);
     }
 

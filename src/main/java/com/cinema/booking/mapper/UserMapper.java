@@ -77,7 +77,6 @@ public class UserMapper {
      */
     public void updateUser(User user, UserUpdateRequest request) {
         if (request == null) return;
-        if (request.getPassword() != null) user.setPassword(request.getPassword()); // Service sẽ encode
         if (request.getFirstName() != null) user.setFirstName(request.getFirstName());
         if (request.getLastName() != null) user.setLastName(request.getLastName());
         if (request.getDob() != null) user.setDob(request.getDob());

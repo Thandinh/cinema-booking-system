@@ -17,6 +17,16 @@ import java.util.UUID;
 public class PaymentResponse {
     UUID id;
     UUID bookingId;
+    String bookingCode;
+    String bookingStatus;
+    UUID customerId;
+    String customerUsername;
+    String customerName;
+    String customerEmail;
+    String movieTitle;
+    String cinemaName;
+    String roomName;
+    LocalDateTime showtimeStartTime;
     BigDecimal amount;
     PaymentMethod method;
     String transactionNo;

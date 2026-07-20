@@ -67,11 +67,11 @@ public class BookingServiceImpl implements BookingService {
     @NonFinal
     int checkInEarlyMinutes;
 
-    @Value("${booking.pending-timeout-minutes:15}")
+    @Value("${booking.pending-timeout-minutes:5}")
     @NonFinal
     int bookingPendingTimeoutMinutes;
 
-    @Value("${booking.seat-hold-minutes:${booking.pending-timeout-minutes:10}}")
+    @Value("${booking.seat-hold-minutes:${booking.pending-timeout-minutes:5}}")
     @NonFinal
     int seatHoldMinutes;
 
@@ -445,9 +445,9 @@ public class BookingServiceImpl implements BookingService {
     // =========================================================================
     @Override
     @Transactional(readOnly = true)
-    public Page<BookingResponse> getMyBookings(Pageable pageable) {
+    public Page<BookingResponse> getMyBookings(BookingStatus status, Pageable pageable) {
         UUID userId = SecurityUtils.getCurrentUserId();
-        return mapBookingPage(bookingRepository.findIdsByUserId(userId, pageable));
+        return mapBookingPage(bookingRepository.findIdsByUserIdAndStatus(userId, status, pageable));
     }
 
     @Override

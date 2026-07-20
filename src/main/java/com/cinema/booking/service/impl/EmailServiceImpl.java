@@ -213,6 +213,50 @@ public class EmailServiceImpl implements EmailService {
         }
     }
 
+    @Async
+    @Override
+    public void sendPasswordResetEmail(String recipientEmail, String username, String rawToken, long expiresMinutes) {
+        try {
+            if (recipientEmail == null || recipientEmail.isBlank()) {
+                log.warn("[Async] Skip password reset email because recipient is blank for user {}", username);
+                return;
+            }
+
+            String resetUrl = frontendUrl.replaceAll("/+$", "")
+                    + "/reset-password?token="
+                    + URLEncoder.encode(rawToken, StandardCharsets.UTF_8);
+
+            Context context = new Context();
+            context.setVariable("username", username);
+            context.setVariable("resetUrl", resetUrl);
+            context.setVariable("expiresIn", expiresMinutes + " phút");
+
+            String htmlContent = templateEngine.process("password-reset", context);
+            saveLocalPasswordResetEmail(recipientEmail, context);
+
+            if (!isMailConfigured()) {
+                log.warn("SMTP credentials are not configured. Local password reset email was saved for {}.", recipientEmail);
+                return;
+            }
+
+            MimeMessage message = javaMailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(senderEmail);
+            helper.setTo(recipientEmail);
+            helper.setSubject("Đặt lại mật khẩu cinemabooking.vn");
+            helper.setText(htmlContent, true);
+
+            javaMailSender.send(message);
+            log.info("[Async] Password reset email sent successfully to {}", recipientEmail);
+        } catch (MailAuthenticationException e) {
+            log.error("[Async] SMTP authentication failed while sending password reset email to {}.", recipientEmail);
+        } catch (MailException | MessagingException e) {
+            log.error("[Async] Password reset email send failed for {}: {}", recipientEmail, e.getMessage());
+        } catch (Exception e) {
+            log.error("[Async] Unexpected error while sending password reset email to {}: {}", recipientEmail, e.getMessage());
+        }
+    }
+
     private void saveLocalTicketEmail(UUID bookingId, Context context, List<Map<String, String>> localQrCodes) {
         try {
             context.setVariable("qrCodes", localQrCodes);
@@ -238,6 +282,20 @@ public class EmailServiceImpl implements EmailService {
             log.info("[Async] Local verification email saved at {}", emailPath.toAbsolutePath());
         } catch (Exception e) {
             log.warn("[Async] Could not save local verification email for {}: {}", recipientEmail, e.getMessage());
+        }
+    }
+
+    private void saveLocalPasswordResetEmail(String recipientEmail, Context context) {
+        try {
+            String localHtmlContent = templateEngine.process("password-reset", context);
+            Path outboxDir = Path.of("logs", "emails");
+            Files.createDirectories(outboxDir);
+            String safeEmail = recipientEmail.replaceAll("[^a-zA-Z0-9._-]", "_");
+            Path emailPath = outboxDir.resolve("reset-password-" + safeEmail + ".html");
+            Files.writeString(emailPath, localHtmlContent);
+            log.info("[Async] Local password reset email saved at {}", emailPath.toAbsolutePath());
+        } catch (Exception e) {
+            log.warn("[Async] Could not save local password reset email for {}: {}", recipientEmail, e.getMessage());
         }
     }
 

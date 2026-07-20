@@ -1,6 +1,7 @@
 package com.cinema.booking.dto.request;
 
 import com.cinema.booking.enums.SeatType;
+import com.cinema.booking.enums.SeatLayoutTemplate;
 import jakarta.validation.constraints.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
@@ -43,6 +44,9 @@ public class SeatBulkGenerateRequest {
     @Min(value = 1, message = "SEAT_NUMBER_INVALID")
     @Max(value = 50, message = "SEAT_NUMBER_INVALID")
     Integer seatsPerRow;
+
+    @Builder.Default
+    SeatLayoutTemplate layoutTemplate = SeatLayoutTemplate.CUSTOM;
 
     @Builder.Default
     SeatType seatType = SeatType.NORMAL;

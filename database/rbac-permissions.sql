@@ -66,6 +66,7 @@ INSERT INTO permissions (id, name, description, created_at, updated_at) VALUES
 (uuid_generate_v4(), 'DASHBOARD_VIEW', 'Xem dashboard', NOW(), NOW()),
 (uuid_generate_v4(), 'REPORT_VIEW', 'Xem bao cao thong ke', NOW(), NOW()),
 (uuid_generate_v4(), 'ANALYTICS_VIEW', 'Xem du lieu bieu do va phan tich', NOW(), NOW()),
+(uuid_generate_v4(), 'AUDIT_VIEW', 'Xem nhat ky thao tac quan tri', NOW(), NOW()),
 
 (uuid_generate_v4(), 'TICKET_VIEW_OWN', 'Xem ve ca nhan', NOW(), NOW()),
 (uuid_generate_v4(), 'TICKET_VIEW_ALL', 'Xem toan bo ve', NOW(), NOW()),

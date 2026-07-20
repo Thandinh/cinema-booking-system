@@ -9,6 +9,7 @@
 
 -- 1. CLEAN UP
 DROP TABLE IF EXISTS invalidated_token CASCADE;
+DROP TABLE IF EXISTS admin_audit_logs CASCADE;
 DROP TABLE IF EXISTS tickets CASCADE;
 DROP TABLE IF EXISTS payments CASCADE;
 DROP TABLE IF EXISTS booking_details CASCADE;
@@ -70,6 +71,8 @@ CREATE TABLE users (
     email_verified BOOLEAN DEFAULT TRUE,
     email_verification_token_hash VARCHAR(64),
     email_verification_expires_at TIMESTAMP,
+    password_reset_token_hash VARCHAR(64),
+    password_reset_expires_at TIMESTAMP,
     is_active BOOLEAN DEFAULT TRUE,
     is_deleted BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -260,6 +263,25 @@ CREATE TABLE tickets (
     CONSTRAINT chk_ticket_status CHECK (status IN ('ACTIVE', 'USED', 'CANCELLED'))
 );
 
+CREATE TABLE admin_audit_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    actor_id UUID,
+    actor_username VARCHAR(255),
+    http_method VARCHAR(20) NOT NULL,
+    action VARCHAR(80) NOT NULL,
+    resource VARCHAR(80) NOT NULL,
+    resource_id VARCHAR(100),
+    request_path VARCHAR(500) NOT NULL,
+    query_string VARCHAR(500),
+    ip_address VARCHAR(80),
+    user_agent VARCHAR(500),
+    status_code INT,
+    success BOOLEAN,
+    error_message VARCHAR(1000),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE invalidated_token (
     id VARCHAR(255) PRIMARY KEY,
     expiry_time TIMESTAMP NOT NULL
@@ -283,6 +305,7 @@ CREATE TRIGGER update_bookings_modtime BEFORE UPDATE ON bookings FOR EACH ROW EX
 CREATE TRIGGER update_booking_details_modtime BEFORE UPDATE ON booking_details FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 CREATE TRIGGER update_payments_modtime BEFORE UPDATE ON payments FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 CREATE TRIGGER update_tickets_modtime BEFORE UPDATE ON tickets FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+CREATE TRIGGER update_admin_audit_logs_modtime BEFORE UPDATE ON admin_audit_logs FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 
 -- =========================================
 -- 5. INDEXES
@@ -291,6 +314,10 @@ CREATE TRIGGER update_tickets_modtime BEFORE UPDATE ON tickets FOR EACH ROW EXEC
 CREATE UNIQUE INDEX uq_users_email_verification_token_hash
     ON users(email_verification_token_hash)
     WHERE email_verification_token_hash IS NOT NULL;
+
+CREATE UNIQUE INDEX uq_users_password_reset_token_hash
+    ON users(password_reset_token_hash)
+    WHERE password_reset_token_hash IS NOT NULL;
 
 CREATE INDEX idx_users_is_deleted_created_at
     ON users(is_deleted, created_at DESC);
@@ -322,6 +349,13 @@ CREATE INDEX idx_seats_room_id_is_deleted
 
 CREATE INDEX idx_movies_status_is_deleted
     ON movies(status, is_deleted);
+
+CREATE INDEX idx_promotions_admin_filter
+    ON promotions(is_deleted, is_active, start_date, end_date);
+
+CREATE INDEX idx_promotions_usage_limit
+    ON promotions(usage_limit, used_count)
+    WHERE usage_limit IS NOT NULL AND is_deleted = false;
 
 CREATE INDEX idx_showtimes_movie_start_time
     ON showtimes(movie_id, start_time)
@@ -355,6 +389,9 @@ CREATE INDEX idx_seat_status_hold_release
 
 CREATE INDEX idx_bookings_user_created_at
     ON bookings(user_id, created_at DESC);
+
+CREATE INDEX idx_bookings_user_status_created_at
+    ON bookings(user_id, status, created_at DESC);
 
 CREATE INDEX idx_bookings_status_created_at
     ON bookings(status, created_at DESC);
@@ -398,3 +435,16 @@ CREATE UNIQUE INDEX uq_tickets_booking_detail_id
 
 CREATE INDEX idx_tickets_status
     ON tickets(status);
+
+CREATE INDEX idx_admin_audit_logs_created_at
+    ON admin_audit_logs(created_at DESC);
+
+CREATE INDEX idx_admin_audit_logs_resource_created_at
+    ON admin_audit_logs(resource, created_at DESC);
+
+CREATE INDEX idx_admin_audit_logs_actor_created_at
+    ON admin_audit_logs(actor_id, created_at DESC)
+    WHERE actor_id IS NOT NULL;
+
+CREATE INDEX idx_admin_audit_logs_success_created_at
+    ON admin_audit_logs(success, created_at DESC);

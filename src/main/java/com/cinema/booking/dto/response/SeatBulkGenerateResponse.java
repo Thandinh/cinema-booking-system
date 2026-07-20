@@ -17,5 +17,6 @@ public class SeatBulkGenerateResponse {
     int totalRequested;  // Tổng ghế yêu cầu tạo
     int totalCreated;    // Ghế thực sự được tạo mới
     int totalSkipped;    // Ghế đã tồn tại → bỏ qua
+    int totalSeatStatusesCreated;
     List<SeatResponse> createdSeats;
 }

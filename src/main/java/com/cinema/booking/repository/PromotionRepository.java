@@ -25,6 +25,36 @@ public interface PromotionRepository extends JpaRepository<Promotion, UUID> {
 
     @Query("SELECT p FROM Promotion p WHERE p.isDeleted = false")
     Page<Promotion> findAllActive(Pageable pageable);
+
+    @Query("""
+            SELECT p FROM Promotion p
+            WHERE p.isDeleted = false
+              AND (:keywordPattern IS NULL
+                   OR LOWER(p.code) LIKE :keywordPattern
+                   OR LOWER(p.description) LIKE :keywordPattern)
+              AND (:active IS NULL OR p.isActive = :active)
+              AND (:availableOnly = false OR (
+                    p.isActive = true
+                    AND p.startDate <= :now
+                    AND p.endDate >= :now
+                    AND (p.usageLimit IS NULL OR p.usedCount < p.usageLimit)
+              ))
+              AND (:upcomingOnly = false OR p.startDate > :now)
+              AND (:expiredOnly = false OR p.endDate < :now)
+              AND (:exhaustedOnly = false OR (
+                    p.usageLimit IS NOT NULL
+                    AND p.usedCount >= p.usageLimit
+              ))
+            """)
+    Page<Promotion> searchAdminPromotions(
+            @Param("keywordPattern") String keywordPattern,
+            @Param("active") Boolean active,
+            @Param("availableOnly") boolean availableOnly,
+            @Param("upcomingOnly") boolean upcomingOnly,
+            @Param("expiredOnly") boolean expiredOnly,
+            @Param("exhaustedOnly") boolean exhaustedOnly,
+            @Param("now") LocalDateTime now,
+            Pageable pageable);
     
     // Tìm các khuyến mãi đang có hiệu lực (active, trong thời gian, chưa hết lượt)
     @Query("""

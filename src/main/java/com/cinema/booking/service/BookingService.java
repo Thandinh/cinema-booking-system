@@ -37,7 +37,7 @@ public interface BookingService {
     List<SeatMapItemResponse> getSeatMap(UUID showtimeId);
 
     /** Xem booking của chính mình (BOOKING_VIEW_OWN). */
-    Page<BookingResponse> getMyBookings(Pageable pageable);
+    Page<BookingResponse> getMyBookings(BookingStatus status, Pageable pageable);
 
     /** Xem tất cả booking (BOOKING_VIEW_ALL). */
     Page<BookingResponse> getAllBookings(BookingStatus status, Pageable pageable);

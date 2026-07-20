@@ -8,6 +8,7 @@ import com.cinema.booking.dto.response.SeatResponse;
 import com.cinema.booking.entity.Room;
 import com.cinema.booking.entity.Seat;
 import com.cinema.booking.enums.ErrorCode;
+import com.cinema.booking.enums.SeatLayoutTemplate;
 import com.cinema.booking.enums.SeatType;
 import com.cinema.booking.exception.AppException;
 import com.cinema.booking.mapper.SeatMapper;
@@ -22,7 +23,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -55,7 +58,9 @@ public class SeatServiceImpl implements SeatService {
 
         Seat seat = seatMapper.toSeat(request, room);
         Seat saved = seatRepository.save(seat);
-        log.info("Created seat {} in room {}", saved.getRowLabel() + saved.getSeatNumber(), room.getName());
+        int syncedSeatStatuses = syncSeatsToFutureShowtimes(room.getId(), List.of(saved.getId()));
+        log.info("Created seat {} in room {} and synced {} future seat_status rows",
+                saved.getRowLabel() + saved.getSeatNumber(), room.getName(), syncedSeatStatuses);
         return seatMapper.toSeatResponse(saved);
     }
 
@@ -68,10 +73,15 @@ public class SeatServiceImpl implements SeatService {
     public SeatBulkGenerateResponse bulkGenerateSeats(SeatBulkGenerateRequest request) {
         Room room = findActiveRoom(request.getRoomId());
 
-        List<String>  rowLabels   = request.getRowLabels();
+        List<String>  rowLabels   = normalizeRowLabels(request.getRowLabels());
         int           seatsPerRow = request.getSeatsPerRow();
-        SeatType      seatType    = request.getSeatType() != null       ? request.getSeatType()       : SeatType.NORMAL;
-        BigDecimal    multiplier  = request.getPriceMultiplier() != null ? request.getPriceMultiplier() : BigDecimal.ONE;
+        SeatLayoutTemplate layoutTemplate = request.getLayoutTemplate() != null
+                ? request.getLayoutTemplate()
+                : SeatLayoutTemplate.CUSTOM;
+        SeatType      seatType    = request.getSeatType() != null ? request.getSeatType() : SeatType.NORMAL;
+        BigDecimal    multiplier  = request.getPriceMultiplier() != null
+                ? request.getPriceMultiplier()
+                : defaultMultiplier(seatType);
 
         // ✅ Load toàn bộ existing seat keys trong 1 query duy nhất
         // Format: "A:1", "A:2", "B:1" ... tránh N+1 EXISTS queries trong loop
@@ -97,12 +107,17 @@ public class SeatServiceImpl implements SeatService {
                     }
                 }
 
+                SeatType rowSeatType = resolveSeatType(layoutTemplate, rowIdx, rowLabels.size(), seatType);
+                BigDecimal rowMultiplier = layoutTemplate == SeatLayoutTemplate.STANDARD_CINEMA
+                        ? defaultMultiplier(rowSeatType)
+                        : multiplier;
+
                 toSave.add(Seat.builder()
                         .room(room)
                         .rowLabel(rowLabel)
                         .seatNumber(seatNumber)
-                        .seatType(seatType)
-                        .priceMultiplier(multiplier)
+                        .seatType(rowSeatType)
+                        .priceMultiplier(rowMultiplier)
                         .rowIndex(rowIdx)   // 0-based for frontend grid
                         .colIndex(colIdx)   // 0-based for frontend grid
                         .isDeleted(false)
@@ -111,12 +126,16 @@ public class SeatServiceImpl implements SeatService {
         }
 
         List<Seat> saved = seatRepository.saveAll(toSave);
-        log.info("Bulk generated {} seats in room '{}' (skipped: {})", saved.size(), room.getName(), totalSkipped);
+        List<UUID> savedSeatIds = saved.stream().map(Seat::getId).toList();
+        int syncedSeatStatuses = syncSeatsToFutureShowtimes(room.getId(), savedSeatIds);
+        log.info("Bulk generated {} seats in room '{}' (skipped: {}, synced seat_status: {})",
+                saved.size(), room.getName(), totalSkipped, syncedSeatStatuses);
 
         return SeatBulkGenerateResponse.builder()
                 .totalRequested(totalRequested)
                 .totalCreated(saved.size())
                 .totalSkipped(totalSkipped)
+                .totalSeatStatusesCreated(syncedSeatStatuses)
                 .createdSeats(saved.stream().map(seatMapper::toSeatResponse).collect(Collectors.toList()))
                 .build();
     }
@@ -189,5 +208,52 @@ public class SeatServiceImpl implements SeatService {
     private Seat findActiveSeat(UUID id) {
         return seatRepository.findActiveById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.SEAT_NOT_FOUND));
+    }
+
+    private List<String> normalizeRowLabels(List<String> rowLabels) {
+        return rowLabels.stream()
+                .map(label -> label == null ? "" : label.trim().toUpperCase())
+                .filter(label -> !label.isBlank())
+                .collect(Collectors.collectingAndThen(
+                        Collectors.toCollection(LinkedHashSet::new),
+                        ArrayList::new
+                ));
+    }
+
+    private int syncSeatsToFutureShowtimes(UUID roomId, List<UUID> seatIds) {
+        if (seatIds == null || seatIds.isEmpty()) {
+            return 0;
+        }
+        return seatStatusRepository.insertMissingAvailableForFutureShowtimes(
+                roomId,
+                seatIds,
+                LocalDateTime.now()
+        );
+    }
+
+    private SeatType resolveSeatType(
+            SeatLayoutTemplate layoutTemplate,
+            int rowIndex,
+            int totalRows,
+            SeatType fallbackSeatType
+    ) {
+        if (layoutTemplate != SeatLayoutTemplate.STANDARD_CINEMA || totalRows < 4) {
+            return fallbackSeatType;
+        }
+        if (rowIndex == totalRows - 1) {
+            return SeatType.COUPLE;
+        }
+        if (rowIndex >= totalRows - 3) {
+            return SeatType.VIP;
+        }
+        return SeatType.NORMAL;
+    }
+
+    private BigDecimal defaultMultiplier(SeatType seatType) {
+        return switch (seatType) {
+            case VIP -> BigDecimal.valueOf(1.5);
+            case COUPLE -> BigDecimal.valueOf(1.8);
+            case NORMAL -> BigDecimal.ONE;
+        };
     }
 }

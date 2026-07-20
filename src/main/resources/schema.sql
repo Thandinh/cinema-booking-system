@@ -13,6 +13,12 @@ ALTER TABLE IF EXISTS users
 ALTER TABLE IF EXISTS users
     ADD COLUMN IF NOT EXISTS email_verification_expires_at TIMESTAMP;
 
+ALTER TABLE IF EXISTS users
+    ADD COLUMN IF NOT EXISTS password_reset_token_hash VARCHAR(64);
+
+ALTER TABLE IF EXISTS users
+    ADD COLUMN IF NOT EXISTS password_reset_expires_at TIMESTAMP;
+
 UPDATE users
 SET email_verified = TRUE
 WHERE email_verified IS NULL;
@@ -34,12 +40,35 @@ ALTER TABLE IF EXISTS payments
     ADD CONSTRAINT chk_payment_status
     CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'EXPIRED'));
 
+CREATE TABLE IF NOT EXISTS admin_audit_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    actor_id UUID,
+    actor_username VARCHAR(255),
+    http_method VARCHAR(20) NOT NULL,
+    action VARCHAR(80) NOT NULL,
+    resource VARCHAR(80) NOT NULL,
+    resource_id VARCHAR(100),
+    request_path VARCHAR(500) NOT NULL,
+    query_string VARCHAR(500),
+    ip_address VARCHAR(80),
+    user_agent VARCHAR(500),
+    status_code INT,
+    success BOOLEAN,
+    error_message VARCHAR(1000),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Product-grade indexes for the main read/write paths.
 -- PostgreSQL does not automatically index foreign keys, so keep these explicit.
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_users_email_verification_token_hash
     ON users(email_verification_token_hash)
     WHERE email_verification_token_hash IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_users_password_reset_token_hash
+    ON users(password_reset_token_hash)
+    WHERE password_reset_token_hash IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_users_is_deleted_created_at
     ON users(is_deleted, created_at DESC);
@@ -71,6 +100,13 @@ CREATE INDEX IF NOT EXISTS idx_seats_room_id_is_deleted
 
 CREATE INDEX IF NOT EXISTS idx_movies_status_is_deleted
     ON movies(status, is_deleted);
+
+CREATE INDEX IF NOT EXISTS idx_promotions_admin_filter
+    ON promotions(is_deleted, is_active, start_date, end_date);
+
+CREATE INDEX IF NOT EXISTS idx_promotions_usage_limit
+    ON promotions(usage_limit, used_count)
+    WHERE usage_limit IS NOT NULL AND is_deleted = false;
 
 CREATE INDEX IF NOT EXISTS idx_showtimes_movie_start_time
     ON showtimes(movie_id, start_time)
@@ -104,6 +140,9 @@ CREATE INDEX IF NOT EXISTS idx_seat_status_hold_release
 
 CREATE INDEX IF NOT EXISTS idx_bookings_user_created_at
     ON bookings(user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_bookings_user_status_created_at
+    ON bookings(user_id, status, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_bookings_status_created_at
     ON bookings(status, created_at DESC);
@@ -147,3 +186,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_tickets_booking_detail_id
 
 CREATE INDEX IF NOT EXISTS idx_tickets_status
     ON tickets(status);
+
+CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_created_at
+    ON admin_audit_logs(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_resource_created_at
+    ON admin_audit_logs(resource, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_actor_created_at
+    ON admin_audit_logs(actor_id, created_at DESC)
+    WHERE actor_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_success_created_at
+    ON admin_audit_logs(success, created_at DESC);

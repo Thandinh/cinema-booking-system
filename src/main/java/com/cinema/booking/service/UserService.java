@@ -1,5 +1,8 @@
 package com.cinema.booking.service;
 
+import com.cinema.booking.dto.request.ChangePasswordRequest;
+import com.cinema.booking.dto.request.ForgotPasswordRequest;
+import com.cinema.booking.dto.request.ResetPasswordRequest;
 import com.cinema.booking.dto.request.UserCreationRequest;
 import com.cinema.booking.dto.request.UserUpdateRequest;
 import com.cinema.booking.dto.response.UserResponse;
@@ -30,6 +33,10 @@ public interface UserService {
     void verifyEmail(String token);
 
     void resendEmailVerification(String email);
+
+    void requestPasswordReset(ForgotPasswordRequest request);
+
+    void resetPassword(ResetPasswordRequest request);
 
     /**
      * Admin tạo tài khoản với roles tuỳ chỉnh.
@@ -79,4 +86,10 @@ public interface UserService {
      * @param currentUsername username lấy từ JWT
      */
     UserResponse updateMyProfile(String currentUsername, UserUpdateRequest request);
+
+    /**
+     * Đổi mật khẩu của chính user đang đăng nhập.
+     * Yêu cầu mật khẩu hiện tại để tránh phiên đăng nhập bị lợi dụng.
+     */
+    void changeMyPassword(String currentUsername, ChangePasswordRequest request);
 }

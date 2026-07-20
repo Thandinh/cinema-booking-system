@@ -3,6 +3,7 @@ package com.cinema.booking.service;
 import com.cinema.booking.dto.request.PromotionCreationRequest;
 import com.cinema.booking.dto.request.PromotionUpdateRequest;
 import com.cinema.booking.dto.response.PromotionResponse;
+import com.cinema.booking.enums.PromotionAdminStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -21,6 +22,11 @@ public interface PromotionService {
     PromotionResponse getPromotionByCode(String code);
 
     Page<PromotionResponse> getAllPromotions(Pageable pageable);
+
+    Page<PromotionResponse> getAdminPromotions(
+            Pageable pageable,
+            PromotionAdminStatus status,
+            String keyword);
 
     Page<PromotionResponse> getAvailablePromotions(Pageable pageable);
 }

@@ -1,5 +1,8 @@
 package com.cinema.booking.service.impl;
 
+import com.cinema.booking.dto.request.ChangePasswordRequest;
+import com.cinema.booking.dto.request.ForgotPasswordRequest;
+import com.cinema.booking.dto.request.ResetPasswordRequest;
 import com.cinema.booking.dto.request.UserCreationRequest;
 import com.cinema.booking.dto.request.UserUpdateRequest;
 import com.cinema.booking.dto.response.UserResponse;
@@ -130,6 +133,46 @@ public class UserServiceImpl implements UserService {
                     emailService.sendEmailVerification(user.getEmail(), user.getUsername(), rawVerificationToken);
                     log.info("Resent verification email for user: {}", user.getUsername());
                 });
+    }
+
+    @Override
+    @Transactional
+    public void requestPasswordReset(ForgotPasswordRequest request) {
+        userRepository.findByEmailIgnoreCase(request.getEmail())
+                .filter(user -> !Boolean.TRUE.equals(user.getIsDeleted()))
+                .filter(user -> !Boolean.FALSE.equals(user.getIsActive()))
+                .ifPresent(user -> {
+                    long expiresMinutes = getPasswordResetExpiresMinutes();
+                    String rawResetToken = createPasswordResetTokenFor(user, expiresMinutes);
+                    userRepository.save(user);
+                    emailService.sendPasswordResetEmail(user.getEmail(), user.getUsername(), rawResetToken, expiresMinutes);
+                    log.info("Password reset requested for user: {}", user.getUsername());
+                });
+    }
+
+    @Override
+    @Transactional
+    public void resetPassword(ResetPasswordRequest request) {
+        User user = userRepository.findByPasswordResetTokenHash(hashToken(request.getToken()))
+                .orElseThrow(() -> new AppException(ErrorCode.PASSWORD_RESET_INVALID));
+
+        if (user.getPasswordResetExpiresAt() == null
+                || user.getPasswordResetExpiresAt().isBefore(LocalDateTime.now())) {
+            clearPasswordReset(user);
+            userRepository.save(user);
+            throw new AppException(ErrorCode.PASSWORD_RESET_INVALID);
+        }
+
+        if (!Objects.equals(request.getNewPassword(), request.getConfirmPassword())) {
+            throw new AppException(ErrorCode.PASSWORD_CONFIRM_MISMATCH);
+        }
+
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        user.setEmailVerified(true);
+        clearPasswordReset(user);
+        clearEmailVerification(user);
+        userRepository.save(user);
+        log.info("Password reset completed for user: {}", user.getUsername());
     }
 
     /**
@@ -312,15 +355,29 @@ public class UserServiceImpl implements UserService {
         // Partial update (mapper bỏ qua null fields)
         userMapper.updateUser(user, request);
 
-        // Encode password nếu thay đổi
-        if (request.getPassword() != null && !request.getPassword().isBlank()) {
-            user.setPassword(passwordEncoder.encode(request.getPassword()));
-        }
-
         // roleIds bị bỏ qua hoàn toàn — PROFILE_UPDATE không cho phép đổi role
         User saved = userRepository.save(user);
         log.info("User {} updated own profile", currentUsername);
         return userMapper.toUserResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public void changeMyPassword(String currentUsername, ChangePasswordRequest request) {
+        User user = userRepository.findByUsername(currentUsername)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
+            throw new AppException(ErrorCode.CURRENT_PASSWORD_INVALID);
+        }
+
+        if (!Objects.equals(request.getNewPassword(), request.getConfirmPassword())) {
+            throw new AppException(ErrorCode.PASSWORD_CONFIRM_MISMATCH);
+        }
+
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
+        log.info("User {} changed password", currentUsername);
     }
 
     // =========================================================================
@@ -386,12 +443,23 @@ public class UserServiceImpl implements UserService {
     }
 
     private String createVerificationTokenFor(User user) {
-        byte[] randomBytes = new byte[32];
-        SECURE_RANDOM.nextBytes(randomBytes);
-        String rawToken = Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
+        String rawToken = createRawToken();
         user.setEmailVerificationTokenHash(hashToken(rawToken));
         user.setEmailVerificationExpiresAt(LocalDateTime.now().plusMinutes(getVerificationExpiresMinutes()));
         return rawToken;
+    }
+
+    private String createPasswordResetTokenFor(User user, long expiresMinutes) {
+        String rawToken = createRawToken();
+        user.setPasswordResetTokenHash(hashToken(rawToken));
+        user.setPasswordResetExpiresAt(LocalDateTime.now().plusMinutes(expiresMinutes));
+        return rawToken;
+    }
+
+    private String createRawToken() {
+        byte[] randomBytes = new byte[32];
+        SECURE_RANDOM.nextBytes(randomBytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
     }
 
     private void clearEmailVerification(User user) {
@@ -399,8 +467,17 @@ public class UserServiceImpl implements UserService {
         user.setEmailVerificationExpiresAt(null);
     }
 
+    private void clearPasswordReset(User user) {
+        user.setPasswordResetTokenHash(null);
+        user.setPasswordResetExpiresAt(null);
+    }
+
     private long getVerificationExpiresMinutes() {
         return environment.getProperty("app.email-verification.expires-minutes", Long.class, 1440L);
+    }
+
+    private long getPasswordResetExpiresMinutes() {
+        return environment.getProperty("app.password-reset.expires-minutes", Long.class, 30L);
     }
 
     private String hashToken(String rawToken) {

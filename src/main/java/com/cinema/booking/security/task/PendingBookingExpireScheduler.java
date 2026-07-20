@@ -21,7 +21,7 @@ public class PendingBookingExpireScheduler {
     private final BookingRepository bookingRepository;
     private final BookingService bookingService;
 
-    @Value("${booking.pending-timeout-minutes:10}")
+    @Value("${booking.pending-timeout-minutes:5}")
     int pendingTimeoutMinutes;
 
     @Value("${booking.expired-booking-scan-limit:200}")

@@ -49,9 +49,20 @@ vnpay:
   version: 2.1.0
   command: pay
 
+momo:
+  enabled: ${MOMO_ENABLED:false}
+  endpoint: ${MOMO_ENDPOINT:https://test-payment.momo.vn/v2/gateway/api/create}
+  partner-code: ${MOMO_PARTNER_CODE:}
+  access-key: ${MOMO_ACCESS_KEY:}
+  secret-key: ${MOMO_SECRET_KEY:}
+  request-type: ${MOMO_REQUEST_TYPE:captureWallet}
+  redirect-url: ${MOMO_REDIRECT_URL:${APP_BACKEND_URL:http://localhost:8080}/api/v1/payments/momo-return}
+  ipn-url: ${MOMO_IPN_URL:${APP_BACKEND_URL:http://localhost:8080}/api/v1/payments/momo-ipn}
+  lang: ${MOMO_LANG:vi}
+
 booking:
-  seat-hold-minutes: ${BOOKING_SEAT_HOLD_MINUTES:${BOOKING_PENDING_TIMEOUT_MINUTES:10}}
-  pending-timeout-minutes: ${BOOKING_PENDING_TIMEOUT_MINUTES:10}
+  seat-hold-minutes: ${BOOKING_SEAT_HOLD_MINUTES:${BOOKING_PENDING_TIMEOUT_MINUTES:5}}
+  pending-timeout-minutes: ${BOOKING_PENDING_TIMEOUT_MINUTES:5}
   expired-hold-scan-delay-ms: ${BOOKING_EXPIRED_HOLD_SCAN_DELAY_MS:30000}
   expired-hold-scan-limit: ${BOOKING_EXPIRED_HOLD_SCAN_LIMIT:500}
   expired-booking-scan-delay-ms: ${BOOKING_EXPIRED_BOOKING_SCAN_DELAY_MS:30000}
@@ -65,6 +76,8 @@ app:
   frontend-url: ${APP_FRONTEND_URL:http://localhost:5173}
   email-verification:
     expires-minutes: ${EMAIL_VERIFICATION_EXPIRES_MINUTES:1440}
+  password-reset:
+    expires-minutes: ${PASSWORD_RESET_EXPIRES_MINUTES:30}
 
 server:
   port: ${SERVER_PORT:8080}

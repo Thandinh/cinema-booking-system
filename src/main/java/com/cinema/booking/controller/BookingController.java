@@ -66,10 +66,11 @@ public class BookingController {
     @GetMapping("/my")
     @PreAuthorize("hasAuthority('BOOKING_VIEW_OWN')")
     public ApiResponse<Page<BookingResponse>> getMyBookings(
+            @RequestParam(required = false) BookingStatus status,
             @PageableDefault(size = 10, sort = "createdAt") Pageable pageable) {
         return ApiResponse.<Page<BookingResponse>>builder()
                 .code(1000)
-                .result(bookingService.getMyBookings(pageable))
+                .result(bookingService.getMyBookings(status, pageable))
                 .build();
     }
 

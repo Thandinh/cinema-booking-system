@@ -32,11 +32,15 @@ public class SecurityConfig {
             "/auth/refresh",
             "/api/v1/users/register",
             "/api/v1/users/verify-email",
-            "/api/v1/users/resend-verification"
+            "/api/v1/users/resend-verification",
+            "/api/v1/users/forgot-password",
+            "/api/v1/users/reset-password",
+            "/api/v1/payments/momo-ipn"
     };
 
     private static final String[] PUBLIC_GET_ENDPOINTS = {
             "/api/v1/payments/vnpay-callback",
+            "/api/v1/payments/momo-return",
             "/api/v1/movies/**",
             "/api/v1/showtimes/**",
             "/api/v1/bookings/showtimes/**",

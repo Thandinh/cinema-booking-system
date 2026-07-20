@@ -33,6 +33,9 @@ public enum ErrorCode {
     EMAIL_REQUIRED         (1019, "Email is required",                                HttpStatus.BAD_REQUEST),
     EMAIL_NOT_VERIFIED     (1020, "Please verify your email before signing in",       HttpStatus.FORBIDDEN),
     EMAIL_VERIFICATION_INVALID(1021, "Email verification link is invalid or expired", HttpStatus.BAD_REQUEST),
+    CURRENT_PASSWORD_INVALID(1022, "Current password is incorrect",                   HttpStatus.BAD_REQUEST),
+    PASSWORD_CONFIRM_MISMATCH(1023, "Password confirmation does not match",           HttpStatus.BAD_REQUEST),
+    PASSWORD_RESET_INVALID(1024, "Password reset link is invalid or expired",         HttpStatus.BAD_REQUEST),
 
     // ── Movie ────────────────────────────────────────────────────────────────
     MOVIE_NOT_FOUND        (2001, "Movie not found",                      HttpStatus.NOT_FOUND),
@@ -81,6 +84,10 @@ public enum ErrorCode {
     PROMOTION_EXPIRED          (6019, "Promotion has expired",                 HttpStatus.BAD_REQUEST),
     PROMOTION_LIMIT_REACHED    (6020, "Promotion usage limit reached",         HttpStatus.BAD_REQUEST),
     PROMOTION_MIN_ORDER_NOT_MET(6021, "Order value does not meet minimum requirement", HttpStatus.BAD_REQUEST),
+    DISCOUNT_TYPE_REQUIRED     (6022, "Discount type is required",          HttpStatus.BAD_REQUEST),
+    DISCOUNT_VALUE_REQUIRED    (6023, "Discount value is required",         HttpStatus.BAD_REQUEST),
+    MAX_DISCOUNT_INVALID       (6024, "Max discount amount must be >= 0",   HttpStatus.BAD_REQUEST),
+    END_DATE_FUTURE            (6025, "End date must be in the future",     HttpStatus.BAD_REQUEST),
 
     // ── Seat Availability ────────────────────────────────────────────────
     SEAT_NOT_AVAILABLE         (4020, "One or more seats are not available",   HttpStatus.CONFLICT),
@@ -115,6 +122,9 @@ public enum ErrorCode {
     // ── Payment ───────────────────────────────────────────────────────────
     INVALID_SECURE_TOKEN       (9001, "Invalid or expired secure token",       HttpStatus.BAD_REQUEST),
     PAYMENT_AMOUNT_MISMATCH    (9002, "Payment amount does not match total",   HttpStatus.BAD_REQUEST),
+    PAYMENT_METHOD_UNAVAILABLE (9003, "Payment method is not available",       HttpStatus.BAD_REQUEST),
+    PAYMENT_INVALID_CALLBACK   (9004, "Payment callback signature is invalid", HttpStatus.BAD_REQUEST),
+    PAYMENT_PROVIDER_ERROR     (9005, "Payment provider returned an error",    HttpStatus.BAD_GATEWAY),
     ;
 
     ErrorCode(int code, String message, HttpStatusCode statusCode) {

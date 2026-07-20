@@ -21,9 +21,23 @@ ALTER TABLE users
 ALTER TABLE users
     ADD COLUMN IF NOT EXISTS email_verification_expires_at TIMESTAMP;
 
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS password_reset_token_hash VARCHAR(64);
+
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS password_reset_expires_at TIMESTAMP;
+
 UPDATE users
 SET email_verified = TRUE
 WHERE email_verified IS NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_users_password_reset_token_hash
+    ON users(password_reset_token_hash)
+    WHERE password_reset_token_hash IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_users_email_verification_token_hash
+    ON users(email_verification_token_hash)
+    WHERE email_verification_token_hash IS NOT NULL;
 
 ALTER TABLE bookings
     ADD COLUMN IF NOT EXISTS payment_expires_at TIMESTAMP;
@@ -473,6 +487,245 @@ SELECT 'Quick test ticket QR: ' || qr_code AS demo_ticket_qr
 FROM inserted_tickets;
 
 -- =========================================
+-- 8B. QUICK TEST DATA: ORDER STATUS CASES
+-- =========================================
+-- Các case này dùng để test tab "Đơn đã đặt" trên client:
+-- 1) PENDING_FUTURE: còn hạn thanh toán -> hiện nút Thanh toán.
+-- 2) FAILED_FUTURE: thanh toán thất bại, suất còn tương lai -> hiện nút Chọn lại ghế.
+-- 3) EXPIRED_PAST: đơn hết hạn, suất đã qua -> hiện nhãn Suất chiếu đã qua.
+-- 4) CANCELLED_PAST: đơn đã hủy, suất đã qua -> hiện nhãn Suất chiếu đã qua.
+WITH demo_user AS (
+    SELECT id
+    FROM users
+    WHERE username = 'user1'
+    LIMIT 1
+),
+demo_room AS (
+    SELECT r.id
+    FROM rooms r
+    JOIN cinemas c ON c.id = r.cinema_id
+    WHERE c.name = 'CGV Sư Vạn Hạnh'
+      AND r.name = 'Phòng 01 - Standard'
+    LIMIT 1
+),
+demo_movies AS (
+    SELECT title, id
+    FROM movies
+    WHERE title IN (
+        'Dune: Part Two',
+        'Inside Out 2',
+        'Twisters',
+        'Mai'
+    )
+),
+cases AS (
+    SELECT *
+    FROM (VALUES
+        (
+            'PENDING_FUTURE',
+            '00000000-0000-0000-0000-000000000911'::uuid,
+            '00000000-0000-0000-0000-000000000912'::uuid,
+            '00000000-0000-0000-0000-000000000913'::uuid,
+            'Dune: Part Two',
+            'B',
+            ARRAY[1, 2]::int[],
+            NOW() + INTERVAL '2 hours',
+            NOW() + INTERVAL '4 hours',
+            'UPCOMING',
+            'PENDING',
+            'PENDING',
+            'demo-pending-booking-token',
+            NOW() + INTERVAL '5 minutes',
+            90000::numeric
+        ),
+        (
+            'FAILED_FUTURE',
+            '00000000-0000-0000-0000-000000000921'::uuid,
+            '00000000-0000-0000-0000-000000000922'::uuid,
+            '00000000-0000-0000-0000-000000000923'::uuid,
+            'Inside Out 2',
+            'C',
+            ARRAY[1, 2]::int[],
+            NOW() + INTERVAL '3 hours',
+            NOW() + INTERVAL '5 hours',
+            'UPCOMING',
+            'FAILED',
+            'FAILED',
+            'demo-failed-booking-token',
+            NOW() - INTERVAL '5 minutes',
+            80000::numeric
+        ),
+        (
+            'EXPIRED_PAST',
+            '00000000-0000-0000-0000-000000000931'::uuid,
+            '00000000-0000-0000-0000-000000000932'::uuid,
+            '00000000-0000-0000-0000-000000000933'::uuid,
+            'Twisters',
+            'D',
+            ARRAY[1, 2]::int[],
+            NOW() - INTERVAL '4 hours',
+            NOW() - INTERVAL '2 hours',
+            'ENDED',
+            'EXPIRED',
+            'EXPIRED',
+            'demo-expired-booking-token',
+            NOW() - INTERVAL '3 hours',
+            85000::numeric
+        ),
+        (
+            'CANCELLED_PAST',
+            '00000000-0000-0000-0000-000000000941'::uuid,
+            '00000000-0000-0000-0000-000000000942'::uuid,
+            NULL::uuid,
+            'Mai',
+            'E',
+            ARRAY[1, 2]::int[],
+            NOW() - INTERVAL '5 hours',
+            NOW() - INTERVAL '3 hours',
+            'ENDED',
+            'CANCELLED',
+            NULL,
+            'demo-cancelled-booking-token',
+            NOW() - INTERVAL '4 hours',
+            75000::numeric
+        )
+    ) AS t(
+        case_key, showtime_id, booking_id, payment_id, movie_title,
+        row_label, seat_numbers, start_time, end_time, showtime_status,
+        booking_status, payment_status, secure_token, payment_expires_at, base_price
+    )
+),
+inserted_showtimes AS (
+    INSERT INTO showtimes (
+        id, movie_id, room_id, start_time, end_time,
+        base_price, status, created_at, updated_at, is_deleted
+    )
+    SELECT
+        c.showtime_id,
+        m.id,
+        r.id,
+        c.start_time,
+        c.end_time,
+        c.base_price,
+        c.showtime_status,
+        NOW(),
+        NOW(),
+        false
+    FROM cases c
+    JOIN demo_movies m ON m.title = c.movie_title
+    CROSS JOIN demo_room r
+    RETURNING id, room_id
+),
+inserted_case_seat_status AS (
+    INSERT INTO seat_status (
+        id, showtime_id, seat_id, status, hold_by, hold_until, version, created_at, updated_at
+    )
+    SELECT
+        uuid_generate_v4(),
+        st.id,
+        s.id,
+        CASE
+            WHEN c.booking_status = 'PENDING'
+             AND s.row_label = c.row_label
+             AND s.seat_number = ANY(c.seat_numbers)
+                THEN 'HOLD'
+            ELSE 'AVAILABLE'
+        END,
+        CASE
+            WHEN c.booking_status = 'PENDING'
+             AND s.row_label = c.row_label
+             AND s.seat_number = ANY(c.seat_numbers)
+                THEN u.id
+            ELSE NULL
+        END,
+        CASE
+            WHEN c.booking_status = 'PENDING'
+             AND s.row_label = c.row_label
+             AND s.seat_number = ANY(c.seat_numbers)
+                THEN c.payment_expires_at
+            ELSE NULL
+        END,
+        0,
+        NOW(),
+        NOW()
+    FROM inserted_showtimes st
+    JOIN cases c ON c.showtime_id = st.id
+    JOIN seats s ON s.room_id = st.room_id
+    CROSS JOIN demo_user u
+    WHERE s.is_deleted = false
+    RETURNING seat_id
+),
+inserted_bookings AS (
+    INSERT INTO bookings (
+        id, user_id, showtime_id, promotion_id, total_price,
+        discount_amount, status, secure_token, payment_expires_at, created_at, updated_at
+    )
+    SELECT
+        c.booking_id,
+        u.id,
+        c.showtime_id,
+        NULL,
+        c.base_price * 2,
+        0,
+        c.booking_status,
+        c.secure_token,
+        c.payment_expires_at,
+        NOW(),
+        NOW()
+    FROM cases c
+    CROSS JOIN demo_user u
+    RETURNING id
+),
+selected_case_seats AS (
+    SELECT
+        c.case_key,
+        c.booking_id,
+        c.base_price,
+        s.id AS seat_id
+    FROM cases c
+    JOIN inserted_showtimes st ON st.id = c.showtime_id
+    JOIN seats s ON s.room_id = st.room_id
+    WHERE s.row_label = c.row_label
+      AND s.seat_number = ANY(c.seat_numbers)
+),
+inserted_case_booking_details AS (
+    INSERT INTO booking_details (
+        id, booking_id, seat_id, price_at_booking, created_at, updated_at
+    )
+    SELECT
+        uuid_generate_v4(),
+        s.booking_id,
+        s.seat_id,
+        s.base_price,
+        NOW(),
+        NOW()
+    FROM selected_case_seats s
+    RETURNING id
+),
+inserted_case_payments AS (
+    INSERT INTO payments (
+        id, booking_id, amount, method, transaction_no,
+        status, provider_response, payment_time, created_at, updated_at
+    )
+    SELECT
+        c.payment_id,
+        c.booking_id,
+        c.base_price * 2,
+        'VNPAY',
+        'DEMO_' || c.case_key,
+        c.payment_status,
+        jsonb_build_object('demo', true, 'case', c.case_key),
+        CASE WHEN c.payment_status = 'PENDING' THEN NULL ELSE NOW() END,
+        NOW(),
+        NOW()
+    FROM cases c
+    WHERE c.payment_id IS NOT NULL
+      AND c.payment_status IS NOT NULL
+    RETURNING id
+)
+SELECT 'Quick test order cases seeded: PENDING_FUTURE, FAILED_FUTURE, EXPIRED_PAST, CANCELLED_PAST' AS demo_order_cases;
+
+-- =========================================
 -- 9. KIỂM TRA DỮ LIỆU SAU KHI SEED
 -- =========================================
 DO $$
@@ -515,7 +768,7 @@ END $$;
 -- admin: tạo bởi ApplicationInitConfig, mật khẩu mặc định lấy từ app.admin.default-password hoặc admin123.
 -- staff1 / user1 / user2: mật khẩu 123456.
 -- Kỳ vọng dữ liệu:
--- 17 phim NOW_SHOWING, 8 rạp, 16 phòng, 1536 ghế, 321 suất chiếu, 30816 dòng seat_status.
+-- 17 phim NOW_SHOWING, 8 rạp, 16 phòng, 1536 ghế, 325 suất chiếu, 31200 dòng seat_status.
 -- Vé test nhanh:
 -- user1 có booking SUCCESS tại CGV Sư Vạn Hạnh, Phòng 01 - Standard, ghế A1/A2, suất chiếu bắt đầu sau 30 phút.
 -- Lấy QR để staff check-in:
@@ -524,3 +777,9 @@ END $$;
 -- JOIN booking_details bd ON bd.id = t.booking_detail_id
 -- JOIN bookings b ON b.id = bd.booking_id
 -- WHERE b.secure_token = 'demo-success-booking-token';
+-- Case test tab "Đơn đã đặt" cho user1:
+-- SUCCESS: demo-success-booking-token, suất sau 30 phút, ghế A1/A2, có QR.
+-- PENDING: demo-pending-booking-token, suất sau 2 giờ, ghế B1/B2, còn hạn thanh toán.
+-- FAILED: demo-failed-booking-token, suất sau 3 giờ, ghế C1/C2, có thể chọn lại ghế.
+-- EXPIRED: demo-expired-booking-token, suất đã qua, không hiện nút chọn lại ghế.
+-- CANCELLED: demo-cancelled-booking-token, suất đã qua, không hiện nút chọn lại ghế.

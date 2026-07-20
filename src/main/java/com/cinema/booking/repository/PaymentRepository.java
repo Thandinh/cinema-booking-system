@@ -2,7 +2,9 @@ package com.cinema.booking.repository;
 
 import com.cinema.booking.enums.BookingStatus;
 import com.cinema.booking.enums.PaymentStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -20,15 +22,69 @@ import java.util.UUID;
 @Repository
 public interface PaymentRepository extends JpaRepository<Payment, UUID> {
 
-    @Query(value = "SELECT p FROM Payment p JOIN FETCH p.booking b WHERE b.user.id = :userId",
+    @Query(value = """
+            SELECT p
+            FROM Payment p
+            JOIN FETCH p.booking b
+            JOIN FETCH b.user u
+            JOIN FETCH b.showtime st
+            JOIN FETCH st.movie m
+            JOIN FETCH st.room r
+            JOIN FETCH r.cinema c
+            WHERE b.user.id = :userId
+            """,
            countQuery = "SELECT COUNT(p) FROM Payment p WHERE p.booking.user.id = :userId")
     Page<Payment> findByUserId(@Param("userId") UUID userId, Pageable pageable);
 
-    @Query(value = "SELECT p FROM Payment p JOIN FETCH p.booking",
-           countQuery = "SELECT COUNT(p) FROM Payment p")
-    Page<Payment> findAllWithDetails(Pageable pageable);
+    @Query(value = """
+            SELECT p
+            FROM Payment p
+            LEFT JOIN FETCH p.booking b
+            LEFT JOIN FETCH b.user u
+            LEFT JOIN FETCH b.showtime st
+            LEFT JOIN FETCH st.movie m
+            LEFT JOIN FETCH st.room r
+            LEFT JOIN FETCH r.cinema c
+            WHERE (:status IS NULL OR p.status = :status)
+              AND (:method IS NULL OR p.method = :method)
+              AND (
+                    :keywordPattern IS NULL
+                    OR LOWER(p.transactionNo) LIKE :keywordPattern
+                    OR LOWER(CAST(b.id AS string)) LIKE :keywordPattern
+                    OR LOWER(u.username) LIKE :keywordPattern
+                    OR LOWER(u.email) LIKE :keywordPattern
+                    OR LOWER(m.title) LIKE :keywordPattern
+              )
+            """,
+           countQuery = """
+            SELECT COUNT(p)
+            FROM Payment p
+            LEFT JOIN p.booking b
+            LEFT JOIN b.user u
+            LEFT JOIN b.showtime st
+            LEFT JOIN st.movie m
+            WHERE (:status IS NULL OR p.status = :status)
+              AND (:method IS NULL OR p.method = :method)
+              AND (
+                    :keywordPattern IS NULL
+                    OR LOWER(p.transactionNo) LIKE :keywordPattern
+                    OR LOWER(CAST(b.id AS string)) LIKE :keywordPattern
+                    OR LOWER(u.username) LIKE :keywordPattern
+                    OR LOWER(u.email) LIKE :keywordPattern
+                    OR LOWER(m.title) LIKE :keywordPattern
+              )
+            """)
+    Page<Payment> findAllWithDetails(
+            @Param("status") PaymentStatus status,
+            @Param("method") com.cinema.booking.enums.PaymentMethod method,
+            @Param("keywordPattern") String keywordPattern,
+            Pageable pageable);
 
     Optional<Payment> findByTransactionNo(String transactionNo);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM Payment p JOIN FETCH p.booking b WHERE p.transactionNo = :transactionNo")
+    Optional<Payment> findLockedByTransactionNo(@Param("transactionNo") String transactionNo);
 
     List<Payment> findByBookingIdInAndStatus(List<UUID> bookingIds, PaymentStatus status);
 

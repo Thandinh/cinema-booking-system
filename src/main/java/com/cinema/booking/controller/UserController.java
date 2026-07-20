@@ -1,7 +1,10 @@
 package com.cinema.booking.controller;
 
+import com.cinema.booking.dto.request.ChangePasswordRequest;
 import com.cinema.booking.dto.request.EmailVerificationRequest;
+import com.cinema.booking.dto.request.ForgotPasswordRequest;
 import com.cinema.booking.dto.request.ResendEmailVerificationRequest;
+import com.cinema.booking.dto.request.ResetPasswordRequest;
 import com.cinema.booking.dto.request.UserCreationRequest;
 import com.cinema.booking.dto.request.UserUpdateRequest;
 import com.cinema.booking.dto.response.ApiResponse;
@@ -83,6 +86,24 @@ public class UserController {
         return ApiResponse.<Void>builder()
                 .code(1000)
                 .message("If the email exists and is not verified, a new verification email has been sent")
+                .build();
+    }
+
+    @PostMapping("/forgot-password")
+    public ApiResponse<Void> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        userService.requestPasswordReset(request);
+        return ApiResponse.<Void>builder()
+                .code(1000)
+                .message("If the email exists, a password reset link has been sent")
+                .build();
+    }
+
+    @PostMapping("/reset-password")
+    public ApiResponse<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        userService.resetPassword(request);
+        return ApiResponse.<Void>builder()
+                .code(1000)
+                .message("Password reset successfully")
                 .build();
     }
 
@@ -229,6 +250,18 @@ public class UserController {
                 .code(1000)
                 .message("Profile updated successfully")
                 .result(userService.updateMyProfile(currentUsername, request))
+                .build();
+    }
+
+    @PatchMapping("/me/password")
+    @PreAuthorize("hasAuthority('PROFILE_UPDATE')")
+    public ApiResponse<Void> changeMyPassword(
+            @Valid @RequestBody ChangePasswordRequest request,
+            Authentication authentication) {
+        userService.changeMyPassword(authentication.getName(), request);
+        return ApiResponse.<Void>builder()
+                .code(1000)
+                .message("Password changed successfully")
                 .build();
     }
 }

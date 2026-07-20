@@ -49,6 +49,11 @@ public class User extends BaseEntity {
 
     private LocalDateTime emailVerificationExpiresAt;
 
+    @Column(length = 64)
+    private String passwordResetTokenHash;
+
+    private LocalDateTime passwordResetExpiresAt;
+
     private Boolean isActive = true;
 
     private Boolean isDeleted = false;
