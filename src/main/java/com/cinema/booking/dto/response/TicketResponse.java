@@ -18,6 +18,10 @@ public class TicketResponse {
     String qrImage;
     TicketStatus status;
     LocalDateTime checkInTime;
+    UUID checkedInById;
+    String checkedInByUsername;
+    String checkedInByName;
+    Boolean alreadyCheckedIn;
 
     // Thông tin vé để hiển thị
     String movieTitle;

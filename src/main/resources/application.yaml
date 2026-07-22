@@ -68,6 +68,10 @@ booking:
   expired-booking-scan-delay-ms: ${BOOKING_EXPIRED_BOOKING_SCAN_DELAY_MS:30000}
   expired-booking-scan-limit: ${BOOKING_EXPIRED_BOOKING_SCAN_LIMIT:200}
 
+showtime:
+  public-days-ahead: ${SHOWTIME_PUBLIC_DAYS_AHEAD:7}
+  booking-cutoff-minutes: ${SHOWTIME_BOOKING_CUTOFF_MINUTES:15}
+
 oauth:
   google:
     client-id: ${GOOGLE_CLIENT_ID:}
@@ -90,6 +94,7 @@ jwt:
 ticket:
   qr-secret: ${TICKET_QR_SECRET:${JWT_SECRET:default-dev-secret-key-32-chars-minimum}}
   check-in-early-minutes: ${TICKET_CHECK_IN_EARLY_MINUTES:30}
+  check-in-late-minutes: ${TICKET_CHECK_IN_LATE_MINUTES:30}
 
 logging:
   file:

@@ -1,5 +1,6 @@
 package com.cinema.booking.controller;
 
+import com.cinema.booking.dto.request.ApplyPromotionRequest;
 import com.cinema.booking.dto.request.CreateBookingRequest;
 import com.cinema.booking.dto.request.HoldSeatRequest;
 import com.cinema.booking.dto.request.TicketCheckInRequest;
@@ -107,6 +108,28 @@ public class BookingController {
                 .build();
     }
 
+    @PatchMapping("/{id}/promotion")
+    @PreAuthorize("hasAuthority('BOOKING_VIEW_OWN')")
+    public ApiResponse<BookingResponse> applyPromotion(
+            @PathVariable UUID id,
+            @Valid @RequestBody ApplyPromotionRequest request) {
+        return ApiResponse.<BookingResponse>builder()
+                .code(1000)
+                .message("Promotion applied")
+                .result(bookingService.applyPromotion(id, request.getPromotionCode()))
+                .build();
+    }
+
+    @DeleteMapping("/{id}/promotion")
+    @PreAuthorize("hasAuthority('BOOKING_VIEW_OWN')")
+    public ApiResponse<BookingResponse> removePromotion(@PathVariable UUID id) {
+        return ApiResponse.<BookingResponse>builder()
+                .code(1000)
+                .message("Promotion removed")
+                .result(bookingService.removePromotion(id))
+                .build();
+    }
+
     // ── TICKETS ──────────────────────────────────────────────────────────────
     @GetMapping("/tickets/my")
     @PreAuthorize("hasAuthority('TICKET_VIEW_OWN')")
@@ -122,11 +145,16 @@ public class BookingController {
     @PreAuthorize("hasAuthority('TICKET_CHECKIN')")
     public ApiResponse<TicketResponse> checkIn(
             @RequestParam(required = false) String qrCode,
+            @RequestParam(required = false) UUID cinemaId,
+            @RequestParam(required = false) UUID showtimeId,
             @Valid @RequestBody(required = false) TicketCheckInRequest request) {
         return ApiResponse.<TicketResponse>builder()
                 .code(1000)
                 .message("Check-in successful")
-                .result(bookingService.checkInTicket(resolveQrCode(qrCode, request)))
+                .result(bookingService.checkInTicket(
+                        resolveQrCode(qrCode, request),
+                        resolveCinemaId(cinemaId, request),
+                        resolveShowtimeId(showtimeId, request)))
                 .build();
     }
 
@@ -134,6 +162,22 @@ public class BookingController {
         String value = request != null ? request.getQrCode() : qrCode;
         if (value == null || value.isBlank()) {
             throw new AppException(ErrorCode.TICKET_QR_REQUIRED);
+        }
+        return value;
+    }
+
+    private UUID resolveCinemaId(UUID cinemaId, TicketCheckInRequest request) {
+        UUID value = request != null ? request.getCinemaId() : cinemaId;
+        if (value == null) {
+            throw new AppException(ErrorCode.TICKET_CHECKIN_CONTEXT_REQUIRED);
+        }
+        return value;
+    }
+
+    private UUID resolveShowtimeId(UUID showtimeId, TicketCheckInRequest request) {
+        UUID value = request != null ? request.getShowtimeId() : showtimeId;
+        if (value == null) {
+            throw new AppException(ErrorCode.TICKET_CHECKIN_CONTEXT_REQUIRED);
         }
         return value;
     }

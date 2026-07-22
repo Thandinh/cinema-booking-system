@@ -35,4 +35,8 @@ public class Ticket extends BaseEntity {
     TicketStatus status = TicketStatus.ACTIVE;
 
     LocalDateTime checkInTime;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "checked_in_by")
+    User checkedInBy;
 }

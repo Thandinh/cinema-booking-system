@@ -30,6 +30,12 @@ public interface BookingService {
     /** Hủy booking (BOOKING_CANCEL_OWN / BOOKING_CANCEL_ALL). */
     BookingResponse cancelBooking(UUID bookingId);
 
+    /** Áp mã giảm giá cho booking PENDING của chính user. */
+    BookingResponse applyPromotion(UUID bookingId, String promotionCode);
+
+    /** Gỡ mã giảm giá khỏi booking PENDING của chính user. */
+    BookingResponse removePromotion(UUID bookingId);
+
     /** Hết hạn thanh toán, nhả ghế và đánh dấu EXPIRED. */
     BookingResponse expirePendingBooking(UUID bookingId);
 
@@ -49,5 +55,5 @@ public interface BookingService {
     Page<TicketResponse> getMyTickets(Pageable pageable);
 
     /** Check-in QR (TICKET_CHECKIN). */
-    TicketResponse checkInTicket(String qrCode);
+    TicketResponse checkInTicket(String qrCode, UUID cinemaId, UUID showtimeId);
 }

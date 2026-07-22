@@ -24,4 +24,6 @@ public interface ShowtimeService {
     List<ShowtimeResponse> getShowtimesByMovieId(UUID movieId);
     
     Page<ShowtimeResponse> getShowtimesByCinemaId(UUID cinemaId, Pageable pageable);
+
+    List<ShowtimeResponse> getOpenCheckInShowtimes(UUID cinemaId);
 }

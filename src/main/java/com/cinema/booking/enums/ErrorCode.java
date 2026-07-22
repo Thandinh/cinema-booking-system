@@ -88,6 +88,7 @@ public enum ErrorCode {
     DISCOUNT_VALUE_REQUIRED    (6023, "Discount value is required",         HttpStatus.BAD_REQUEST),
     MAX_DISCOUNT_INVALID       (6024, "Max discount amount must be >= 0",   HttpStatus.BAD_REQUEST),
     END_DATE_FUTURE            (6025, "End date must be in the future",     HttpStatus.BAD_REQUEST),
+    PROMOTION_CODE_REQUIRED    (6026, "Promotion code is required",         HttpStatus.BAD_REQUEST),
 
     // ── Seat Availability ────────────────────────────────────────────────
     SEAT_NOT_AVAILABLE         (4020, "One or more seats are not available",   HttpStatus.CONFLICT),
@@ -114,6 +115,9 @@ public enum ErrorCode {
     TICKET_CHECKIN_TOO_EARLY   (8006, "Ticket check-in is not open yet",       HttpStatus.CONFLICT),
     TICKET_CHECKIN_EXPIRED     (8007, "Ticket check-in window has expired",    HttpStatus.CONFLICT),
     TICKET_QR_REQUIRED         (8010, "Ticket QR code is required",            HttpStatus.BAD_REQUEST),
+    TICKET_CHECKIN_CONTEXT_REQUIRED (8011, "Check-in cinema and showtime are required", HttpStatus.BAD_REQUEST),
+    TICKET_WRONG_CINEMA        (8012, "Ticket does not belong to this cinema", HttpStatus.CONFLICT),
+    TICKET_WRONG_SHOWTIME      (8013, "Ticket does not belong to this check-in showtime", HttpStatus.CONFLICT),
     BASE_PRICE_REQUIRED        (5013, "Base price is required",                HttpStatus.BAD_REQUEST),
     START_TIME_FUTURE          (5014, "Start time must be in the future",      HttpStatus.BAD_REQUEST),
     END_TIME_FUTURE            (5015, "End time must be in the future",        HttpStatus.BAD_REQUEST),

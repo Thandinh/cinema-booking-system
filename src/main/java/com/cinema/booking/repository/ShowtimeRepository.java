@@ -74,6 +74,22 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, UUID> {
             ORDER BY s.startTime ASC
             """)
     List<Showtime> findActiveByMovieId(@Param("movieId") UUID movieId);
+
+    @Query("""
+            SELECT s FROM Showtime s
+            JOIN FETCH s.movie
+            JOIN FETCH s.room r
+            JOIN FETCH r.cinema
+            WHERE s.movie.id = :movieId
+              AND s.isDeleted = false
+              AND s.status = com.cinema.booking.enums.ShowtimeStatus.UPCOMING
+              AND s.startTime >= :fromTime
+              AND s.startTime < :toTime
+            ORDER BY s.startTime ASC
+            """)
+    List<Showtime> findBookableByMovieId(@Param("movieId") UUID movieId,
+                                         @Param("fromTime") LocalDateTime fromTime,
+                                         @Param("toTime") LocalDateTime toTime);
     
     // Lưu ý: Đối với Spring Data JPA Page, khi dùng JOIN FETCH bắt buộc phải viết kèm một query COUNT riêng biệt
     @Query(value = """
@@ -85,6 +101,49 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, UUID> {
             """,
            countQuery = "SELECT COUNT(s) FROM Showtime s WHERE s.room.cinema.id = :cinemaId AND s.isDeleted = false")
     Page<Showtime> findActiveByCinemaId(@Param("cinemaId") UUID cinemaId, Pageable pageable);
+
+    @Query(value = """
+            SELECT s FROM Showtime s
+            JOIN FETCH s.movie
+            JOIN FETCH s.room r
+            JOIN FETCH r.cinema
+            WHERE r.cinema.id = :cinemaId
+              AND s.isDeleted = false
+              AND s.status = com.cinema.booking.enums.ShowtimeStatus.UPCOMING
+              AND s.startTime >= :fromTime
+              AND s.startTime < :toTime
+            """,
+           countQuery = """
+            SELECT COUNT(s) FROM Showtime s
+            WHERE s.room.cinema.id = :cinemaId
+              AND s.isDeleted = false
+              AND s.status = com.cinema.booking.enums.ShowtimeStatus.UPCOMING
+              AND s.startTime >= :fromTime
+              AND s.startTime < :toTime
+            """)
+    Page<Showtime> findBookableByCinemaId(@Param("cinemaId") UUID cinemaId,
+                                          @Param("fromTime") LocalDateTime fromTime,
+                                          @Param("toTime") LocalDateTime toTime,
+                                          Pageable pageable);
+
+    @Query("""
+            SELECT s FROM Showtime s
+            JOIN FETCH s.movie
+            JOIN FETCH s.room r
+            JOIN FETCH r.cinema
+            WHERE r.cinema.id = :cinemaId
+              AND s.isDeleted = false
+              AND s.status IN (
+                  com.cinema.booking.enums.ShowtimeStatus.UPCOMING,
+                  com.cinema.booking.enums.ShowtimeStatus.ONGOING
+              )
+              AND s.startTime >= :earliestStartTime
+              AND s.startTime <= :latestStartTime
+            ORDER BY s.startTime ASC, r.name ASC
+            """)
+    List<Showtime> findOpenForCheckIn(@Param("cinemaId") UUID cinemaId,
+                                      @Param("earliestStartTime") LocalDateTime earliestStartTime,
+                                      @Param("latestStartTime") LocalDateTime latestStartTime);
 
     // ── Analytics ─────────────────────────────────────────────────────────────
 

@@ -67,6 +67,10 @@ public class BookingServiceImpl implements BookingService {
     @NonFinal
     int checkInEarlyMinutes;
 
+    @Value("${ticket.check-in-late-minutes:30}")
+    @NonFinal
+    int checkInLateMinutes;
+
     @Value("${booking.pending-timeout-minutes:5}")
     @NonFinal
     int bookingPendingTimeoutMinutes;
@@ -74,6 +78,10 @@ public class BookingServiceImpl implements BookingService {
     @Value("${booking.seat-hold-minutes:${booking.pending-timeout-minutes:5}}")
     @NonFinal
     int seatHoldMinutes;
+
+    @Value("${showtime.booking-cutoff-minutes:15}")
+    @NonFinal
+    int showtimeBookingCutoffMinutes;
 
     // =========================================================================
     // BƯỚC 1: GIỮ GHẾ
@@ -87,9 +95,7 @@ public class BookingServiceImpl implements BookingService {
         Showtime showtime = showtimeRepository.findActiveById(request.getShowtimeId())
                 .orElseThrow(() -> new AppException(ErrorCode.SHOWTIME_NOT_FOUND));
 
-        if (showtime.getStatus() != ShowtimeStatus.UPCOMING && showtime.getStatus() != ShowtimeStatus.ONGOING) {
-            throw new AppException(ErrorCode.SHOWTIME_NOT_BOOKABLE);
-        }
+        validateShowtimeBookableForNewHold(showtime);
 
         // Load các SeatStatus với PESSIMISTIC_WRITE lock — đây là điểm chống race condition
         List<SeatStatus> seatStatuses = seatStatusRepository.findForUpdateByShowtimeAndSeats(
@@ -153,6 +159,10 @@ public class BookingServiceImpl implements BookingService {
 
         Showtime showtime = showtimeRepository.findActiveById(request.getShowtimeId())
                 .orElseThrow(() -> new AppException(ErrorCode.SHOWTIME_NOT_FOUND));
+
+        if (showtime.getStatus() != ShowtimeStatus.UPCOMING) {
+            throw new AppException(ErrorCode.SHOWTIME_NOT_BOOKABLE);
+        }
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
@@ -234,6 +244,18 @@ public class BookingServiceImpl implements BookingService {
         log.info("Booking created id={} for user={}, total={}", saved.getId(), userId, totalPrice);
 
         return bookingMapper.toBookingResponse(saved);
+    }
+
+    private void validateShowtimeBookableForNewHold(Showtime showtime) {
+        if (showtime.getStatus() != ShowtimeStatus.UPCOMING) {
+            throw new AppException(ErrorCode.SHOWTIME_NOT_BOOKABLE);
+        }
+
+        LocalDateTime lastBookableTime = LocalDateTime.now()
+                .plusMinutes(Math.max(0, showtimeBookingCutoffMinutes));
+        if (showtime.getStartTime().isBefore(lastBookableTime)) {
+            throw new AppException(ErrorCode.SHOWTIME_NOT_BOOKABLE);
+        }
     }
 
     // =========================================================================
@@ -379,6 +401,38 @@ public class BookingServiceImpl implements BookingService {
     }
 
     @Override
+    @Transactional
+    public BookingResponse applyPromotion(UUID bookingId, String promotionCode) {
+        Booking booking = findOwnedPendingBookingForPromotion(bookingId);
+        BigDecimal subtotal = calculateBookingSubtotal(booking);
+        Promotion promotion = validateAndGetPromotion(promotionCode.trim().toUpperCase(), subtotal);
+        BigDecimal discountAmount = calculateDiscount(promotion, subtotal);
+
+        booking.setPromotion(promotion);
+        booking.setDiscountAmount(discountAmount);
+        booking.setTotalPrice(subtotal.subtract(discountAmount).max(BigDecimal.ZERO));
+
+        Booking saved = bookingRepository.save(booking);
+        log.info("Applied promotion {} to booking id={}", promotion.getCode(), bookingId);
+        return bookingMapper.toBookingResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public BookingResponse removePromotion(UUID bookingId) {
+        Booking booking = findOwnedPendingBookingForPromotion(bookingId);
+        BigDecimal subtotal = calculateBookingSubtotal(booking);
+
+        booking.setPromotion(null);
+        booking.setDiscountAmount(BigDecimal.ZERO);
+        booking.setTotalPrice(subtotal);
+
+        Booking saved = bookingRepository.save(booking);
+        log.info("Removed promotion from booking id={}", bookingId);
+        return bookingMapper.toBookingResponse(saved);
+    }
+
+    @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public BookingResponse expirePendingBooking(UUID bookingId) {
         Booking booking = bookingRepository.findWithDetailsById(bookingId)
@@ -505,13 +559,18 @@ public class BookingServiceImpl implements BookingService {
 
     @Override
     @Transactional
-    public TicketResponse checkInTicket(String qrCode) {
+    public TicketResponse checkInTicket(String qrCode, UUID cinemaId, UUID showtimeId) {
+        UUID staffId = SecurityUtils.getCurrentUserId();
+        if (cinemaId == null || showtimeId == null) {
+            throw new AppException(ErrorCode.TICKET_CHECKIN_CONTEXT_REQUIRED);
+        }
+
         String normalizedQrCode = ticketQrCodeService.normalizeAndValidate(qrCode);
         Ticket ticket = ticketRepository.findByQrCodeForCheckIn(normalizedQrCode)
                 .orElseThrow(() -> new AppException(ErrorCode.TICKET_NOT_FOUND));
 
         if (ticket.getStatus() == TicketStatus.USED) {
-            throw new AppException(ErrorCode.TICKET_ALREADY_USED);
+            return ticketMapper.toTicketResponse(ticket, true);
         }
         if (ticket.getStatus() == TicketStatus.CANCELLED) {
             throw new AppException(ErrorCode.TICKET_CANCELLED);
@@ -527,18 +586,28 @@ public class BookingServiceImpl implements BookingService {
 
         LocalDateTime now = LocalDateTime.now();
         Showtime showtime = booking.getShowtime();
+        if (!showtime.getRoom().getCinema().getId().equals(cinemaId)) {
+            throw new AppException(ErrorCode.TICKET_WRONG_CINEMA);
+        }
+        if (!showtime.getId().equals(showtimeId)) {
+            throw new AppException(ErrorCode.TICKET_WRONG_SHOWTIME);
+        }
         if (now.isBefore(showtime.getStartTime().minusMinutes(checkInEarlyMinutes))) {
             throw new AppException(ErrorCode.TICKET_CHECKIN_TOO_EARLY);
         }
-        if (now.isAfter(showtime.getEndTime())) {
+        if (now.isAfter(showtime.getStartTime().plusMinutes(Math.max(0, checkInLateMinutes)))) {
             throw new AppException(ErrorCode.TICKET_CHECKIN_EXPIRED);
         }
 
+        User staff = userRepository.findById(staffId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
         ticket.setStatus(TicketStatus.USED);
         ticket.setCheckInTime(now);
+        ticket.setCheckedInBy(staff);
         ticketRepository.save(ticket);
 
-        log.info("Ticket checked in id={} bookingId={}", ticket.getId(), booking.getId());
+        log.info("Ticket checked in id={} bookingId={} staffId={}", ticket.getId(), booking.getId(), staffId);
         return ticketMapper.toTicketResponse(ticket);
     }
 
@@ -591,6 +660,34 @@ public class BookingServiceImpl implements BookingService {
             // FIXED: giảm một khoản cố định, không vượt quá tổng đơn hàng
             return promo.getDiscountValue().min(orderValue);
         }
+    }
+
+    private Booking findOwnedPendingBookingForPromotion(UUID bookingId) {
+        UUID userId = SecurityUtils.getCurrentUserId();
+        Booking booking = bookingRepository.findWithDetailsById(bookingId)
+                .orElseThrow(() -> new AppException(ErrorCode.BOOKING_NOT_FOUND));
+
+        if (!booking.getUser().getId().equals(userId)) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+
+        if (booking.getStatus() != BookingStatus.PENDING) {
+            throw new AppException(ErrorCode.BOOKING_ALREADY_PROCESSED);
+        }
+
+        if (booking.getPaymentExpiresAt() != null && !booking.getPaymentExpiresAt().isAfter(LocalDateTime.now())) {
+            throw new AppException(ErrorCode.BOOKING_EXPIRED);
+        }
+
+        return booking;
+    }
+
+    private BigDecimal calculateBookingSubtotal(Booking booking) {
+        return booking.getBookingDetails().stream()
+                .map(BookingDetail::getPriceAtBooking)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
     }
 
     private void releaseExpiredHoldsForShowtime(UUID showtimeId) {

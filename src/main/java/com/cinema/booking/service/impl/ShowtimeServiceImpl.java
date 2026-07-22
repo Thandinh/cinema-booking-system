@@ -21,12 +21,15 @@ import com.cinema.booking.service.ShowtimeService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import lombok.experimental.NonFinal;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -44,6 +47,22 @@ public class ShowtimeServiceImpl implements ShowtimeService {
     SeatRepository seatRepository;
     SeatStatusRepository seatStatusRepository;
     ShowtimeMapper showtimeMapper;
+
+    @NonFinal
+    @Value("${showtime.public-days-ahead:7}")
+    int publicDaysAhead;
+
+    @NonFinal
+    @Value("${showtime.booking-cutoff-minutes:15}")
+    int bookingCutoffMinutes;
+
+    @NonFinal
+    @Value("${ticket.check-in-early-minutes:30}")
+    int checkInEarlyMinutes;
+
+    @NonFinal
+    @Value("${ticket.check-in-late-minutes:30}")
+    int checkInLateMinutes;
 
     @Override
     @Transactional
@@ -152,7 +171,8 @@ public class ShowtimeServiceImpl implements ShowtimeService {
     @Override
     @Transactional(readOnly = true)
     public List<ShowtimeResponse> getShowtimesByMovieId(UUID movieId) {
-        return showtimeRepository.findActiveByMovieId(movieId).stream()
+        ShowtimeSearchWindow window = getPublicShowtimeWindow();
+        return showtimeRepository.findBookableByMovieId(movieId, window.fromTime(), window.toTime()).stream()
                 .map(showtimeMapper::toShowtimeResponse)
                 .collect(Collectors.toList());
     }
@@ -160,7 +180,31 @@ public class ShowtimeServiceImpl implements ShowtimeService {
     @Override
     @Transactional(readOnly = true)
     public Page<ShowtimeResponse> getShowtimesByCinemaId(UUID cinemaId, Pageable pageable) {
-        return showtimeRepository.findActiveByCinemaId(cinemaId, pageable)
+        ShowtimeSearchWindow window = getPublicShowtimeWindow();
+        return showtimeRepository.findBookableByCinemaId(cinemaId, window.fromTime(), window.toTime(), pageable)
                 .map(showtimeMapper::toShowtimeResponse);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ShowtimeResponse> getOpenCheckInShowtimes(UUID cinemaId) {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime earliestStartTime = now.minusMinutes(Math.max(0, checkInLateMinutes));
+        LocalDateTime latestStartTime = now.plusMinutes(Math.max(0, checkInEarlyMinutes));
+
+        return showtimeRepository.findOpenForCheckIn(cinemaId, earliestStartTime, latestStartTime).stream()
+                .map(showtimeMapper::toShowtimeResponse)
+                .toList();
+    }
+
+    private ShowtimeSearchWindow getPublicShowtimeWindow() {
+        int safeCutoffMinutes = Math.max(0, bookingCutoffMinutes);
+        int safeDaysAhead = Math.max(1, publicDaysAhead);
+        LocalDateTime fromTime = LocalDateTime.now().plusMinutes(safeCutoffMinutes);
+        LocalDateTime toTime = LocalDate.now().plusDays(safeDaysAhead).atStartOfDay();
+        return new ShowtimeSearchWindow(fromTime, toTime);
+    }
+
+    private record ShowtimeSearchWindow(LocalDateTime fromTime, LocalDateTime toTime) {
     }
 }

@@ -40,6 +40,9 @@ ALTER TABLE IF EXISTS payments
     ADD CONSTRAINT chk_payment_status
     CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'EXPIRED'));
 
+ALTER TABLE IF EXISTS tickets
+    ADD COLUMN IF NOT EXISTS checked_in_by UUID REFERENCES users(id) ON DELETE SET NULL;
+
 CREATE TABLE IF NOT EXISTS admin_audit_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     actor_id UUID,
@@ -120,6 +123,14 @@ CREATE INDEX IF NOT EXISTS idx_showtimes_status_start_time
     ON showtimes(status, start_time)
     WHERE is_deleted = false;
 
+CREATE INDEX IF NOT EXISTS idx_showtimes_movie_status_start_time
+    ON showtimes(movie_id, status, start_time)
+    WHERE is_deleted = false;
+
+CREATE INDEX IF NOT EXISTS idx_showtimes_room_status_start_time
+    ON showtimes(room_id, status, start_time)
+    WHERE is_deleted = false;
+
 CREATE INDEX IF NOT EXISTS idx_seat_status_showtime_status
     ON seat_status(showtime_id, status);
 
@@ -186,6 +197,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_tickets_booking_detail_id
 
 CREATE INDEX IF NOT EXISTS idx_tickets_status
     ON tickets(status);
+
+CREATE INDEX IF NOT EXISTS idx_tickets_checked_in_by
+    ON tickets(checked_in_by, check_in_time)
+    WHERE checked_in_by IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_created_at
     ON admin_audit_logs(created_at DESC);

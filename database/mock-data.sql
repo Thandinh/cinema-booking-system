@@ -56,6 +56,9 @@ ALTER TABLE payments
     ADD CONSTRAINT chk_payment_status
     CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'EXPIRED'));
 
+ALTER TABLE tickets
+    ADD COLUMN IF NOT EXISTS checked_in_by UUID REFERENCES users(id) ON DELETE SET NULL;
+
 CREATE INDEX IF NOT EXISTS idx_seat_status_hold_release
     ON seat_status(showtime_id, hold_by, hold_until)
     WHERE status = 'HOLD';
@@ -63,6 +66,18 @@ CREATE INDEX IF NOT EXISTS idx_seat_status_hold_release
 CREATE INDEX IF NOT EXISTS idx_bookings_pending_expires_id
     ON bookings(payment_expires_at, id)
     WHERE status = 'PENDING';
+
+CREATE INDEX IF NOT EXISTS idx_showtimes_movie_status_start_time
+    ON showtimes(movie_id, status, start_time)
+    WHERE is_deleted = false;
+
+CREATE INDEX IF NOT EXISTS idx_showtimes_room_status_start_time
+    ON showtimes(room_id, status, start_time)
+    WHERE is_deleted = false;
+
+CREATE INDEX IF NOT EXISTS idx_tickets_checked_in_by
+    ON tickets(checked_in_by, check_in_time)
+    WHERE checked_in_by IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_payments_booking_status
     ON payments(booking_id, status);
