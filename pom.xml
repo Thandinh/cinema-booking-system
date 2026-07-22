@@ -78,6 +78,15 @@
 		</dependency>
 
 		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-core</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-database-postgresql</artifactId>
+		</dependency>
+
+		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-websocket</artifactId>
 		</dependency>
@@ -117,6 +126,16 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.testcontainers</groupId>
+			<artifactId>junit-jupiter</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.testcontainers</groupId>
+			<artifactId>postgresql</artifactId>
 			<scope>test</scope>
 		</dependency>
 		<dependency>
@@ -175,6 +194,27 @@
 						</configuration>
 					</execution>
 				</executions>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<configuration>
+					<argLine>-XX:+EnableDynamicAgentLoading -Xshare:off</argLine>
+					<systemPropertyVariables>
+						<debug>false</debug>
+						<spring.main.banner-mode>off</spring.main.banner-mode>
+						<logging.level.root>WARN</logging.level.root>
+						<logging.level.com.cinema.booking>WARN</logging.level.com.cinema.booking>
+						<logging.level.com.cinema.booking.configuration.ApplicationInitConfig>ERROR</logging.level.com.cinema.booking.configuration.ApplicationInitConfig>
+						<logging.level.com.cinema.booking.service.impl.PaymentServiceImpl>OFF</logging.level.com.cinema.booking.service.impl.PaymentServiceImpl>
+						<logging.level.com.zaxxer.hikari>WARN</logging.level.com.zaxxer.hikari>
+						<logging.level.org.flywaydb>WARN</logging.level.org.flywaydb>
+						<logging.level.org.hibernate>WARN</logging.level.org.hibernate>
+						<logging.level.org.hibernate.sql.results.jdbc.internal.DeferredResultSetAccess>ERROR</logging.level.org.hibernate.sql.results.jdbc.internal.DeferredResultSetAccess>
+						<logging.level.org.springframework>WARN</logging.level.org.springframework>
+						<logging.level.org.testcontainers>WARN</logging.level.org.testcontainers>
+					</systemPropertyVariables>
+				</configuration>
 			</plugin>
 		</plugins>
 	</build>

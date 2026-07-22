@@ -42,6 +42,7 @@ public class User extends BaseEntity {
     @Column(length = 500)
     private String avatarUrl;
 
+    @Builder.Default
     private Boolean emailVerified = true;
 
     @Column(length = 64)
@@ -54,8 +55,10 @@ public class User extends BaseEntity {
 
     private LocalDateTime passwordResetExpiresAt;
 
+    @Builder.Default
     private Boolean isActive = true;
 
+    @Builder.Default
     private Boolean isDeleted = false;
 
     @ManyToMany(fetch = FetchType.EAGER)
@@ -64,5 +67,6 @@ public class User extends BaseEntity {
             joinColumns = @JoinColumn(name = "user_id"),
             inverseJoinColumns = @JoinColumn(name = "role_id")
     )
+    @Builder.Default
     private Set<Role> roles = new HashSet<>();
 }

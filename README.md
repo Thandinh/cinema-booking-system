@@ -39,6 +39,7 @@ D:\spring boot\
 |   |   +-- mock-data.sql           Du lieu mau de demo/test
 |   |   +-- rbac-permissions.sql    Dong bo role/permission
 |   +-- src\
+|   |   +-- main\resources\db\migration\  Flyway migrations
 |   +-- docker-compose.yml
 |   +-- .env.example
 |   +-- README.md
@@ -108,15 +109,15 @@ http://localhost:8080/swagger-ui.html
 
 ## 4. Tao Database Va Seed Du Lieu
 
-Co 2 cach phu hop.
+Backend dung Flyway de tao va nang cap schema tu cac file trong:
 
-### Cach A: De Spring Boot tu tao schema
+```text
+src/main/resources/db/migration
+```
 
-Neu `application.yaml` dang bat SQL init/JPA theo cau hinh hien tai, chi can chay app lan dau de tao core RBAC/admin. Sau do chay mock data.
+Voi database moi, chi can khoi dong backend. Flyway se tao bang, index, trigger, sau do Hibernate validate entity.
 
-### Cach B: Tao schema thu cong tu SQL
-
-Dung khi muon reset database sach:
+File `database/database.sql` chi dung khi muon reset database sach bang tay:
 
 ```powershell
 psql -h localhost -p 5433 -U cinema_user -d cinema_booking -f database/database.sql
@@ -135,6 +136,13 @@ File `mock-data.sql` se tao:
 - User test
 - Booking/ticket mau de test QR
 - Cac case don hang: thanh cong, dang cho thanh toan, that bai, het han, da huy
+
+Khong de `SQL_INIT_MODE=always` trong product. Gia tri khuyen dung la:
+
+```env
+SQL_INIT_MODE=never
+FLYWAY_ENABLED=true
+```
 
 ## 5. Tai Khoan Test
 
@@ -430,6 +438,9 @@ Backend:
 | `TICKET_CHECK_IN_LATE_MINUTES` | Cho check-in sau gio chieu |
 | `APP_FRONTEND_URL` | URL frontend de tao link email |
 | `APP_BACKEND_URL` | URL backend public cho callback/link khi can |
+| `SQL_INIT_MODE` | Nen de `never`; Flyway la co che migrate schema chinh |
+| `FLYWAY_ENABLED` | Bat/tat Flyway migration |
+| `FLYWAY_BASELINE_ON_MIGRATE` | Ho tro gan baseline cho DB cu chua co Flyway history |
 
 Frontend:
 
@@ -471,7 +482,66 @@ psql -h localhost -p 5433 -U cinema_user -d cinema_booking -f database/database.
 psql -h localhost -p 5433 -U cinema_user -d cinema_booking -f database/mock-data.sql
 ```
 
-## 15. Checklist Demo Bao Ve
+## 15. Testing
+
+Backend co 2 nhom test:
+
+- Unit test nhe: khong can database, chay nhanh.
+- Integration/API test: can Docker Desktop, tu tao PostgreSQL tam bang Testcontainers.
+
+Chay toan bo backend test:
+
+```powershell
+cd "D:\spring boot\cinema-booking-system"
+.\mvnw.cmd test
+```
+
+Chay gon it log:
+
+```powershell
+.\mvnw.cmd -q test
+```
+
+Chay unit test nhanh khi khong mo Docker:
+
+```powershell
+.\mvnw.cmd -Dtest=TicketQrCodeServiceTest,QrCodeImageServiceTest test
+```
+
+Chay rieng flow nghiep vu dat ve:
+
+```powershell
+.\mvnw.cmd -Dtest=BookingWorkflowIntegrationTest test
+```
+
+Chay rieng API/security:
+
+```powershell
+.\mvnw.cmd -Dtest=BookingPaymentSecurityIntegrationTest test
+```
+
+Chay rieng payment callback:
+
+```powershell
+.\mvnw.cmd -Dtest=PaymentCallbackIntegrationTest test
+```
+
+Luu y quan trong:
+
+- Integration test khong dung database that trong `.env`.
+- Testcontainers tao PostgreSQL rieng trong Docker, chay Flyway migration, seed data test toi thieu roi tu don dep.
+- Neu Docker Desktop chua mo, chi nen chay unit test nhanh.
+- File `src/test/resources/logback-test.xml` chi dung de giam log khi test, khong anh huong log runtime cua app.
+
+Frontend:
+
+```powershell
+cd "D:\spring boot\frontend\cinema-client"
+npm run lint
+npm run build
+```
+
+## 16. Checklist Demo Bao Ve
 
 1. Backend chay khong loi.
 2. Frontend chay khong loi.
@@ -485,7 +555,7 @@ psql -h localhost -p 5433 -U cinema_user -d cinema_booking -f database/mock-data
 10. Admin xem dashboard, quan ly phim/rap/phong-ghe/suat chieu/don/thanh toan/user.
 11. Test giu ghe het han va realtime seat map refresh.
 
-## 16. Luu Y Bao Mat Va Trien Khai
+## 17. Luu Y Bao Mat Va Trien Khai
 
 - Khong commit file `.env` co secret that.
 - Doi mat khau admin mac dinh truoc khi public.
