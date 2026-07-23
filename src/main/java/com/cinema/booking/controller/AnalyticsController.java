@@ -9,6 +9,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -127,5 +130,32 @@ public class AnalyticsController {
                 .code(1000)
                 .result(analyticsService.getShowtimeStats(cinemaId, from, to, pageable))
                 .build();
+    }
+
+    @GetMapping("/revenue/export")
+    @PreAuthorize("hasAuthority('ANALYTICS_VIEW')")
+    public ResponseEntity<byte[]> exportRevenueCsv(
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) UUID cinemaId,
+            @RequestParam(required = false) UUID movieId) {
+
+        LocalDate effectiveTo = to != null ? to : LocalDate.now();
+        LocalDate effectiveFrom = from != null ? from : effectiveTo.minusDays(29);
+        if (effectiveFrom.isAfter(effectiveTo)) {
+            LocalDate tmp = effectiveFrom;
+            effectiveFrom = effectiveTo;
+            effectiveTo = tmp;
+        }
+
+        byte[] csv = analyticsService.exportRevenueCsv(effectiveFrom, effectiveTo, cinemaId, movieId);
+        String filename = "revenue-report-" + effectiveFrom + "_" + effectiveTo + ".csv";
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .contentType(MediaType.parseMediaType("text/csv; charset=UTF-8"))
+                .body(csv);
     }
 }

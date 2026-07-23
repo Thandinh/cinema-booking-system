@@ -45,4 +45,6 @@ public interface AnalyticsService {
      * @param to       đến ngày
      */
     Page<ShowtimeStatsResponse> getShowtimeStats(UUID cinemaId, LocalDate from, LocalDate to, Pageable pageable);
+
+    byte[] exportRevenueCsv(LocalDate from, LocalDate to, UUID cinemaId, UUID movieId);
 }

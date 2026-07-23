@@ -11,6 +11,7 @@
 DROP TABLE IF EXISTS invalidated_token CASCADE;
 DROP TABLE IF EXISTS admin_audit_logs CASCADE;
 DROP TABLE IF EXISTS tickets CASCADE;
+DROP TABLE IF EXISTS payment_events CASCADE;
 DROP TABLE IF EXISTS payments CASCADE;
 DROP TABLE IF EXISTS booking_details CASCADE;
 DROP TABLE IF EXISTS bookings CASCADE;
@@ -252,6 +253,24 @@ CREATE TABLE payments (
     CONSTRAINT chk_payment_status CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'EXPIRED'))
 );
 
+CREATE TABLE payment_events (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    payment_id UUID,
+    booking_id UUID,
+    method VARCHAR(50),
+    transaction_no VARCHAR(255),
+    event_type VARCHAR(80) NOT NULL,
+    payment_status_before VARCHAR(20),
+    payment_status_after VARCHAR(20),
+    booking_status_before VARCHAR(20),
+    booking_status_after VARCHAR(20),
+    success BOOLEAN,
+    message VARCHAR(1000),
+    payload JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE tickets (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     booking_detail_id UUID NOT NULL REFERENCES booking_details(id) ON DELETE CASCADE,
@@ -305,6 +324,7 @@ CREATE TRIGGER update_seat_status_modtime BEFORE UPDATE ON seat_status FOR EACH 
 CREATE TRIGGER update_bookings_modtime BEFORE UPDATE ON bookings FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 CREATE TRIGGER update_booking_details_modtime BEFORE UPDATE ON booking_details FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 CREATE TRIGGER update_payments_modtime BEFORE UPDATE ON payments FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+CREATE TRIGGER update_payment_events_modtime BEFORE UPDATE ON payment_events FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 CREATE TRIGGER update_tickets_modtime BEFORE UPDATE ON tickets FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 CREATE TRIGGER update_admin_audit_logs_modtime BEFORE UPDATE ON admin_audit_logs FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 
@@ -432,12 +452,38 @@ CREATE INDEX idx_payments_booking_id
 CREATE INDEX idx_payments_booking_status
     ON payments(booking_id, status);
 
+CREATE INDEX idx_payments_pending_reuse
+    ON payments(booking_id, method, status, created_at DESC)
+    WHERE status = 'PENDING';
+
 CREATE INDEX idx_payments_status_payment_time
     ON payments(status, payment_time DESC);
 
 CREATE UNIQUE INDEX uq_payments_transaction_no
     ON payments(transaction_no)
     WHERE transaction_no IS NOT NULL;
+
+CREATE INDEX idx_payment_events_created_at
+    ON payment_events(created_at DESC);
+
+CREATE INDEX idx_payment_events_booking_created_at
+    ON payment_events(booking_id, created_at DESC)
+    WHERE booking_id IS NOT NULL;
+
+CREATE INDEX idx_payment_events_payment_created_at
+    ON payment_events(payment_id, created_at DESC)
+    WHERE payment_id IS NOT NULL;
+
+CREATE INDEX idx_payment_events_transaction_no
+    ON payment_events(transaction_no)
+    WHERE transaction_no IS NOT NULL;
+
+CREATE INDEX idx_payment_events_type_created_at
+    ON payment_events(event_type, created_at DESC);
+
+CREATE INDEX idx_payment_events_success_created_at
+    ON payment_events(success, created_at DESC)
+    WHERE success IS NOT NULL;
 
 CREATE UNIQUE INDEX uq_tickets_booking_detail_id
     ON tickets(booking_detail_id);

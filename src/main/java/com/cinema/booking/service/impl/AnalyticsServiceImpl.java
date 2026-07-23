@@ -18,10 +18,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -30,6 +33,8 @@ import java.util.UUID;
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 @Slf4j
 public class AnalyticsServiceImpl implements AnalyticsService {
+
+    private static final DateTimeFormatter CSV_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     PaymentRepository  paymentRepository;
     BookingRepository  bookingRepository;
@@ -157,6 +162,64 @@ public class AnalyticsServiceImpl implements AnalyticsService {
                 .map(this::mapToShowtimeStats);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] exportRevenueCsv(LocalDate from, LocalDate to, UUID cinemaId, UUID movieId) {
+        LocalDate effectiveTo = to != null ? to : LocalDate.now();
+        LocalDate effectiveFrom = from != null ? from : effectiveTo.minusDays(29);
+        if (effectiveFrom.isAfter(effectiveTo)) {
+            LocalDate tmp = effectiveFrom;
+            effectiveFrom = effectiveTo;
+            effectiveTo = tmp;
+        }
+
+        List<RevenueExportRow> rows = paymentRepository.findRevenueExportRows(
+                effectiveFrom.atStartOfDay(),
+                effectiveTo.atTime(LocalTime.MAX),
+                cinemaId != null ? cinemaId.toString() : null,
+                movieId != null ? movieId.toString() : null);
+
+        StringBuilder csv = new StringBuilder(1024 + rows.size() * 256);
+        csv.append('\ufeff');
+        appendCsvRow(csv, List.of(
+                "Payment Time",
+                "Transaction No",
+                "Method",
+                "Amount VND",
+                "Booking ID",
+                "Booking Status",
+                "Username",
+                "Email",
+                "Movie",
+                "Cinema",
+                "City",
+                "Room",
+                "Showtime",
+                "Ticket Count",
+                "Seats"));
+
+        for (RevenueExportRow row : rows) {
+            appendCsvRow(csv, Arrays.asList(
+                    formatCsvDateTime(row.getPaymentTime()),
+                    row.getTransactionNo(),
+                    row.getPaymentMethod(),
+                    formatCsvMoney(row.getAmount()),
+                    row.getBookingId() != null ? row.getBookingId().toString() : "",
+                    row.getBookingStatus(),
+                    row.getUsername(),
+                    row.getEmail(),
+                    row.getMovieTitle(),
+                    row.getCinemaName(),
+                    row.getCinemaCity(),
+                    row.getRoomName(),
+                    formatCsvDateTime(row.getShowtimeStartTime()),
+                    String.valueOf(row.getTicketCount() != null ? row.getTicketCount() : 0),
+                    row.getSeats()));
+        }
+
+        return csv.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
     // =========================================================================
     // PRIVATE MAPPERS
     // =========================================================================
@@ -225,5 +288,33 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         if (val == null) return null;
         if (val instanceof UUID u) return u;
         return UUID.fromString(val.toString());
+    }
+
+    private void appendCsvRow(StringBuilder csv, List<String> values) {
+        for (int index = 0; index < values.size(); index++) {
+            if (index > 0) {
+                csv.append(',');
+            }
+            csv.append(escapeCsv(values.get(index)));
+        }
+        csv.append('\n');
+    }
+
+    private String escapeCsv(String value) {
+        if (value == null) {
+            return "";
+        }
+        String normalized = value.replace("\r\n", "\n").replace('\r', '\n');
+        boolean mustQuote = normalized.contains(",") || normalized.contains("\"") || normalized.contains("\n");
+        String escaped = normalized.replace("\"", "\"\"");
+        return mustQuote ? "\"" + escaped + "\"" : escaped;
+    }
+
+    private String formatCsvDateTime(LocalDateTime value) {
+        return value != null ? value.format(CSV_DATE_TIME_FORMATTER) : "";
+    }
+
+    private String formatCsvMoney(BigDecimal value) {
+        return value != null ? value.stripTrailingZeros().toPlainString() : "0";
     }
 }

@@ -1,9 +1,13 @@
 package com.cinema.booking.controller;
 
 import com.cinema.booking.dto.response.ApiResponse;
+import com.cinema.booking.dto.response.PaymentEventResponse;
+import com.cinema.booking.dto.response.PaymentReconciliationIssueResponse;
 import com.cinema.booking.dto.response.PaymentResponse;
+import com.cinema.booking.enums.PaymentEventType;
 import com.cinema.booking.enums.PaymentMethod;
 import com.cinema.booking.enums.PaymentStatus;
+import com.cinema.booking.service.PaymentEventService;
 import com.cinema.booking.service.PaymentService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +21,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -27,6 +32,7 @@ import java.util.UUID;
 public class PaymentController {
 
     PaymentService paymentService;
+    PaymentEventService paymentEventService;
 
     @Value("${app.frontend-url:http://localhost:5173}")
     @NonFinal
@@ -66,6 +72,31 @@ public class PaymentController {
         return ApiResponse.<Page<PaymentResponse>>builder()
                 .code(1000)
                 .result(paymentService.getAllPayments(pageable, status, method, keyword))
+                .build();
+    }
+
+    @GetMapping("/events")
+    @PreAuthorize("hasAuthority('PAYMENT_VIEW_ALL')")
+    public ApiResponse<Page<PaymentEventResponse>> getPaymentEvents(
+            @RequestParam(required = false) UUID bookingId,
+            @RequestParam(required = false) UUID paymentId,
+            @RequestParam(required = false) PaymentEventType eventType,
+            @RequestParam(required = false) Boolean success,
+            @RequestParam(required = false) String keyword,
+            @PageableDefault(size = 20, sort = "createdAt") Pageable pageable) {
+        return ApiResponse.<Page<PaymentEventResponse>>builder()
+                .code(1000)
+                .result(paymentEventService.search(bookingId, paymentId, eventType, success, keyword, pageable))
+                .build();
+    }
+
+    @GetMapping("/reconciliation")
+    @PreAuthorize("hasAuthority('PAYMENT_VIEW_ALL')")
+    public ApiResponse<List<PaymentReconciliationIssueResponse>> getReconciliationIssues(
+            @RequestParam(defaultValue = "100") int limit) {
+        return ApiResponse.<List<PaymentReconciliationIssueResponse>>builder()
+                .code(1000)
+                .result(paymentService.getReconciliationIssues(limit))
                 .build();
     }
 

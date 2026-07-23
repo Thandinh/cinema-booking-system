@@ -2,17 +2,22 @@ package com.cinema.booking.service.impl;
 
 import com.cinema.booking.configuration.MomoConfig;
 import com.cinema.booking.configuration.VNPayConfig;
+import com.cinema.booking.dto.response.PaymentReconciliationIssueResponse;
 import com.cinema.booking.dto.response.PaymentResponse;
 import com.cinema.booking.entity.Booking;
 import com.cinema.booking.entity.Payment;
 import com.cinema.booking.enums.BookingStatus;
 import com.cinema.booking.enums.ErrorCode;
+import com.cinema.booking.enums.PaymentEventType;
 import com.cinema.booking.enums.PaymentMethod;
 import com.cinema.booking.enums.PaymentStatus;
 import com.cinema.booking.exception.AppException;
 import com.cinema.booking.mapper.PaymentMapper;
+import com.cinema.booking.payment.PaymentGateway;
 import com.cinema.booking.repository.BookingRepository;
 import com.cinema.booking.repository.PaymentRepository;
+import com.cinema.booking.repository.PaymentReconciliationIssueRow;
+import com.cinema.booking.service.PaymentEventService;
 import com.cinema.booking.service.PaymentService;
 import com.cinema.booking.util.SecurityUtils;
 import com.cinema.booking.util.VNPayUtil;
@@ -23,13 +28,8 @@ import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -37,9 +37,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
-import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.*;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -55,8 +53,9 @@ public class PaymentServiceImpl implements PaymentService {
     VNPayConfig vnpayConfig;
     MomoConfig momoConfig;
     com.cinema.booking.service.BookingService bookingService;
+    PaymentEventService paymentEventService;
     PaymentMapper paymentMapper;
-    RestTemplate momoRestTemplate;
+    List<PaymentGateway> paymentGateways;
 
     @Override
     @Transactional
@@ -84,6 +83,28 @@ public class PaymentServiceImpl implements PaymentService {
             throw new AppException(ErrorCode.PAYMENT_AMOUNT_MISMATCH);
         }
 
+        Optional<Payment> pendingPayment = paymentRepository
+                .findFirstByBookingIdAndMethodAndStatusOrderByCreatedAtDesc(
+                        bookingId,
+                        method,
+                        PaymentStatus.PENDING);
+        if (pendingPayment.isPresent()) {
+            Payment payment = pendingPayment.get();
+            log.info("Reusing pending payment {} for booking {}", payment.getTransactionNo(), bookingId);
+            paymentEventService.record(
+                    payment,
+                    booking,
+                    PaymentEventType.PAYMENT_REUSED,
+                    payment.getStatus(),
+                    payment.getStatus(),
+                    booking.getStatus(),
+                    booking.getStatus(),
+                    true,
+                    "Reused pending payment for booking",
+                    null);
+            return createPaymentUrlWithAudit(payment, booking, request);
+        }
+
         String txnNo = generateTransactionNo(method, bookingId);
         Payment payment = Payment.builder()
                 .booking(booking)
@@ -95,113 +116,65 @@ public class PaymentServiceImpl implements PaymentService {
         
         paymentRepository.save(payment);
         log.info("Initiated payment {} for booking {}", txnNo, bookingId);
+        paymentEventService.record(
+                payment,
+                booking,
+                PaymentEventType.PAYMENT_INITIATED,
+                null,
+                payment.getStatus(),
+                booking.getStatus(),
+                booking.getStatus(),
+                true,
+                "Payment initiated",
+                null);
 
-        return switch (method) {
-            case VNPAY -> generateVNPayUrl(payment, booking, request);
-            case MOMO -> generateMomoPayUrl(payment, booking);
-            case CREDIT_CARD, CASH -> throw new AppException(ErrorCode.PAYMENT_METHOD_UNAVAILABLE);
-        };
+        return createPaymentUrlWithAudit(payment, booking, request);
     }
 
-    private String generateVNPayUrl(Payment payment, Booking booking, HttpServletRequest request) {
-        Map<String, String> vnpParamsMap = vnpayConfig.getVNPayConfig();
-        vnpParamsMap.put("vnp_TxnRef", payment.getTransactionNo());
-        // Truyền secureToken vào OrderInfo để lúc callback có thể lấy ra xử lý booking (dùng dấu |)
-        vnpParamsMap.put("vnp_OrderInfo", "Thanh toan ve xem phim|" + booking.getSecureToken());
-        vnpParamsMap.put("vnp_OrderType", "250000"); // Mã danh mục giải trí
-        vnpParamsMap.put("vnp_Amount", String.valueOf(payment.getAmount().multiply(new BigDecimal(100)).longValue()));
-        vnpParamsMap.put("vnp_IpAddr", VNPayUtil.getIpAddress(request));
-        
-        Calendar calendar = Calendar.getInstance(TimeZone.getTimeZone("Etc/GMT+7"));
-        SimpleDateFormat formatter = new SimpleDateFormat("yyyyMMddHHmmss");
-        String vnpCreateDate = formatter.format(calendar.getTime());
-        vnpParamsMap.put("vnp_CreateDate", vnpCreateDate);
 
-        Date expireDate = booking.getPaymentExpiresAt() != null
-                ? Date.from(booking.getPaymentExpiresAt().atZone(ZoneId.systemDefault()).toInstant())
-                : new Date(System.currentTimeMillis() + 15 * 60 * 1000L);
-        String vnp_ExpireDate = formatter.format(expireDate);
-        vnpParamsMap.put("vnp_ExpireDate", vnp_ExpireDate);
-
-        // Build hash data
-        List<String> fieldNames = new ArrayList<>(vnpParamsMap.keySet());
-        Collections.sort(fieldNames);
-        StringBuilder hashData = new StringBuilder();
-        StringBuilder query = new StringBuilder();
-        Iterator<String> itr = fieldNames.iterator();
-        while (itr.hasNext()) {
-            String fieldName = itr.next();
-            String fieldValue = vnpParamsMap.get(fieldName);
-            if ((fieldValue != null) && (fieldValue.length() > 0)) {
-                // Build hash data
-                hashData.append(fieldName);
-                hashData.append('=');
-                hashData.append(URLEncoder.encode(fieldValue, StandardCharsets.US_ASCII));
-                // Build query
-                query.append(URLEncoder.encode(fieldName, StandardCharsets.US_ASCII));
-                query.append('=');
-                query.append(URLEncoder.encode(fieldValue, StandardCharsets.US_ASCII));
-                if (itr.hasNext()) {
-                    query.append('&');
-                    hashData.append('&');
-                }
-            }
-        }
-        String queryUrl = query.toString();
-        String hashSecret = vnpayConfig.getHashSecret().trim();
-        String vnpSecureHash = VNPayUtil.hmacSHA512(hashSecret, hashData.toString());
-        queryUrl += "&vnp_SecureHash=" + vnpSecureHash;
-        return vnpayConfig.getUrl() + "?" + queryUrl;
-    }
-
-    private String generateMomoPayUrl(Payment payment, Booking booking) {
-        if (!momoConfig.isReady()) {
-            throw new AppException(ErrorCode.PAYMENT_METHOD_UNAVAILABLE);
-        }
-
-        long amount = toVndAmount(payment.getAmount());
-        String orderInfo = "Thanh toan ve xem phim " + booking.getSecureToken();
-        String extraData = Base64.getEncoder().encodeToString(
-                ("{\"bookingId\":\"" + booking.getId() + "\"}").getBytes(StandardCharsets.UTF_8));
-
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("partnerCode", momoConfig.getPartnerCode());
-        payload.put("requestType", momoConfig.getRequestType());
-        payload.put("ipnUrl", momoConfig.getIpnUrl());
-        payload.put("redirectUrl", momoConfig.getRedirectUrl());
-        payload.put("orderId", payment.getTransactionNo());
-        payload.put("amount", amount);
-        payload.put("orderInfo", orderInfo);
-        payload.put("requestId", payment.getTransactionNo());
-        payload.put("extraData", extraData);
-        payload.put("lang", momoConfig.getLang());
-        payload.put("signature", signMomoCreateRequest(amount, extraData, payment.getTransactionNo(), orderInfo));
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        ResponseEntity<Map> response;
+    private String createPaymentUrlWithAudit(Payment payment, Booking booking, HttpServletRequest request) {
         try {
-            response = momoRestTemplate.postForEntity(
-                    momoConfig.getEndpoint(),
-                    new HttpEntity<>(payload, headers),
-                    Map.class);
+            String paymentUrl = gatewayFor(payment.getMethod()).createPaymentUrl(payment, booking, request);
+            paymentRepository.save(payment);
+            paymentEventService.record(
+                    payment,
+                    booking,
+                    PaymentEventType.PAYMENT_URL_CREATED,
+                    payment.getStatus(),
+                    payment.getStatus(),
+                    booking.getStatus(),
+                    booking.getStatus(),
+                    true,
+                    "Payment URL created",
+                    null);
+            return paymentUrl;
+        } catch (AppException ex) {
+            paymentEventService.record(
+                    payment,
+                    booking,
+                    PaymentEventType.PAYMENT_PROVIDER_ERROR,
+                    payment.getStatus(),
+                    payment.getStatus(),
+                    booking.getStatus(),
+                    booking.getStatus(),
+                    false,
+                    ex.getErrorCode().getMessage(),
+                    null);
+            throw ex;
         } catch (RuntimeException ex) {
-            log.error("MoMo create payment request failed for transaction {}", payment.getTransactionNo(), ex);
-            throw new AppException(ErrorCode.PAYMENT_PROVIDER_ERROR);
+            paymentEventService.record(
+                    payment,
+                    booking,
+                    PaymentEventType.PAYMENT_PROVIDER_ERROR,
+                    payment.getStatus(),
+                    payment.getStatus(),
+                    booking.getStatus(),
+                    booking.getStatus(),
+                    false,
+                    ex.getMessage(),
+                    null);
+            throw ex;
         }
-
-        Map<String, Object> body = response.getBody() == null ? Map.of() : response.getBody();
-        payment.setProviderResponse(new LinkedHashMap<>(body));
-        paymentRepository.save(payment);
-
-        int resultCode = intValue(body.get("resultCode"));
-        String payUrl = stringValue(body, "payUrl");
-        if (!response.getStatusCode().is2xxSuccessful() || resultCode != 0 || payUrl.isBlank()) {
-            log.warn("MoMo returned non-success create response for transaction {}: {}", payment.getTransactionNo(), body);
-            throw new AppException(ErrorCode.PAYMENT_PROVIDER_ERROR);
-        }
-
-        return payUrl;
     }
 
     @Override
@@ -224,6 +197,15 @@ public class PaymentServiceImpl implements PaymentService {
                 : "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
         return paymentRepository.findAllWithDetails(status, method, keywordPattern, pageable)
                 .map(paymentMapper::toPaymentResponse);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PaymentReconciliationIssueResponse> getReconciliationIssues(int limit) {
+        int safeLimit = Math.max(1, Math.min(limit, 500));
+        return paymentRepository.findReconciliationIssues(LocalDateTime.now(), safeLimit).stream()
+                .map(this::toReconciliationIssueResponse)
+                .toList();
     }
 
     @Override
@@ -274,6 +256,19 @@ public class PaymentServiceImpl implements PaymentService {
         String signValue = VNPayUtil.hmacSHA512(hashSecret, hashData.toString());
         if (!signValue.equals(vnp_SecureHash)) {
             log.error("Invalid VNPay signature");
+            paymentEventService.recordDetached(
+                    null,
+                    null,
+                    PaymentMethod.VNPAY,
+                    request.getParameter("vnp_TxnRef"),
+                    PaymentEventType.VNPAY_CALLBACK_INVALID_SIGNATURE,
+                    null,
+                    null,
+                    null,
+                    null,
+                    false,
+                    "Invalid VNPay callback signature",
+                    requestParamsToMap(request));
             return "redirect:/payment-failed?reason=invalid-signature";
         }
 
@@ -285,22 +280,84 @@ public class PaymentServiceImpl implements PaymentService {
         String[] parts = orderInfo.split("\\|");
         String secureToken = parts[parts.length - 1];
 
-        Payment payment = paymentRepository.findByTransactionNo(txnRef)
+        Payment payment = paymentRepository.findLockedByTransactionNo(txnRef)
                 .orElseThrow(() -> new AppException(ErrorCode.BOOKING_NOT_FOUND));
+        Booking booking = payment.getBooking();
+        appendProviderResponse(payment, "vnpayCallback", requestParamsToMap(request));
+        recordPaymentEvent(
+                payment,
+                booking,
+                PaymentEventType.VNPAY_CALLBACK_RECEIVED,
+                true,
+                "VNPay callback received",
+                requestParamsToMap(request));
 
         if (payment.getStatus() != PaymentStatus.PENDING) {
             log.warn("Payment {} already processed", txnRef);
+            paymentRepository.save(payment);
+            recordPaymentEvent(
+                    payment,
+                    booking,
+                    PaymentEventType.PAYMENT_ALREADY_PROCESSED,
+                    true,
+                    "VNPay callback ignored because payment was already processed",
+                    requestParamsToMap(request));
             return "redirect:/payment/result?status=" + payment.getStatus()
-                    + "&bookingId=" + payment.getBooking().getId()
+                    + "&bookingId=" + booking.getId()
                     + "&txn=" + txnRef;
         }
 
-        if (isPaymentWindowExpired(payment.getBooking())) {
+        if (booking.getStatus() != BookingStatus.PENDING) {
+            log.warn("Booking {} already processed before VNPay callback {}", booking.getId(), txnRef);
+            payment.setStatus(booking.getStatus() == BookingStatus.SUCCESS
+                    ? PaymentStatus.SUCCESS
+                    : PaymentStatus.FAILED);
+            if (payment.getStatus() == PaymentStatus.SUCCESS && payment.getPaymentTime() == null) {
+                payment.setPaymentTime(LocalDateTime.now());
+            }
+            paymentRepository.save(payment);
+            recordPaymentEvent(
+                    payment,
+                    booking,
+                    PaymentEventType.PAYMENT_ALREADY_PROCESSED,
+                    true,
+                    "VNPay callback aligned payment with already finalized booking",
+                    requestParamsToMap(request));
+            return "redirect:/payment/result?status=" + payment.getStatus()
+                    + "&bookingId=" + booking.getId()
+                    + "&txn=" + txnRef;
+        }
+
+        if (!isValidVnpayAmount(request, payment)) {
+            log.warn("VNPay amount mismatch for transaction {}", txnRef);
+            payment.setStatus(PaymentStatus.FAILED);
+            paymentRepository.save(payment);
+            bookingService.handlePaymentFailure(secureToken);
+            recordPaymentEvent(
+                    payment,
+                    booking,
+                    PaymentEventType.VNPAY_AMOUNT_MISMATCH,
+                    false,
+                    "VNPay callback amount does not match payment amount",
+                    requestParamsToMap(request));
+            return "redirect:/payment/result?status=FAILED"
+                    + "&bookingId=" + booking.getId()
+                    + "&txn=" + txnRef;
+        }
+
+        if (isPaymentWindowExpired(booking)) {
             payment.setStatus(PaymentStatus.EXPIRED);
             paymentRepository.save(payment);
-            bookingService.expirePendingBooking(payment.getBooking().getId());
+            bookingService.expirePendingBooking(booking.getId());
+            recordPaymentEvent(
+                    payment,
+                    booking,
+                    PaymentEventType.PAYMENT_EXPIRED,
+                    false,
+                    "VNPay callback arrived after payment window expired",
+                    requestParamsToMap(request));
             return "redirect:/payment/result?status=EXPIRED"
-                    + "&bookingId=" + payment.getBooking().getId()
+                    + "&bookingId=" + booking.getId()
                     + "&txn=" + txnRef;
         }
 
@@ -311,8 +368,15 @@ public class PaymentServiceImpl implements PaymentService {
             
             // Xử lý booking success (gửi email, đổi trạng thái vé...)
             bookingService.handlePaymentSuccess(secureToken);
+            recordPaymentEvent(
+                    payment,
+                    booking,
+                    PaymentEventType.PAYMENT_SUCCESS,
+                    true,
+                    "VNPay payment succeeded",
+                    requestParamsToMap(request));
             return "redirect:/payment/result?status=SUCCESS"
-                    + "&bookingId=" + payment.getBooking().getId()
+                    + "&bookingId=" + booking.getId()
                     + "&txn=" + txnRef;
         } else {
             payment.setStatus(PaymentStatus.FAILED);
@@ -320,8 +384,15 @@ public class PaymentServiceImpl implements PaymentService {
             
             // Xử lý booking failed (nhả ghế...)
             bookingService.handlePaymentFailure(secureToken);
+            recordPaymentEvent(
+                    payment,
+                    booking,
+                    PaymentEventType.PAYMENT_FAILED,
+                    false,
+                    "VNPay payment failed",
+                    requestParamsToMap(request));
             return "redirect:/payment/result?status=FAILED"
-                    + "&bookingId=" + payment.getBooking().getId()
+                    + "&bookingId=" + booking.getId()
                     + "&txn=" + txnRef;
         }
     }
@@ -353,11 +424,37 @@ public class PaymentServiceImpl implements PaymentService {
     private MomoProcessingResult processMomoCallback(Map<String, Object> payload) {
         String orderId = stringValue(payload, "orderId");
         if (orderId.isBlank()) {
+            paymentEventService.recordDetached(
+                    null,
+                    null,
+                    PaymentMethod.MOMO,
+                    "",
+                    PaymentEventType.MOMO_CALLBACK_RECEIVED,
+                    null,
+                    null,
+                    null,
+                    null,
+                    false,
+                    "MoMo callback missing orderId",
+                    payload);
             return new MomoProcessingResult("FAILED", null, "", 5, "Missing orderId");
         }
 
         Optional<Payment> optionalPayment = paymentRepository.findLockedByTransactionNo(orderId);
         if (optionalPayment.isEmpty()) {
+            paymentEventService.recordDetached(
+                    null,
+                    null,
+                    PaymentMethod.MOMO,
+                    orderId,
+                    PaymentEventType.MOMO_CALLBACK_RECEIVED,
+                    null,
+                    null,
+                    null,
+                    null,
+                    false,
+                    "MoMo callback payment not found",
+                    payload);
             return new MomoProcessingResult("FAILED", null, orderId, 5, "Payment not found");
         }
 
@@ -369,6 +466,13 @@ public class PaymentServiceImpl implements PaymentService {
             log.warn("Invalid MoMo signature for transaction {}", orderId);
             appendProviderResponse(payment, "momoInvalidCallback", payload);
             paymentRepository.save(payment);
+            recordPaymentEvent(
+                    payment,
+                    booking,
+                    PaymentEventType.MOMO_CALLBACK_INVALID_SIGNATURE,
+                    false,
+                    "Invalid MoMo callback signature",
+                    payload);
             return new MomoProcessingResult("FAILED", bookingId, orderId, 5, "Invalid signature");
         }
 
@@ -378,20 +482,66 @@ public class PaymentServiceImpl implements PaymentService {
                     orderId, payment.getAmount(), callbackAmount);
             appendProviderResponse(payment, "momoAmountMismatchCallback", payload);
             paymentRepository.save(payment);
+            recordPaymentEvent(
+                    payment,
+                    booking,
+                    PaymentEventType.MOMO_AMOUNT_MISMATCH,
+                    false,
+                    "MoMo callback amount does not match payment amount",
+                    payload);
             return new MomoProcessingResult("FAILED", bookingId, orderId, 5, "Amount mismatch");
         }
 
         appendProviderResponse(payment, "momoCallback", payload);
+        recordPaymentEvent(
+                payment,
+                booking,
+                PaymentEventType.MOMO_CALLBACK_RECEIVED,
+                true,
+                "MoMo callback received",
+                payload);
 
         if (payment.getStatus() != PaymentStatus.PENDING) {
             paymentRepository.save(payment);
+            recordPaymentEvent(
+                    payment,
+                    booking,
+                    PaymentEventType.PAYMENT_ALREADY_PROCESSED,
+                    true,
+                    "MoMo callback ignored because payment was already processed",
+                    payload);
             return new MomoProcessingResult(payment.getStatus().name(), bookingId, orderId, 0, "Already processed");
+        }
+
+        if (booking.getStatus() != BookingStatus.PENDING) {
+            payment.setStatus(booking.getStatus() == BookingStatus.SUCCESS
+                    ? PaymentStatus.SUCCESS
+                    : PaymentStatus.FAILED);
+            if (payment.getStatus() == PaymentStatus.SUCCESS && payment.getPaymentTime() == null) {
+                payment.setPaymentTime(LocalDateTime.now());
+            }
+            paymentRepository.save(payment);
+            recordPaymentEvent(
+                    payment,
+                    booking,
+                    PaymentEventType.PAYMENT_ALREADY_PROCESSED,
+                    true,
+                    "MoMo callback aligned payment with already finalized booking",
+                    payload);
+            return new MomoProcessingResult(payment.getStatus().name(), bookingId, orderId, 0, "Booking already processed");
         }
 
         if (isPaymentWindowExpired(booking)) {
             payment.setStatus(PaymentStatus.EXPIRED);
             paymentRepository.save(payment);
             bookingService.expirePendingBooking(bookingId);
+            recordPaymentEvent(
+                    payment,
+                    booking,
+                    PaymentEventType.PAYMENT_EXPIRED,
+                    false,
+                    "MoMo callback arrived after payment window expired",
+                    payload);
             return new MomoProcessingResult("EXPIRED", bookingId, orderId, 0, "Booking expired");
         }
 
@@ -401,6 +551,13 @@ public class PaymentServiceImpl implements PaymentService {
             payment.setPaymentTime(LocalDateTime.now());
             paymentRepository.save(payment);
             bookingService.handlePaymentSuccess(booking.getSecureToken());
+            recordPaymentEvent(
+                    payment,
+                    booking,
+                    PaymentEventType.PAYMENT_SUCCESS,
+                    true,
+                    "MoMo payment succeeded",
+                    payload);
             return new MomoProcessingResult("SUCCESS", bookingId, orderId, 0, "Success");
         }
 
@@ -409,12 +566,52 @@ public class PaymentServiceImpl implements PaymentService {
         if (booking.getStatus() == BookingStatus.PENDING) {
             bookingService.handlePaymentFailure(booking.getSecureToken());
         }
+        recordPaymentEvent(
+                payment,
+                booking,
+                PaymentEventType.PAYMENT_FAILED,
+                false,
+                "MoMo payment failed",
+                payload);
         return new MomoProcessingResult("FAILED", bookingId, orderId, 0, "Payment failed");
     }
 
     private boolean isPaymentWindowExpired(Booking booking) {
         return booking.getPaymentExpiresAt() != null
                 && !booking.getPaymentExpiresAt().isAfter(LocalDateTime.now());
+    }
+
+    private void recordPaymentEvent(
+            Payment payment,
+            Booking booking,
+            PaymentEventType eventType,
+            Boolean success,
+            String message,
+            Map<String, Object> payload) {
+        paymentEventService.record(
+                payment,
+                booking,
+                eventType,
+                payment != null ? payment.getStatus() : null,
+                payment != null ? payment.getStatus() : null,
+                booking != null ? booking.getStatus() : null,
+                booking != null ? booking.getStatus() : null,
+                success,
+                message,
+                payload);
+    }
+
+    private boolean isValidVnpayAmount(HttpServletRequest request, Payment payment) {
+        String rawAmount = request.getParameter("vnp_Amount");
+        if (rawAmount == null || rawAmount.isBlank()) {
+            return false;
+        }
+        try {
+            long callbackAmount = Long.parseLong(rawAmount);
+            return callbackAmount == toVndAmount(payment.getAmount()) * 100;
+        } catch (NumberFormatException ex) {
+            return false;
+        }
     }
 
     private String generateTransactionNo(PaymentMethod method, UUID bookingId) {
@@ -424,18 +621,11 @@ public class PaymentServiceImpl implements PaymentService {
         return VNPayUtil.getRandomNumber(8);
     }
 
-    private String signMomoCreateRequest(long amount, String extraData, String orderId, String orderInfo) {
-        String rawData = "accessKey=" + momoConfig.getAccessKey()
-                + "&amount=" + amount
-                + "&extraData=" + extraData
-                + "&ipnUrl=" + momoConfig.getIpnUrl()
-                + "&orderId=" + orderId
-                + "&orderInfo=" + orderInfo
-                + "&partnerCode=" + momoConfig.getPartnerCode()
-                + "&redirectUrl=" + momoConfig.getRedirectUrl()
-                + "&requestId=" + orderId
-                + "&requestType=" + momoConfig.getRequestType();
-        return hmacSha256(momoConfig.getSecretKey(), rawData);
+    private PaymentGateway gatewayFor(PaymentMethod method) {
+        return paymentGateways.stream()
+                .filter(gateway -> gateway.getMethod() == method)
+                .findFirst()
+                .orElseThrow(() -> new AppException(ErrorCode.PAYMENT_METHOD_UNAVAILABLE));
     }
 
     private boolean isValidMomoCallbackSignature(Map<String, Object> payload) {
@@ -526,6 +716,20 @@ public class PaymentServiceImpl implements PaymentService {
 
     private String urlEncode(String value) {
         return URLEncoder.encode(value == null ? "" : value, StandardCharsets.UTF_8);
+    }
+
+    private PaymentReconciliationIssueResponse toReconciliationIssueResponse(PaymentReconciliationIssueRow row) {
+        return PaymentReconciliationIssueResponse.builder()
+                .issueType(row.getIssueType())
+                .severity(row.getSeverity())
+                .bookingId(row.getBookingId())
+                .paymentId(row.getPaymentId())
+                .transactionNo(row.getTransactionNo())
+                .bookingStatus(row.getBookingStatus())
+                .paymentStatus(row.getPaymentStatus())
+                .message(row.getMessage())
+                .createdAt(row.getCreatedAt())
+                .build();
     }
 
     private record MomoProcessingResult(

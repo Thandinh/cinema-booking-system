@@ -1,6 +1,6 @@
 package com.cinema.booking.repository;
 
-import com.cinema.booking.enums.BookingStatus;
+import com.cinema.booking.enums.PaymentMethod;
 import com.cinema.booking.enums.PaymentStatus;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -81,6 +81,11 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             Pageable pageable);
 
     Optional<Payment> findByTransactionNo(String transactionNo);
+
+    Optional<Payment> findFirstByBookingIdAndMethodAndStatusOrderByCreatedAtDesc(
+            UUID bookingId,
+            PaymentMethod method,
+            PaymentStatus status);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT p FROM Payment p JOIN FETCH p.booking b WHERE p.transactionNo = :transactionNo")
@@ -186,6 +191,164 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
     /**
      * Tổng doanh thu tất cả thời gian.
      */
+    @Query(value = """
+            SELECT p.payment_time                                         AS paymentTime,
+                   p.transaction_no                                      AS "transactionNo",
+                   p.method                                              AS paymentMethod,
+                   p.amount                                              AS amount,
+                   b.id                                                  AS "bookingId",
+                   b.status                                              AS "bookingStatus",
+                   u.username                                            AS username,
+                   u.email                                               AS email,
+                   m.title                                               AS movieTitle,
+                   c.name                                                AS cinemaName,
+                   c.city                                                AS cinemaCity,
+                   r.name                                                AS roomName,
+                   st.start_time                                         AS showtimeStartTime,
+                   COUNT(t.id)                                           AS ticketCount,
+                   COALESCE(
+                       STRING_AGG(
+                           CONCAT(s.row_label, s.seat_number),
+                           ', ' ORDER BY s.row_index, s.col_index
+                       ),
+                       ''
+                   )                                                     AS seats
+            FROM payments p
+            JOIN bookings b          ON b.id = p.booking_id
+            JOIN users u             ON u.id = b.user_id
+            JOIN showtimes st        ON st.id = b.showtime_id
+            JOIN movies m            ON m.id = st.movie_id
+            JOIN rooms r             ON r.id = st.room_id
+            JOIN cinemas c           ON c.id = r.cinema_id
+            LEFT JOIN booking_details bd ON bd.booking_id = b.id
+            LEFT JOIN seats s        ON s.id = bd.seat_id
+            LEFT JOIN tickets t      ON t.booking_detail_id = bd.id
+            WHERE p.status = 'SUCCESS'
+              AND p.payment_time BETWEEN :from AND :to
+              AND c.id = COALESCE(CAST(:cinemaId AS uuid), c.id)
+              AND m.id = COALESCE(CAST(:movieId AS uuid), m.id)
+            GROUP BY p.payment_time, p.transaction_no, p.method, p.amount,
+                     b.id, b.status, u.username, u.email, m.title,
+                     c.name, c.city, r.name, st.start_time
+            ORDER BY p.payment_time DESC, b.id DESC
+            """, nativeQuery = true)
+    List<RevenueExportRow> findRevenueExportRows(
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to,
+            @Param("cinemaId") String cinemaId,
+            @Param("movieId") String movieId);
+
+    @Query(value = """
+            SELECT *
+            FROM (
+                SELECT 'PENDING_PAYMENT_EXPIRED' AS "issueType",
+                       'HIGH'                    AS "severity",
+                       b.id                      AS "bookingId",
+                       p.id                      AS "paymentId",
+                       p.transaction_no          AS "transactionNo",
+                       b.status                  AS "bookingStatus",
+                       p.status                  AS "paymentStatus",
+                       'Payment is still pending after booking payment window expired' AS "message",
+                       COALESCE(b.payment_expires_at, p.created_at) AS "createdAt"
+                FROM payments p
+                JOIN bookings b ON b.id = p.booking_id
+                WHERE p.status = 'PENDING'
+                  AND b.status = 'PENDING'
+                  AND b.payment_expires_at IS NOT NULL
+                  AND b.payment_expires_at <= :now
+
+                UNION ALL
+
+                SELECT 'PAYMENT_SUCCESS_BOOKING_NOT_SUCCESS' AS "issueType",
+                       'CRITICAL'                            AS "severity",
+                       b.id                                  AS "bookingId",
+                       p.id                                  AS "paymentId",
+                       p.transaction_no                      AS "transactionNo",
+                       b.status                              AS "bookingStatus",
+                       p.status                              AS "paymentStatus",
+                       'Payment succeeded but booking is not marked SUCCESS' AS "message",
+                       p.payment_time                        AS "createdAt"
+                FROM payments p
+                JOIN bookings b ON b.id = p.booking_id
+                WHERE p.status = 'SUCCESS'
+                  AND b.status <> 'SUCCESS'
+
+                UNION ALL
+
+                SELECT 'BOOKING_SUCCESS_WITHOUT_SUCCESS_PAYMENT' AS "issueType",
+                       'CRITICAL'                                AS "severity",
+                       b.id                                      AS "bookingId",
+                       NULL::uuid                                AS "paymentId",
+                       NULL::varchar                             AS "transactionNo",
+                       b.status                                  AS "bookingStatus",
+                       NULL::varchar                             AS "paymentStatus",
+                       'Booking is SUCCESS but there is no successful payment' AS "message",
+                       b.updated_at                              AS "createdAt"
+                FROM bookings b
+                WHERE b.status = 'SUCCESS'
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM payments p
+                      WHERE p.booking_id = b.id
+                        AND p.status = 'SUCCESS'
+                  )
+
+                UNION ALL
+
+                SELECT 'BOOKING_SUCCESS_MISSING_TICKETS' AS "issueType",
+                       'HIGH'                            AS "severity",
+                       b.id                              AS "bookingId",
+                       NULL::uuid                        AS "paymentId",
+                       NULL::varchar                     AS "transactionNo",
+                       b.status                          AS "bookingStatus",
+                       NULL::varchar                     AS "paymentStatus",
+                       'Booking is SUCCESS but ticket count does not match booked seats' AS "message",
+                       b.updated_at                      AS "createdAt"
+                FROM bookings b
+                WHERE b.status = 'SUCCESS'
+                  AND (
+                      SELECT COUNT(*)
+                      FROM booking_details bd
+                      WHERE bd.booking_id = b.id
+                  ) <> (
+                      SELECT COUNT(t.id)
+                      FROM booking_details bd
+                      JOIN tickets t ON t.booking_detail_id = bd.id
+                      WHERE bd.booking_id = b.id
+                  )
+
+                UNION ALL
+
+                SELECT 'PENDING_PAYMENT_BOOKING_FINALIZED' AS "issueType",
+                       'MEDIUM'                            AS "severity",
+                       b.id                                AS "bookingId",
+                       p.id                                AS "paymentId",
+                       p.transaction_no                    AS "transactionNo",
+                       b.status                            AS "bookingStatus",
+                       p.status                            AS "paymentStatus",
+                       'Payment remains PENDING while booking is already finalized' AS "message",
+                       p.created_at                        AS "createdAt"
+                FROM payments p
+                JOIN bookings b ON b.id = p.booking_id
+                WHERE p.status = 'PENDING'
+                  AND b.status <> 'PENDING'
+            ) issues
+            ORDER BY
+                CASE severity
+                    WHEN 'CRITICAL' THEN 1
+                    WHEN 'HIGH' THEN 2
+                    WHEN 'MEDIUM' THEN 3
+                    ELSE 4
+                END,
+                "createdAt" DESC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<PaymentReconciliationIssueRow> findReconciliationIssues(
+            @Param("now") LocalDateTime now,
+            @Param("limit") int limit);
+
     @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.status = com.cinema.booking.enums.PaymentStatus.SUCCESS")
     BigDecimal sumTotalRevenue();
 }
+
+

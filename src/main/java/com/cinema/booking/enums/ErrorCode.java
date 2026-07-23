@@ -36,6 +36,16 @@ public enum ErrorCode {
     CURRENT_PASSWORD_INVALID(1022, "Current password is incorrect",                   HttpStatus.BAD_REQUEST),
     PASSWORD_CONFIRM_MISMATCH(1023, "Password confirmation does not match",           HttpStatus.BAD_REQUEST),
     PASSWORD_RESET_INVALID(1024, "Password reset link is invalid or expired",         HttpStatus.BAD_REQUEST),
+    PARAMETER_INVALID      (1025, "Request parameter is invalid",                     HttpStatus.BAD_REQUEST),
+    PARAMETER_REQUIRED     (1026, "Required request parameter is missing",            HttpStatus.BAD_REQUEST),
+    REQUEST_BODY_INVALID   (1027, "Request body is invalid",                         HttpStatus.BAD_REQUEST),
+    DATA_INTEGRITY_VIOLATION(1028, "Data conflicts with existing records",            HttpStatus.CONFLICT),
+    ROLE_NAME_REQUIRED     (1029, "Role name is required",                           HttpStatus.BAD_REQUEST),
+    ROLE_NAME_INVALID      (1030, "Role name must be between {min} and 50 characters", HttpStatus.BAD_REQUEST),
+    PERMISSION_NAME_REQUIRED(1031, "Permission name is required",                     HttpStatus.BAD_REQUEST),
+    PERMISSION_NAME_INVALID(1032, "Permission name must be between {min} and 100 characters", HttpStatus.BAD_REQUEST),
+    GOOGLE_ID_TOKEN_REQUIRED(1033, "Google ID token is required",                     HttpStatus.BAD_REQUEST),
+    AVATAR_URL_INVALID     (1034, "Avatar URL must be at most 500 characters",        HttpStatus.BAD_REQUEST),
 
     // ── Movie ────────────────────────────────────────────────────────────────
     MOVIE_NOT_FOUND        (2001, "Movie not found",                      HttpStatus.NOT_FOUND),
@@ -71,6 +81,8 @@ public enum ErrorCode {
     SHOWTIME_TIME_OVERLAPPING  (5002, "Time overlaps with an existing showtime in this room", HttpStatus.CONFLICT),
     SHOWTIME_END_TIME_INVALID  (5003, "End time must be after start time",     HttpStatus.BAD_REQUEST),
     MOVIE_ID_REQUIRED          (5010, "Movie ID is required",                  HttpStatus.BAD_REQUEST),
+    START_TIME_REQUIRED        (5011, "Start time is required",                HttpStatus.BAD_REQUEST),
+    END_TIME_REQUIRED          (5012, "End time is required",                  HttpStatus.BAD_REQUEST),
 
     // ── Promotion ────────────────────────────────────────────────────────
     PROMOTION_CODE_EXISTS      (6001, "Promotion code already exists",         HttpStatus.CONFLICT),

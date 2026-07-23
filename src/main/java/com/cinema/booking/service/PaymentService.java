@@ -1,5 +1,6 @@
 package com.cinema.booking.service;
 
+import com.cinema.booking.dto.response.PaymentReconciliationIssueResponse;
 import com.cinema.booking.dto.response.PaymentResponse;
 import com.cinema.booking.enums.PaymentMethod;
 import com.cinema.booking.enums.PaymentStatus;
@@ -7,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import jakarta.servlet.http.HttpServletRequest;
@@ -24,6 +26,8 @@ public interface PaymentService {
 
     /** Lấy toàn bộ giao dịch cho ADMIN/STAFF (PAYMENT_VIEW_ALL) */
     Page<PaymentResponse> getAllPayments(Pageable pageable, PaymentStatus status, PaymentMethod method, String keyword);
+
+    List<PaymentReconciliationIssueResponse> getReconciliationIssues(int limit);
 
     /** Xử lý callback trả về từ VNPay */
     String handleVNPayCallback(HttpServletRequest request);
