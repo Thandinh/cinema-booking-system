@@ -9,6 +9,15 @@ import lombok.experimental.FieldDefaults;
 @Builder
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AuthenticationResponse {
+    /**
+     * Backward-compatible alias for accessToken.
+     * New clients should use accessToken explicitly.
+     */
     String token;
+    String accessToken;
+    String refreshToken;
+    String tokenType;
+    long expiresIn;
+    long refreshExpiresIn;
     boolean authenticated;
 }

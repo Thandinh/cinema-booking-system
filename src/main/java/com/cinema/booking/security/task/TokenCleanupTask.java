@@ -1,12 +1,14 @@
 package com.cinema.booking.security.task;
 
 import com.cinema.booking.repository.InvalidatedTokenRepository;
-import org.springframework.transaction.annotation.Transactional;
+import com.cinema.booking.repository.RefreshTokenRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.Date;
 
 @Component
@@ -14,17 +16,18 @@ import java.util.Date;
 @RequiredArgsConstructor
 public class TokenCleanupTask {
     private final InvalidatedTokenRepository invalidatedTokenRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
 
     @Scheduled(cron = "0 0 2 * * ?")
     @Transactional
     public void cleanupExpiredTokens() {
-        log.info("--- BẮT ĐẦU DỌN DẸP TOKEN HẾT HẠN ---");
+        log.info("Starting expired token cleanup");
         try {
             invalidatedTokenRepository.deleteAllByExpiryTimeBefore(new Date());
-            log.info("--- DỌN DẸP HOÀN TẤT ---");
+            refreshTokenRepository.deleteAllByExpiresAtBefore(LocalDateTime.now());
+            log.info("Expired token cleanup completed");
         } catch (Exception e) {
-            log.error("Lỗi khi dọn dẹp Token: {}", e.getMessage());
+            log.error("Failed to clean expired tokens: {}", e.getMessage());
         }
     }
-
 }

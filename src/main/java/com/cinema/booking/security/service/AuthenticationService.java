@@ -1,7 +1,7 @@
 package com.cinema.booking.security.service;
 
-import com.cinema.booking.configuration.JwtProperties;
 import com.cinema.booking.configuration.GoogleOAuthProperties;
+import com.cinema.booking.configuration.JwtProperties;
 import com.cinema.booking.dto.request.AuthenticationRequest;
 import com.cinema.booking.dto.request.GoogleLoginRequest;
 import com.cinema.booking.dto.request.IntrospectRequest;
@@ -10,18 +10,26 @@ import com.cinema.booking.dto.request.RefreshRequest;
 import com.cinema.booking.dto.response.AuthenticationResponse;
 import com.cinema.booking.dto.response.IntrospectResponse;
 import com.cinema.booking.entity.InvalidatedToken;
+import com.cinema.booking.entity.RefreshToken;
 import com.cinema.booking.entity.Role;
 import com.cinema.booking.entity.User;
 import com.cinema.booking.enums.ErrorCode;
 import com.cinema.booking.exception.AppException;
 import com.cinema.booking.repository.InvalidatedTokenRepository;
+import com.cinema.booking.repository.RefreshTokenRepository;
 import com.cinema.booking.repository.RoleRepository;
 import com.cinema.booking.repository.UserRepository;
-import com.nimbusds.jose.*;
+import com.nimbusds.jose.JOSEException;
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.JWSObject;
+import com.nimbusds.jose.JWSVerifier;
+import com.nimbusds.jose.Payload;
 import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jose.crypto.MACVerifier;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -41,11 +49,17 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.text.ParseException;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Set;
 import java.util.StringJoiner;
@@ -56,20 +70,25 @@ import java.util.UUID;
 @Slf4j
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class AuthenticationService {
+    static final String ISSUER = "cinema-booking";
+    static final String TOKEN_USE_CLAIM = "token_use";
+    static final String ACCESS_TOKEN_USE = "access";
+    static final String REFRESH_TOKEN_USE = "refresh";
+    static final String GOOGLE_ISSUER = "https://accounts.google.com";
+    static final String GOOGLE_JWK_SET_URI = "https://www.googleapis.com/oauth2/v3/certs";
+    static final ZoneId SYSTEM_ZONE = ZoneId.systemDefault();
+
     UserRepository userRepository;
     RoleRepository roleRepository;
     InvalidatedTokenRepository invalidatedTokenRepository;
+    RefreshTokenRepository refreshTokenRepository;
     JwtProperties jwtProperties;
     GoogleOAuthProperties googleOAuthProperties;
 
-    static final String GOOGLE_ISSUER = "https://accounts.google.com";
-    static final String GOOGLE_JWK_SET_URI = "https://www.googleapis.com/oauth2/v3/certs";
-
     public IntrospectResponse introspect(IntrospectRequest request) {
-        var token = request.getToken();
         boolean isValid = true;
         try {
-            verifyToken(token, false);
+            verifyToken(request.getToken(), false);
         } catch (AppException | JOSEException | ParseException e) {
             isValid = false;
         }
@@ -77,81 +96,25 @@ public class AuthenticationService {
     }
 
     public String generateToken(User user) {
-        JWSHeader header = new JWSHeader(JWSAlgorithm.HS512);
-
-        JWTClaimsSet jwtClaimsSet = new JWTClaimsSet.Builder()
-                .subject(user.getUsername())
-                .issuer("cinema-booking")
-                .issueTime(new Date())
-                .expirationTime(new Date(
-                        Instant.now().plus(jwtProperties.getAccessTokenValidDuration(), ChronoUnit.SECONDS).toEpochMilli()))
-                .jwtID(UUID.randomUUID().toString()) // Tạo ID định danh cho token
-                .claim("scope", buildScope(user))
-                .claim("userId", user.getId().toString())
-                .build();
-
-        Payload payload = new Payload(jwtClaimsSet.toJSONObject());
-        JWSObject jwsObject = new JWSObject(header, payload);
-
-        try {
-            jwsObject.sign(new MACSigner(jwtProperties.getSignerKey().getBytes()));
-            return jwsObject.serialize();
-        } catch (JOSEException e) {
-            throw new RuntimeException("Error signing token", e);
-        }
-    }
-
-    public SignedJWT verifyToken(String token, boolean isRefresh) throws JOSEException, ParseException {
-        JWSVerifier verifier = new MACVerifier(jwtProperties.getSignerKey().getBytes());
-        SignedJWT signedJWT = SignedJWT.parse(token);
-
-        Date expiryTime = isRefresh
-                ? new Date(signedJWT.getJWTClaimsSet().getIssueTime().toInstant()
-                .plus(jwtProperties.getRefreshTokenValidDuration(), ChronoUnit.SECONDS).toEpochMilli())
-                : signedJWT.getJWTClaimsSet().getExpirationTime();
-
-        var verified = signedJWT.verify(verifier);
-
-        if (!(verified && expiryTime.after(new Date())))
-            throw new AppException(ErrorCode.UNAUTHENTICATED);
-
-        if (invalidatedTokenRepository.existsById(signedJWT.getJWTClaimsSet().getJWTID()))
-            throw new AppException(ErrorCode.UNAUTHENTICATED);
-
-        var username = signedJWT.getJWTClaimsSet().getSubject();
-        var user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHENTICATED));
-        validateUserCanAuthenticate(user);
-
-        return signedJWT;
-    }
-
-    public AuthenticationResponse authenticate(AuthenticationRequest request) {
-        PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(10);
-        // 1. Tìm user theo username
-        var user = userRepository.findByUsername(request.getUsername())
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-        validateUserCanAuthenticate(user);
-
-        // 2. Kiểm tra mật khẩu (Sử dụng PasswordEncoder đã inject)
-        boolean authenticated = passwordEncoder.matches(request.getPassword(), user.getPassword());
-
-        if (!authenticated) {
-            throw new AppException(ErrorCode.UNAUTHENTICATED);
-        }
-
-        // 3. Nếu đúng mật khẩu, tiến hành tạo Token
-        var token = generateToken(user);
-
-        // 4. Trả về Response
-        return AuthenticationResponse.builder()
-                .token(token)
-                .authenticated(true)
-                .build();
+        return generateAccessToken(user);
     }
 
     @Transactional
-    public AuthenticationResponse authenticateWithGoogle(GoogleLoginRequest request) {
+    public AuthenticationResponse authenticate(AuthenticationRequest request, HttpServletRequest servletRequest) {
+        PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(10);
+        User user = userRepository.findByUsername(request.getUsername())
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        validateUserCanAuthenticate(user);
+
+        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+
+        return issueTokenPair(user, servletRequest);
+    }
+
+    @Transactional
+    public AuthenticationResponse authenticateWithGoogle(GoogleLoginRequest request, HttpServletRequest servletRequest) {
         Jwt googleJwt = decodeGoogleIdToken(request.getIdToken());
 
         Boolean emailVerified = googleJwt.getClaim("email_verified");
@@ -173,58 +136,195 @@ public class AuthenticationService {
                 })
                 .orElseGet(() -> createGoogleUser(googleJwt, email));
 
-        String token = generateToken(user);
-        return AuthenticationResponse.builder()
-                .token(token)
-                .authenticated(true)
-                .build();
+        return issueTokenPair(user, servletRequest);
     }
 
-    public AuthenticationResponse refreshToken(RefreshRequest request) throws ParseException, JOSEException {
-        // 1. Kiểm tra tính hợp lệ của token cũ (Check chữ ký, thời hạn refresh và blacklist)
-        // isRefresh = true để hàm verifyToken kiểm tra theo thời hạn Refreshable Duration
-        var signedJWT = verifyToken(request.getToken(), true);
-
-        // 2. Thu hồi token cũ (Vô hiệu hóa ngay lập tức token vừa dùng để refresh)
-        var jit = signedJWT.getJWTClaimsSet().getJWTID();
-        var expiryTime = signedJWT.getJWTClaimsSet().getExpirationTime();
-
-        InvalidatedToken invalidatedToken = InvalidatedToken.builder()
-                .id(jit)
-                .expiryTime(expiryTime)
-                .build();
-
-        invalidatedTokenRepository.save(invalidatedToken);
-
-        // 3. Lấy thông tin user từ token cũ để cấp token mới
-        var username = signedJWT.getJWTClaimsSet().getSubject();
-        var user = userRepository.findByUsername(username)
+    @Transactional
+    public AuthenticationResponse refreshToken(RefreshRequest request, HttpServletRequest servletRequest)
+            throws ParseException, JOSEException {
+        String refreshToken = request.getToken();
+        verifyToken(refreshToken, true);
+        String tokenHash = hashToken(refreshToken);
+        RefreshToken currentRefreshToken = refreshTokenRepository.findByTokenHash(tokenHash)
                 .orElseThrow(() -> new AppException(ErrorCode.UNAUTHENTICATED));
 
-        // 4. Tạo token mới "chính chủ" cho hệ thống Cinema
-        var newToken = generateToken(user);
+        User user = currentRefreshToken.getUser();
+        validateUserCanAuthenticate(user);
 
+        String newRefreshToken = generateRefreshToken(user, servletRequest);
+        String newRefreshTokenId = SignedJWT.parse(newRefreshToken).getJWTClaimsSet().getJWTID();
+
+        currentRefreshToken.setRevokedAt(LocalDateTime.now());
+        currentRefreshToken.setRevokedReason("ROTATED");
+        currentRefreshToken.setReplacedByTokenId(newRefreshTokenId);
+        refreshTokenRepository.save(currentRefreshToken);
+
+        String accessToken = generateAccessToken(user);
+        return buildAuthenticationResponse(accessToken, newRefreshToken);
+    }
+
+    @Transactional
+    public void logout(LogoutRequest request) throws ParseException, JOSEException {
+        invalidateAccessToken(request.getToken());
+        revokeRefreshToken(request.getRefreshToken(), "LOGOUT");
+    }
+
+    public SignedJWT verifyToken(String token, boolean isRefresh) throws JOSEException, ParseException {
+        if (!StringUtils.hasText(token)) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+
+        SignedJWT signedJWT = verifySignedToken(token);
+        JWTClaimsSet claims = signedJWT.getJWTClaimsSet();
+        String tokenUse = claims.getStringClaim(TOKEN_USE_CLAIM);
+        String expectedTokenUse = isRefresh ? REFRESH_TOKEN_USE : ACCESS_TOKEN_USE;
+        if (!expectedTokenUse.equals(tokenUse)) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+
+        Date expiresAt = claims.getExpirationTime();
+        if (expiresAt == null || !expiresAt.after(new Date())) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+
+        if (isRefresh) {
+            validateRefreshTokenRecord(token, claims);
+        } else if (invalidatedTokenRepository.existsById(claims.getJWTID())) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+
+        User user = userRepository.findByUsername(claims.getSubject())
+                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHENTICATED));
+        validateUserCanAuthenticate(user);
+
+        return signedJWT;
+    }
+
+    private AuthenticationResponse issueTokenPair(User user, HttpServletRequest servletRequest) {
+        String accessToken = generateAccessToken(user);
+        String refreshToken = generateRefreshToken(user, servletRequest);
+        return buildAuthenticationResponse(accessToken, refreshToken);
+    }
+
+    private AuthenticationResponse buildAuthenticationResponse(String accessToken, String refreshToken) {
         return AuthenticationResponse.builder()
-                .token(newToken)
+                .token(accessToken)
+                .accessToken(accessToken)
+                .refreshToken(refreshToken)
+                .tokenType("Bearer")
+                .expiresIn(jwtProperties.getAccessTokenValidDuration())
+                .refreshExpiresIn(jwtProperties.getRefreshTokenValidDuration())
                 .authenticated(true)
                 .build();
     }
 
-    public void logout(LogoutRequest request) throws ParseException, JOSEException {
+    private String generateAccessToken(User user) {
+        JWTClaimsSet jwtClaimsSet = new JWTClaimsSet.Builder()
+                .subject(user.getUsername())
+                .issuer(ISSUER)
+                .issueTime(new Date())
+                .expirationTime(new Date(Instant.now()
+                        .plus(jwtProperties.getAccessTokenValidDuration(), ChronoUnit.SECONDS)
+                        .toEpochMilli()))
+                .jwtID(UUID.randomUUID().toString())
+                .claim(TOKEN_USE_CLAIM, ACCESS_TOKEN_USE)
+                .claim("scope", buildScope(user))
+                .claim("userId", user.getId().toString())
+                .build();
+
+        return sign(jwtClaimsSet);
+    }
+
+    private String generateRefreshToken(User user, HttpServletRequest servletRequest) {
+        String tokenId = UUID.randomUUID().toString();
+        Instant expiresAt = Instant.now().plus(jwtProperties.getRefreshTokenValidDuration(), ChronoUnit.SECONDS);
+        JWTClaimsSet jwtClaimsSet = new JWTClaimsSet.Builder()
+                .subject(user.getUsername())
+                .issuer(ISSUER)
+                .issueTime(new Date())
+                .expirationTime(Date.from(expiresAt))
+                .jwtID(tokenId)
+                .claim(TOKEN_USE_CLAIM, REFRESH_TOKEN_USE)
+                .claim("userId", user.getId().toString())
+                .build();
+
+        String refreshToken = sign(jwtClaimsSet);
+        refreshTokenRepository.save(RefreshToken.builder()
+                .tokenHash(hashToken(refreshToken))
+                .tokenId(tokenId)
+                .user(user)
+                .expiresAt(LocalDateTime.ofInstant(expiresAt, SYSTEM_ZONE))
+                .userAgent(extractUserAgent(servletRequest))
+                .ipAddress(extractClientIp(servletRequest))
+                .build());
+        return refreshToken;
+    }
+
+    private String sign(JWTClaimsSet jwtClaimsSet) {
+        JWSObject jwsObject = new JWSObject(new JWSHeader(JWSAlgorithm.HS512), new Payload(jwtClaimsSet.toJSONObject()));
         try {
-            var signedToken = verifyToken(request.getToken(), true);
-            String jit = signedToken.getJWTClaimsSet().getJWTID();
-            Date expiryTime = signedToken.getJWTClaimsSet().getExpirationTime();
-
-            InvalidatedToken invalidatedToken = InvalidatedToken.builder()
-                    .id(jit)
-                    .expiryTime(expiryTime)
-                    .build();
-
-            invalidatedTokenRepository.save(invalidatedToken);
-        } catch (AppException e) {
-            log.info("Token already expired or invalid");
+            jwsObject.sign(new MACSigner(jwtProperties.getSignerKey().getBytes(StandardCharsets.UTF_8)));
+            return jwsObject.serialize();
+        } catch (JOSEException e) {
+            throw new RuntimeException("Error signing token", e);
         }
+    }
+
+    private SignedJWT verifySignedToken(String token) throws JOSEException, ParseException {
+        JWSVerifier verifier = new MACVerifier(jwtProperties.getSignerKey().getBytes(StandardCharsets.UTF_8));
+        SignedJWT signedJWT = SignedJWT.parse(token);
+        if (!signedJWT.verify(verifier)) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+        return signedJWT;
+    }
+
+    private void validateRefreshTokenRecord(String token, JWTClaimsSet claims) {
+        LocalDateTime now = LocalDateTime.now();
+        RefreshToken refreshToken = refreshTokenRepository.findByTokenHash(hashToken(token))
+                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHENTICATED));
+
+        if (!refreshToken.getTokenId().equals(claims.getJWTID())) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+
+        if (!refreshToken.isActive(now)) {
+            if (refreshToken.getRevokedAt() != null) {
+                refreshTokenRepository.revokeAllActiveByUserId(
+                        refreshToken.getUser().getId(),
+                        now,
+                        "REUSE_DETECTED");
+                log.warn("Refresh token reuse detected for user {}", refreshToken.getUser().getUsername());
+            }
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+    }
+
+    private void invalidateAccessToken(String token) throws ParseException, JOSEException {
+        try {
+            SignedJWT signedToken = verifyToken(token, false);
+            JWTClaimsSet claims = signedToken.getJWTClaimsSet();
+            invalidatedTokenRepository.save(InvalidatedToken.builder()
+                    .id(claims.getJWTID())
+                    .expiryTime(claims.getExpirationTime())
+                    .build());
+        } catch (AppException e) {
+            log.info("Access token already expired or invalid");
+        }
+    }
+
+    private void revokeRefreshToken(String token, String reason) {
+        if (!StringUtils.hasText(token)) {
+            return;
+        }
+
+        refreshTokenRepository.findByTokenHash(hashToken(token)).ifPresent(refreshToken -> {
+            if (refreshToken.getRevokedAt() == null) {
+                refreshToken.setRevokedAt(LocalDateTime.now());
+                refreshToken.setRevokedReason(reason);
+                refreshTokenRepository.save(refreshToken);
+            }
+        });
     }
 
     private void validateUserCanAuthenticate(User user) {
@@ -249,9 +349,9 @@ public class AuthenticationService {
                 token.getAudience().contains(clientId)
                         ? OAuth2TokenValidatorResult.success()
                         : OAuth2TokenValidatorResult.failure(new OAuth2Error(
-                                "invalid_token",
-                                "Google ID token audience does not match this application",
-                                null));
+                        "invalid_token",
+                        "Google ID token audience does not match this application",
+                        null));
         decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(issuerValidator, audienceValidator));
 
         try {
@@ -341,12 +441,38 @@ public class AuthenticationService {
         StringJoiner stringJoiner = new StringJoiner(" ");
         if (!CollectionUtils.isEmpty(user.getRoles())) {
             user.getRoles().forEach(role -> {
-                stringJoiner.add("ROLE_" + role.getName()); // Prefix ROLE_ cho Spring Security
+                stringJoiner.add("ROLE_" + role.getName());
                 if (!CollectionUtils.isEmpty(role.getPermissions())) {
                     role.getPermissions().forEach(p -> stringJoiner.add(p.getName()));
                 }
             });
         }
         return stringJoiner.toString();
+    }
+
+    private String hashToken(String token) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(token.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is not available", e);
+        }
+    }
+
+    private String extractUserAgent(HttpServletRequest request) {
+        if (request == null) return null;
+        String userAgent = request.getHeader("User-Agent");
+        if (!StringUtils.hasText(userAgent)) return null;
+        return userAgent.length() <= 500 ? userAgent : userAgent.substring(0, 500);
+    }
+
+    private String extractClientIp(HttpServletRequest request) {
+        if (request == null) return null;
+        String forwardedFor = request.getHeader("X-Forwarded-For");
+        String ip = StringUtils.hasText(forwardedFor)
+                ? forwardedFor.split(",")[0].trim()
+                : request.getRemoteAddr();
+        if (!StringUtils.hasText(ip)) return null;
+        return ip.length() <= 80 ? ip : ip.substring(0, 80);
     }
 }
