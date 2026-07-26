@@ -36,6 +36,21 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, UUID> {
            countQuery = "SELECT COUNT(s) FROM Showtime s WHERE s.isDeleted = false")
     Page<Showtime> findAllActive(Pageable pageable);
 
+    @Query(value = """
+            SELECT s FROM Showtime s
+            JOIN FETCH s.movie
+            JOIN FETCH s.room r
+            JOIN FETCH r.cinema c
+            WHERE s.isDeleted = false
+              AND c.id IN :cinemaIds
+            """,
+           countQuery = """
+            SELECT COUNT(s) FROM Showtime s
+            WHERE s.isDeleted = false
+              AND s.room.cinema.id IN :cinemaIds
+            """)
+    Page<Showtime> findAllActiveByCinemaIds(@Param("cinemaIds") List<UUID> cinemaIds, Pageable pageable);
+
     /**
      * Thuật toán Overlapping nâng cấp (15p dọn phòng).
      * Để tránh lỗi parse HQL, startTimeCheck và endTimeCheck (+/- 15p) sẽ được truyền trực tiếp từ Service.
@@ -150,7 +165,24 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, UUID> {
     /** Tổng số suất chiếu active */
     Long countByIsDeletedFalse();
 
+    @Query("""
+            SELECT COUNT(s)
+            FROM Showtime s
+            WHERE s.isDeleted = false
+              AND s.room.cinema.id IN :cinemaIds
+            """)
+    Long countByIsDeletedFalseAndCinemaIds(@Param("cinemaIds") List<UUID> cinemaIds);
+
     /** Đếm suất chiếu theo trạng thái */
     @Query("SELECT COUNT(s) FROM Showtime s WHERE s.status = com.cinema.booking.enums.ShowtimeStatus.UPCOMING AND s.isDeleted = false")
     Long countUpcomingShowtimes();
+
+    @Query("""
+            SELECT COUNT(s)
+            FROM Showtime s
+            WHERE s.status = com.cinema.booking.enums.ShowtimeStatus.UPCOMING
+              AND s.isDeleted = false
+              AND s.room.cinema.id IN :cinemaIds
+            """)
+    Long countUpcomingShowtimesByCinemaIds(@Param("cinemaIds") List<UUID> cinemaIds);
 }

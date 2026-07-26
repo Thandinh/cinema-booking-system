@@ -206,6 +206,9 @@ users
   -> roles
   -> roles_permissions
   -> permissions
+
+staff_cinemas
+  -> gan STAFF voi cac rap duoc phu trach
 ```
 
 Class chinh:
@@ -215,6 +218,7 @@ Class chinh:
 - `SecurityConfig`: cau hinh endpoint public/private.
 - `@PreAuthorize`: chan API theo permission.
 - `CustomJwtDecoder`: decode JWT va dua permission vao Spring Security.
+- `StaffCinemaScopeService`: gioi han du lieu STAFF theo rap duoc gan.
 
 Vi du:
 
@@ -227,7 +231,7 @@ Nghia la user phai co permission `MOVIE_CREATE` moi goi duoc endpoint.
 Vai tro:
 
 - `ADMIN`: quan tri toan he thong.
-- `STAFF`: soat ve QR, xem booking/payment, ho tro rap.
+- `STAFF`: soat ve QR, xem booking/payment, ho tro rap trong pham vi `staff_cinemas`.
 - `USER`: xem phim, dat ve, thanh toan, xem ve cua minh.
 
 ## 5. Luong xem phim, rap, suat chieu
@@ -500,7 +504,8 @@ Staff mo trang Soat ve QR
        3. Booking SUCCESS
        4. Dung cinemaId
        5. Dung showtimeId
-       6. Nam trong cua so check-in
+       6. STAFF duoc gan voi rap cua ve trong staff_cinemas
+       7. Nam trong cua so check-in
   -> Neu tat ca dung:
        ticket.status = USED
        check_in_time = now
@@ -645,4 +650,3 @@ Neu duoc hoi "He thong cua em hoat dong nhu the nao?", co the tra loi:
 - `SeatStatusPublisher`: realtime trang thai ghe.
 - `ApplicationInitConfig`: seed RBAC.
 - `V4__create_refresh_tokens.sql`, `V5__create_auth_audit_logs.sql`: migration bao mat moi.
-

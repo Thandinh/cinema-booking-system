@@ -1,7 +1,14 @@
 package com.cinema.booking.dto.request;
 
-import jakarta.validation.constraints.*;
-import lombok.*;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Past;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 import lombok.experimental.FieldDefaults;
 
 import java.time.LocalDate;
@@ -38,6 +45,9 @@ public class UserUpdateRequest {
     @Size(max = 500, message = "AVATAR_URL_INVALID")
     String avatarUrl;
 
-    /** Chỉ ADMIN mới được phép cập nhật roles */
+    /** Only ADMIN can update roles. Null means keep current roles. */
     Set<UUID> roleIds;
+
+    /** Only ADMIN can update STAFF cinema scope. Null means keep current assignments. */
+    Set<UUID> assignedCinemaIds;
 }

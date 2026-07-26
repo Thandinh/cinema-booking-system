@@ -30,4 +30,5 @@ public class UserResponse {
     LocalDateTime createdAt;
     LocalDateTime updatedAt;
     Set<RoleResponse> roles;
+    Set<CinemaResponse> assignedCinemas;
 }

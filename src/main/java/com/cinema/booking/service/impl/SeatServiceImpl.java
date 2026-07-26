@@ -15,6 +15,7 @@ import com.cinema.booking.mapper.SeatMapper;
 import com.cinema.booking.repository.RoomRepository;
 import com.cinema.booking.repository.SeatRepository;
 import com.cinema.booking.service.SeatService;
+import com.cinema.booking.service.StaffCinemaScopeService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -41,6 +42,7 @@ public class SeatServiceImpl implements SeatService {
     RoomRepository roomRepository;
     SeatMapper seatMapper;
     com.cinema.booking.repository.SeatStatusRepository seatStatusRepository;
+    StaffCinemaScopeService staffCinemaScopeService;
 
     // ─────────────────────────────────────────────────────────────────────────
     // CREATE SINGLE
@@ -50,6 +52,7 @@ public class SeatServiceImpl implements SeatService {
     @Transactional
     public SeatResponse createSeat(SeatCreationRequest request) {
         Room room = findActiveRoom(request.getRoomId());
+        validateRoomScope(room);
 
         String rowLabel = request.getRowLabel().toUpperCase();
         if (seatRepository.existsByRoomIdAndRowLabelAndSeatNumber(room.getId(), rowLabel, request.getSeatNumber())) {
@@ -72,6 +75,7 @@ public class SeatServiceImpl implements SeatService {
     @Transactional
     public SeatBulkGenerateResponse bulkGenerateSeats(SeatBulkGenerateRequest request) {
         Room room = findActiveRoom(request.getRoomId());
+        validateRoomScope(room);
 
         List<String>  rowLabels   = normalizeRowLabels(request.getRowLabels());
         int           seatsPerRow = request.getSeatsPerRow();
@@ -148,6 +152,7 @@ public class SeatServiceImpl implements SeatService {
     @Transactional
     public SeatResponse updateSeat(UUID id, SeatUpdateRequest request) {
         Seat seat = findActiveSeat(id);
+        validateSeatScope(seat);
         seatMapper.updateSeat(seat, request);
         return seatMapper.toSeatResponse(seatRepository.save(seat));
     }
@@ -160,6 +165,7 @@ public class SeatServiceImpl implements SeatService {
     @Transactional
     public void deleteSeat(UUID id) {
         Seat seat = findActiveSeat(id);
+        validateSeatScope(seat);
         
         boolean isInUse = seatStatusRepository.existsBySeatIdAndStatusIn(
                 id, 
@@ -181,15 +187,16 @@ public class SeatServiceImpl implements SeatService {
     @Override
     @Transactional(readOnly = true)
     public SeatResponse getSeatById(UUID id) {
-        return seatMapper.toSeatResponse(findActiveSeat(id));
+        Seat seat = findActiveSeat(id);
+        validateSeatScope(seat);
+        return seatMapper.toSeatResponse(seat);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<SeatResponse> getSeatsByRoomId(UUID roomId) {
-        if (roomRepository.findActiveById(roomId).isEmpty()) {
-            throw new AppException(ErrorCode.ROOM_NOT_FOUND);
-        }
+        Room room = findActiveRoom(roomId);
+        validateRoomScope(room);
         return seatRepository.findActiveByRoomId(roomId)
                 .stream()
                 .map(seatMapper::toSeatResponse)
@@ -208,6 +215,14 @@ public class SeatServiceImpl implements SeatService {
     private Seat findActiveSeat(UUID id) {
         return seatRepository.findActiveById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.SEAT_NOT_FOUND));
+    }
+
+    private void validateRoomScope(Room room) {
+        staffCinemaScopeService.validateCurrentStaffCanAccessCinema(room.getCinema().getId());
+    }
+
+    private void validateSeatScope(Seat seat) {
+        validateRoomScope(seat.getRoom());
     }
 
     private List<String> normalizeRowLabels(List<String> rowLabels) {

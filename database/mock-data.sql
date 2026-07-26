@@ -164,6 +164,19 @@ CREATE INDEX IF NOT EXISTS idx_auth_audit_logs_event_created_at
 CREATE INDEX IF NOT EXISTS idx_auth_audit_logs_success_created_at
     ON auth_audit_logs(success, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS staff_cinemas (
+    staff_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    cinema_id UUID NOT NULL REFERENCES cinemas(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (staff_id, cinema_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_staff_cinemas_staff_id
+    ON staff_cinemas(staff_id);
+
+CREATE INDEX IF NOT EXISTS idx_staff_cinemas_cinema_id
+    ON staff_cinemas(cinema_id);
+
 DELETE FROM refresh_tokens;
 DELETE FROM auth_audit_logs;
 
@@ -178,6 +191,7 @@ TRUNCATE TABLE
     showtimes,
     seats,
     rooms,
+    staff_cinemas,
     cinemas,
     movies
 RESTART IDENTITY CASCADE;
@@ -272,6 +286,12 @@ INSERT INTO cinemas (
 (uuid_generate_v4(), 'Lotte Cinema Đà Nẵng', 'Tầng 5 Lotte Mart, 6 Nại Nam', 'Đà Nẵng', 16.0392, 108.2265, NOW(), NOW(), true, false);
 
 -- Mỗi rạp 2 phòng. Tổng: 16 phòng.
+INSERT INTO staff_cinemas (staff_id, cinema_id, created_at)
+SELECT u.id, c.id, NOW()
+FROM users u
+JOIN cinemas c ON c.name = 'BHD Star Bitexco' OR c.name LIKE 'CGV S%'
+WHERE u.username = 'staff1';
+
 INSERT INTO rooms (id, cinema_id, name, created_at, updated_at, is_deleted)
 SELECT
     uuid_generate_v4(),

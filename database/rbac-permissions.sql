@@ -106,6 +106,7 @@ CROSS JOIN permissions p
 WHERE r.name = 'ADMIN';
 
 -- STAFF: van hanh rap, quan ly lich chieu, xem booking/payment, check-in QR.
+-- Luu y: permission cho phep goi API, con du lieu thuc te bi gioi han theo bang staff_cinemas.
 -- Khong cap quyen thanh toan/dat ve ca nhan neu chua co luong ban ve tai quay.
 INSERT INTO roles_permissions (role_id, permission_id, created_at)
 SELECT r.id, p.id, NOW()

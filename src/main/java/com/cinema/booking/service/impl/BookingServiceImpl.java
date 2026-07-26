@@ -14,6 +14,7 @@ import com.cinema.booking.mapper.TicketMapper;
 import com.cinema.booking.repository.*;
 import com.cinema.booking.service.BookingService;
 import com.cinema.booking.service.EmailService;
+import com.cinema.booking.service.StaffCinemaScopeService;
 import com.cinema.booking.service.TicketQrCodeService;
 import com.cinema.booking.util.SecurityUtils;
 import com.cinema.booking.websocket.SeatStatusPublisher;
@@ -62,6 +63,7 @@ public class BookingServiceImpl implements BookingService {
     EmailService         emailService;        // Gửi email vé
     TicketQrCodeService  ticketQrCodeService;
     PaymentRepository    paymentRepository;
+    StaffCinemaScopeService staffCinemaScopeService;
 
     @Value("${ticket.check-in-early-minutes:30}")
     @NonFinal
@@ -507,6 +509,13 @@ public class BookingServiceImpl implements BookingService {
     @Override
     @Transactional(readOnly = true)
     public Page<BookingResponse> getAllBookings(BookingStatus status, Pageable pageable) {
+        if (staffCinemaScopeService.isStaffButNotAdmin()) {
+            List<UUID> cinemaIds = staffCinemaScopeService.getCurrentStaffCinemaIds();
+            if (cinemaIds.isEmpty()) {
+                return Page.empty(pageable);
+            }
+            return mapBookingPage(bookingRepository.findIdsByStatusAndCinemaIds(status, cinemaIds, pageable));
+        }
         return mapBookingPage(bookingRepository.findIdsByStatus(status, pageable));
     }
 
@@ -540,6 +549,10 @@ public class BookingServiceImpl implements BookingService {
         if (!isOwner && !canViewAll) {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
+        if (!isOwner && canViewAll) {
+            staffCinemaScopeService.validateCurrentStaffCanAccessCinema(
+                    booking.getShowtime().getRoom().getCinema().getId());
+        }
 
         upgradeLegacyTicketQrCodes(booking);
 
@@ -554,6 +567,21 @@ public class BookingServiceImpl implements BookingService {
     public Page<TicketResponse> getMyTickets(Pageable pageable) {
         UUID userId = SecurityUtils.getCurrentUserId();
         return ticketRepository.findByUserId(userId, pageable)
+                .map(ticketMapper::toTicketResponse);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<TicketResponse> getAllTickets(Pageable pageable) {
+        if (staffCinemaScopeService.isStaffButNotAdmin()) {
+            List<UUID> cinemaIds = staffCinemaScopeService.getCurrentStaffCinemaIds();
+            if (cinemaIds.isEmpty()) {
+                return Page.empty(pageable);
+            }
+            return ticketRepository.findAllWithDetailsByCinemaIds(cinemaIds, pageable)
+                    .map(ticketMapper::toTicketResponse);
+        }
+        return ticketRepository.findAllWithDetails(pageable)
                 .map(ticketMapper::toTicketResponse);
     }
 
@@ -592,6 +620,7 @@ public class BookingServiceImpl implements BookingService {
         if (!showtime.getId().equals(showtimeId)) {
             throw new AppException(ErrorCode.TICKET_WRONG_SHOWTIME);
         }
+        staffCinemaScopeService.validateCurrentStaffCanAccessCinema(showtime.getRoom().getCinema().getId());
         if (now.isBefore(showtime.getStartTime().minusMinutes(checkInEarlyMinutes))) {
             throw new AppException(ErrorCode.TICKET_CHECKIN_TOO_EARLY);
         }

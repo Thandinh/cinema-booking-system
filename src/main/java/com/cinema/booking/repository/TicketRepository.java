@@ -13,6 +13,7 @@ import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -45,8 +46,43 @@ public interface TicketRepository extends JpaRepository<Ticket, UUID> {
            countQuery = "SELECT COUNT(t) FROM Ticket t")
     Page<Ticket> findAllWithDetails(Pageable pageable);
 
+    @Query(value = """
+            SELECT t FROM Ticket t
+            JOIN FETCH t.bookingDetail bd
+            JOIN FETCH bd.seat
+            JOIN FETCH bd.booking b
+            JOIN FETCH b.showtime s
+            JOIN FETCH s.movie
+            JOIN FETCH s.room r
+            JOIN FETCH r.cinema c
+            LEFT JOIN FETCH t.checkedInBy
+            WHERE c.id IN :cinemaIds
+            """,
+           countQuery = """
+            SELECT COUNT(t) FROM Ticket t
+            WHERE t.bookingDetail.booking.showtime.room.cinema.id IN :cinemaIds
+            """)
+    Page<Ticket> findAllWithDetailsByCinemaIds(@Param("cinemaIds") java.util.List<UUID> cinemaIds,
+                                               Pageable pageable);
+
     // ── Analytics ─────────────────────────────────────────────────────────────
 
     /** Tổng số vé theo trạng thái */
     Long countByStatus(TicketStatus status);
+
+    @Query("""
+            SELECT COUNT(t)
+            FROM Ticket t
+            WHERE t.bookingDetail.booking.showtime.room.cinema.id IN :cinemaIds
+            """)
+    Long countByCinemaIds(@Param("cinemaIds") List<UUID> cinemaIds);
+
+    @Query("""
+            SELECT COUNT(t)
+            FROM Ticket t
+            WHERE t.status = :status
+              AND t.bookingDetail.booking.showtime.room.cinema.id IN :cinemaIds
+            """)
+    Long countByStatusAndCinemaIds(@Param("status") TicketStatus status,
+                                   @Param("cinemaIds") List<UUID> cinemaIds);
 }

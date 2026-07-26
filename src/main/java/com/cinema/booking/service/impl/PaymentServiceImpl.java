@@ -19,6 +19,7 @@ import com.cinema.booking.repository.PaymentRepository;
 import com.cinema.booking.repository.PaymentReconciliationIssueRow;
 import com.cinema.booking.service.PaymentEventService;
 import com.cinema.booking.service.PaymentService;
+import com.cinema.booking.service.StaffCinemaScopeService;
 import com.cinema.booking.util.SecurityUtils;
 import com.cinema.booking.util.VNPayUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -56,6 +57,7 @@ public class PaymentServiceImpl implements PaymentService {
     PaymentEventService paymentEventService;
     PaymentMapper paymentMapper;
     List<PaymentGateway> paymentGateways;
+    StaffCinemaScopeService staffCinemaScopeService;
 
     @Override
     @Transactional
@@ -195,6 +197,14 @@ public class PaymentServiceImpl implements PaymentService {
         String keywordPattern = keyword == null || keyword.isBlank()
                 ? null
                 : "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
+        if (staffCinemaScopeService.isStaffButNotAdmin()) {
+            List<UUID> cinemaIds = staffCinemaScopeService.getCurrentStaffCinemaIds();
+            if (cinemaIds.isEmpty()) {
+                return Page.empty(pageable);
+            }
+            return paymentRepository.findAllWithDetailsByCinemaIds(status, method, keywordPattern, cinemaIds, pageable)
+                    .map(paymentMapper::toPaymentResponse);
+        }
         return paymentRepository.findAllWithDetails(status, method, keywordPattern, pageable)
                 .map(paymentMapper::toPaymentResponse);
     }

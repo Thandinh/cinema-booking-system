@@ -2,11 +2,14 @@ package com.cinema.booking.service.impl;
 
 import com.cinema.booking.dto.response.*;
 import com.cinema.booking.enums.BookingStatus;
+import com.cinema.booking.enums.ErrorCode;
 import com.cinema.booking.enums.MovieStatus;
 import com.cinema.booking.enums.PaymentStatus;
 import com.cinema.booking.enums.TicketStatus;
+import com.cinema.booking.exception.AppException;
 import com.cinema.booking.repository.*;
 import com.cinema.booking.service.AnalyticsService;
+import com.cinema.booking.service.StaffCinemaScopeService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -42,14 +45,19 @@ public class AnalyticsServiceImpl implements AnalyticsService {
     MovieRepository    movieRepository;
     ShowtimeRepository showtimeRepository;
     TicketRepository   ticketRepository;
+    StaffCinemaScopeService staffCinemaScopeService;
 
     // =========================================================================
     // DASHBOARD SUMMARY
     // =========================================================================
     @Override
     @Transactional(readOnly = true)
-    @org.springframework.cache.annotation.Cacheable(value = "dashboardSummary", unless = "#result == null")
     public DashboardSummaryResponse getDashboardSummary() {
+        List<UUID> scopedCinemaIds = currentScopedCinemaIdsOrNull();
+        if (scopedCinemaIds != null && scopedCinemaIds.isEmpty()) {
+            return emptyDashboardSummary();
+        }
+
         // Boundaries thời gian
         LocalDateTime startOfToday     = LocalDate.now().atStartOfDay();
         LocalDateTime endOfToday       = LocalDate.now().atTime(LocalTime.MAX);
@@ -59,10 +67,18 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         LocalDateTime endOfLastMonth   = YearMonth.now().minusMonths(1).atEndOfMonth().atTime(LocalTime.MAX);
 
         // Doanh thu
-        BigDecimal totalRevenue      = paymentRepository.sumTotalRevenue();
-        BigDecimal revenueToday      = paymentRepository.sumRevenueBetween(PaymentStatus.SUCCESS, startOfToday, endOfToday);
-        BigDecimal revenueThisMonth  = paymentRepository.sumRevenueBetween(PaymentStatus.SUCCESS, startOfMonth, endOfMonth);
-        BigDecimal revenueLastMonth  = paymentRepository.sumRevenueBetween(PaymentStatus.SUCCESS, startOfLastMonth, endOfLastMonth);
+        BigDecimal totalRevenue      = scopedCinemaIds == null
+                ? paymentRepository.sumTotalRevenue()
+                : paymentRepository.sumTotalRevenueByCinemaIds(scopedCinemaIds);
+        BigDecimal revenueToday      = scopedCinemaIds == null
+                ? paymentRepository.sumRevenueBetween(PaymentStatus.SUCCESS, startOfToday, endOfToday)
+                : paymentRepository.sumRevenueBetweenByCinemaIds(PaymentStatus.SUCCESS, startOfToday, endOfToday, scopedCinemaIds);
+        BigDecimal revenueThisMonth  = scopedCinemaIds == null
+                ? paymentRepository.sumRevenueBetween(PaymentStatus.SUCCESS, startOfMonth, endOfMonth)
+                : paymentRepository.sumRevenueBetweenByCinemaIds(PaymentStatus.SUCCESS, startOfMonth, endOfMonth, scopedCinemaIds);
+        BigDecimal revenueLastMonth  = scopedCinemaIds == null
+                ? paymentRepository.sumRevenueBetween(PaymentStatus.SUCCESS, startOfLastMonth, endOfLastMonth)
+                : paymentRepository.sumRevenueBetweenByCinemaIds(PaymentStatus.SUCCESS, startOfLastMonth, endOfLastMonth, scopedCinemaIds);
 
         BigDecimal growthPercent = null;
         if (revenueLastMonth != null && revenueLastMonth.compareTo(BigDecimal.ZERO) > 0) {
@@ -72,28 +88,38 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         }
 
         // Bookings
-        Long bookingsToday    = bookingRepository.countBookingsToday(startOfToday, endOfToday);
-        Long pendingBookings  = bookingRepository.countByStatus(BookingStatus.PENDING);
-        Long successBookings  = bookingRepository.countByStatus(BookingStatus.SUCCESS);
-        Long failedBookings   = bookingRepository.countByStatus(BookingStatus.FAILED);
-        Long cancelledBookings= bookingRepository.countByStatus(BookingStatus.CANCELLED);
-        Long expiredBookings  = bookingRepository.countByStatus(BookingStatus.EXPIRED);
+        Long bookingsToday    = scopedCinemaIds == null
+                ? bookingRepository.countBookingsToday(startOfToday, endOfToday)
+                : bookingRepository.countBookingsTodayByCinemaIds(startOfToday, endOfToday, scopedCinemaIds);
+        Long pendingBookings  = countBookings(BookingStatus.PENDING, scopedCinemaIds);
+        Long successBookings  = countBookings(BookingStatus.SUCCESS, scopedCinemaIds);
+        Long failedBookings   = countBookings(BookingStatus.FAILED, scopedCinemaIds);
+        Long cancelledBookings= countBookings(BookingStatus.CANCELLED, scopedCinemaIds);
+        Long expiredBookings  = countBookings(BookingStatus.EXPIRED, scopedCinemaIds);
         Long totalBookings    = pendingBookings + successBookings + failedBookings + cancelledBookings + expiredBookings;
 
         // Users
-        Long totalUsers       = userRepository.countActiveUsers();
-        Long newUsersToday    = userRepository.countNewUsersToday(startOfToday, endOfToday);
-        Long newUsersThisMonth= userRepository.countNewUsersThisMonth(startOfMonth, endOfMonth);
+        Long totalUsers       = scopedCinemaIds == null
+                ? userRepository.countActiveUsers()
+                : bookingRepository.countDistinctUsersByCinemaIds(scopedCinemaIds);
+        Long newUsersToday    = scopedCinemaIds == null ? userRepository.countNewUsersToday(startOfToday, endOfToday) : 0L;
+        Long newUsersThisMonth= scopedCinemaIds == null ? userRepository.countNewUsersThisMonth(startOfMonth, endOfMonth) : 0L;
 
         // Movies & Showtimes
         Long totalMovies      = movieRepository.countByIsDeletedFalse();
         Long activeMovies     = movieRepository.countByStatusAndIsDeletedFalse(MovieStatus.NOW_SHOWING);
-        Long totalShowtimes   = showtimeRepository.countByIsDeletedFalse();
-        Long upcomingShowtimes= showtimeRepository.countUpcomingShowtimes();
+        Long totalShowtimes   = scopedCinemaIds == null
+                ? showtimeRepository.countByIsDeletedFalse()
+                : showtimeRepository.countByIsDeletedFalseAndCinemaIds(scopedCinemaIds);
+        Long upcomingShowtimes= scopedCinemaIds == null
+                ? showtimeRepository.countUpcomingShowtimes()
+                : showtimeRepository.countUpcomingShowtimesByCinemaIds(scopedCinemaIds);
 
         // Tickets
-        Long totalTickets     = ticketRepository.count();
-        Long checkedIn        = ticketRepository.countByStatus(TicketStatus.USED);
+        Long totalTickets     = scopedCinemaIds == null ? ticketRepository.count() : ticketRepository.countByCinemaIds(scopedCinemaIds);
+        Long checkedIn        = scopedCinemaIds == null
+                ? ticketRepository.countByStatus(TicketStatus.USED)
+                : ticketRepository.countByStatusAndCinemaIds(TicketStatus.USED, scopedCinemaIds);
 
         return DashboardSummaryResponse.builder()
                 .totalRevenue(totalRevenue)
@@ -125,16 +151,26 @@ public class AnalyticsServiceImpl implements AnalyticsService {
     @Override
     @Transactional(readOnly = true)
     public List<RevenueByPeriodResponse> getDailyRevenue(LocalDate from, LocalDate to) {
-        List<Object[]> rows = paymentRepository.findDailyRevenueBetween(
-                from.atStartOfDay(), to.atTime(LocalTime.MAX));
+        List<UUID> scopedCinemaIds = currentScopedCinemaIdsOrNull();
+        if (scopedCinemaIds != null && scopedCinemaIds.isEmpty()) {
+            return List.of();
+        }
+        List<Object[]> rows = scopedCinemaIds == null
+                ? paymentRepository.findDailyRevenueBetween(from.atStartOfDay(), to.atTime(LocalTime.MAX))
+                : paymentRepository.findDailyRevenueBetweenByCinemaIds(from.atStartOfDay(), to.atTime(LocalTime.MAX), scopedCinemaIds);
         return rows.stream().map(this::mapToRevenueByPeriod).toList();
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<RevenueByPeriodResponse> getMonthlyRevenue(LocalDate from, LocalDate to) {
-        List<Object[]> rows = paymentRepository.findMonthlyRevenueBetween(
-                from.atStartOfDay(), to.atTime(LocalTime.MAX));
+        List<UUID> scopedCinemaIds = currentScopedCinemaIdsOrNull();
+        if (scopedCinemaIds != null && scopedCinemaIds.isEmpty()) {
+            return List.of();
+        }
+        List<Object[]> rows = scopedCinemaIds == null
+                ? paymentRepository.findMonthlyRevenueBetween(from.atStartOfDay(), to.atTime(LocalTime.MAX))
+                : paymentRepository.findMonthlyRevenueBetweenByCinemaIds(from.atStartOfDay(), to.atTime(LocalTime.MAX), scopedCinemaIds);
         return rows.stream().map(this::mapToRevenueByPeriod).toList();
     }
 
@@ -145,8 +181,13 @@ public class AnalyticsServiceImpl implements AnalyticsService {
     @Transactional(readOnly = true)
     public List<TopMovieRevenueResponse> getTopMoviesByRevenue(LocalDate from, LocalDate to, int limit) {
         int safeLimit = Math.min(Math.max(limit, 1), 50); // clamp 1–50
-        List<Object[]> rows = paymentRepository.findTopMoviesByRevenue(
-                from.atStartOfDay(), to.atTime(LocalTime.MAX), safeLimit);
+        List<UUID> scopedCinemaIds = currentScopedCinemaIdsOrNull();
+        if (scopedCinemaIds != null && scopedCinemaIds.isEmpty()) {
+            return List.of();
+        }
+        List<Object[]> rows = scopedCinemaIds == null
+                ? paymentRepository.findTopMoviesByRevenue(from.atStartOfDay(), to.atTime(LocalTime.MAX), safeLimit)
+                : paymentRepository.findTopMoviesByRevenueByCinemaIds(from.atStartOfDay(), to.atTime(LocalTime.MAX), scopedCinemaIds, safeLimit);
         return rows.stream().map(this::mapToTopMovie).toList();
     }
 
@@ -158,13 +199,30 @@ public class AnalyticsServiceImpl implements AnalyticsService {
     public Page<ShowtimeStatsResponse> getShowtimeStats(UUID cinemaId, LocalDate from, LocalDate to, Pageable pageable) {
         LocalDateTime dtFrom = from != null ? from.atStartOfDay()      : null;
         LocalDateTime dtTo   = to   != null ? to.atTime(LocalTime.MAX) : null;
-        return bookingRepository.findShowtimeStats(cinemaId, dtFrom, dtTo, pageable)
+        List<UUID> scopedCinemaIds = currentScopedCinemaIdsOrNull();
+        if (scopedCinemaIds != null && scopedCinemaIds.isEmpty()) {
+            return Page.empty(pageable);
+        }
+        if (scopedCinemaIds != null && cinemaId != null) {
+            staffCinemaScopeService.validateCurrentStaffCanAccessCinema(cinemaId);
+        }
+        return (scopedCinemaIds == null
+                ? bookingRepository.findShowtimeStats(cinemaId, dtFrom, dtTo, pageable)
+                : bookingRepository.findShowtimeStatsByCinemaIds(scopedCinemaIds, cinemaId, dtFrom, dtTo, pageable))
                 .map(this::mapToShowtimeStats);
     }
 
     @Override
     @Transactional(readOnly = true)
     public byte[] exportRevenueCsv(LocalDate from, LocalDate to, UUID cinemaId, UUID movieId) {
+        List<UUID> scopedCinemaIds = currentScopedCinemaIdsOrNull();
+        if (scopedCinemaIds != null) {
+            if (cinemaId == null) {
+                throw new AppException(ErrorCode.UNAUTHORIZED);
+            }
+            staffCinemaScopeService.validateCurrentStaffCanAccessCinema(cinemaId);
+        }
+
         LocalDate effectiveTo = to != null ? to : LocalDate.now();
         LocalDate effectiveFrom = from != null ? from : effectiveTo.minusDays(29);
         if (effectiveFrom.isAfter(effectiveTo)) {
@@ -218,6 +276,43 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         }
 
         return csv.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    private List<UUID> currentScopedCinemaIdsOrNull() {
+        return staffCinemaScopeService.isStaffButNotAdmin()
+                ? staffCinemaScopeService.getCurrentStaffCinemaIds()
+                : null;
+    }
+
+    private Long countBookings(BookingStatus status, List<UUID> scopedCinemaIds) {
+        return scopedCinemaIds == null
+                ? bookingRepository.countByStatus(status)
+                : bookingRepository.countByStatusAndCinemaIds(status, scopedCinemaIds);
+    }
+
+    private DashboardSummaryResponse emptyDashboardSummary() {
+        return DashboardSummaryResponse.builder()
+                .totalRevenue(BigDecimal.ZERO)
+                .revenueToday(BigDecimal.ZERO)
+                .revenueThisMonth(BigDecimal.ZERO)
+                .revenueGrowthPercent(null)
+                .totalBookings(0L)
+                .bookingsToday(0L)
+                .pendingBookings(0L)
+                .successBookings(0L)
+                .failedBookings(0L)
+                .cancelledBookings(0L)
+                .expiredBookings(0L)
+                .totalUsers(0L)
+                .newUsersToday(0L)
+                .newUsersThisMonth(0L)
+                .totalMovies(0L)
+                .activeMovies(0L)
+                .totalShowtimes(0L)
+                .upcomingShowtimes(0L)
+                .totalTickets(0L)
+                .ticketsCheckedIn(0L)
+                .build();
     }
 
     // =========================================================================

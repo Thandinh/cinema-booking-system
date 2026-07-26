@@ -5,14 +5,20 @@ import com.cinema.booking.dto.request.ForgotPasswordRequest;
 import com.cinema.booking.dto.request.ResetPasswordRequest;
 import com.cinema.booking.dto.request.UserCreationRequest;
 import com.cinema.booking.dto.request.UserUpdateRequest;
+import com.cinema.booking.dto.response.CinemaResponse;
 import com.cinema.booking.dto.response.UserResponse;
+import com.cinema.booking.entity.Cinema;
 import com.cinema.booking.entity.Role;
+import com.cinema.booking.entity.StaffCinema;
+import com.cinema.booking.entity.StaffCinemaId;
 import com.cinema.booking.entity.User;
 import com.cinema.booking.enums.ErrorCode;
 import com.cinema.booking.enums.RoleName;
 import com.cinema.booking.exception.AppException;
 import com.cinema.booking.mapper.UserMapper;
+import com.cinema.booking.repository.CinemaRepository;
 import com.cinema.booking.repository.RoleRepository;
+import com.cinema.booking.repository.StaffCinemaRepository;
 import com.cinema.booking.repository.UserRepository;
 import com.cinema.booking.service.EmailService;
 import com.cinema.booking.service.UserService;
@@ -65,6 +71,8 @@ public class UserServiceImpl implements UserService {
 
     UserRepository   userRepository;
     RoleRepository   roleRepository;
+    CinemaRepository cinemaRepository;
+    StaffCinemaRepository staffCinemaRepository;
     UserMapper       userMapper;
     PasswordEncoder  passwordEncoder;
     EmailService     emailService;
@@ -190,9 +198,13 @@ public class UserServiceImpl implements UserService {
         user.setEmailVerified(true);
         clearEmailVerification(user);
 
+        if (request.getRoleIds() != null && !request.getRoleIds().isEmpty()) {
+            user.setRoles(resolveRoles(request.getRoleIds()));
+        }
         User saved = userRepository.save(user);
+        syncStaffCinemaAssignments(saved, request.getAssignedCinemaIds());
         log.info("Admin created user: {}", saved.getUsername());
-        return userMapper.toUserResponse(saved);
+        return toUserResponseWithAssignedCinemas(saved);
     }
 
     // =========================================================================
@@ -214,11 +226,14 @@ public class UserServiceImpl implements UserService {
         List<UUID> ids = userIdPage.getContent();
         Map<UUID, User> usersById = userRepository.findAllWithRolesByIdIn(ids).stream()
                 .collect(Collectors.toMap(User::getId, Function.identity(), (left, right) -> left));
+        Map<UUID, Set<CinemaResponse>> assignedCinemasByStaffId = findAssignedCinemasByStaffIds(ids);
 
         List<UserResponse> content = ids.stream()
                 .map(usersById::get)
                 .filter(Objects::nonNull)
-                .map(userMapper::toUserResponse)
+                .map(user -> toUserResponseWithAssignedCinemas(
+                        user,
+                        assignedCinemasByStaffId.getOrDefault(user.getId(), Set.of())))
                 .toList();
 
         return new PageImpl<>(content, pageable, userIdPage.getTotalElements());
@@ -231,7 +246,7 @@ public class UserServiceImpl implements UserService {
     @Transactional(readOnly = true)
     public UserResponse getUserById(UUID id) {
         User user = findActiveUserById(id);
-        return userMapper.toUserResponse(user);
+        return toUserResponseWithAssignedCinemas(user);
     }
 
     /**
@@ -270,8 +285,11 @@ public class UserServiceImpl implements UserService {
         }
 
         User saved = userRepository.save(user);
+        if (request.getAssignedCinemaIds() != null || !hasRole(saved, RoleName.STAFF.name())) {
+            syncStaffCinemaAssignments(saved, request.getAssignedCinemaIds());
+        }
         log.info("Admin updated user id={}", id);
-        return userMapper.toUserResponse(saved);
+        return toUserResponseWithAssignedCinemas(saved);
     }
 
     /**
@@ -332,7 +350,7 @@ public class UserServiceImpl implements UserService {
         String username = getCurrentUsername();
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-        return userMapper.toUserResponse(user);
+        return toUserResponseWithAssignedCinemas(user);
     }
 
     /**
@@ -358,7 +376,7 @@ public class UserServiceImpl implements UserService {
         // roleIds bị bỏ qua hoàn toàn — PROFILE_UPDATE không cho phép đổi role
         User saved = userRepository.save(user);
         log.info("User {} updated own profile", currentUsername);
-        return userMapper.toUserResponse(saved);
+        return toUserResponseWithAssignedCinemas(saved);
     }
 
     @Override
@@ -426,6 +444,83 @@ public class UserServiceImpl implements UserService {
             roles.add(role);
         }
         return Collections.unmodifiableSet(roles);
+    }
+
+    private void syncStaffCinemaAssignments(User staff, Set<UUID> assignedCinemaIds) {
+        if (!hasRole(staff, RoleName.STAFF.name())) {
+            staffCinemaRepository.deleteByStaffId(staff.getId());
+            return;
+        }
+        if (assignedCinemaIds == null) {
+            return;
+        }
+
+        staffCinemaRepository.deleteByStaffId(staff.getId());
+        if (assignedCinemaIds.isEmpty()) {
+            return;
+        }
+
+        List<StaffCinema> assignments = assignedCinemaIds.stream()
+                .distinct()
+                .map(cinemaId -> {
+                    Cinema cinema = cinemaRepository.findActiveById(cinemaId)
+                            .orElseThrow(() -> new AppException(ErrorCode.CINEMA_NOT_FOUND));
+                    return StaffCinema.builder()
+                            .id(StaffCinemaId.builder()
+                                    .staffId(staff.getId())
+                                    .cinemaId(cinema.getId())
+                                    .build())
+                            .staff(staff)
+                            .cinema(cinema)
+                            .build();
+                })
+                .toList();
+        staffCinemaRepository.saveAll(assignments);
+    }
+
+    private boolean hasRole(User user, String roleName) {
+        return user.getRoles() != null && user.getRoles().stream()
+                .anyMatch(role -> roleName.equals(role.getName()));
+    }
+
+    private UserResponse toUserResponseWithAssignedCinemas(User user) {
+        Set<CinemaResponse> assignedCinemas = staffCinemaRepository.findAllWithCinemaByStaffIds(List.of(user.getId())).stream()
+                .map(StaffCinema::getCinema)
+                .map(this::toCinemaResponse)
+                .collect(Collectors.toSet());
+        return toUserResponseWithAssignedCinemas(user, assignedCinemas);
+    }
+
+    private UserResponse toUserResponseWithAssignedCinemas(User user, Set<CinemaResponse> assignedCinemas) {
+        UserResponse response = userMapper.toUserResponse(user);
+        response.setAssignedCinemas(assignedCinemas);
+        return response;
+    }
+
+    private Map<UUID, Set<CinemaResponse>> findAssignedCinemasByStaffIds(List<UUID> staffIds) {
+        if (staffIds == null || staffIds.isEmpty()) {
+            return Map.of();
+        }
+        return staffCinemaRepository.findAllWithCinemaByStaffIds(staffIds).stream()
+                .collect(Collectors.groupingBy(
+                        assignment -> assignment.getStaff().getId(),
+                        Collectors.mapping(
+                                assignment -> toCinemaResponse(assignment.getCinema()),
+                                Collectors.toSet())));
+    }
+
+    private CinemaResponse toCinemaResponse(Cinema cinema) {
+        return CinemaResponse.builder()
+                .id(cinema.getId())
+                .name(cinema.getName())
+                .address(cinema.getAddress())
+                .city(cinema.getCity())
+                .latitude(cinema.getLatitude())
+                .longitude(cinema.getLongitude())
+                .isActive(cinema.getIsActive())
+                .createdAt(cinema.getCreatedAt())
+                .updatedAt(cinema.getUpdatedAt())
+                .build();
     }
 
     /**

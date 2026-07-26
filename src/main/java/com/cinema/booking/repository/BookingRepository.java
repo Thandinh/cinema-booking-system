@@ -43,6 +43,20 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
            countQuery = "SELECT COUNT(b) FROM Booking b WHERE (:status IS NULL OR b.status = :status)")
     Page<UUID> findIdsByStatus(@Param("status") BookingStatus status, Pageable pageable);
 
+    @Query(value = """
+            SELECT b.id FROM Booking b
+            WHERE (:status IS NULL OR b.status = :status)
+              AND b.showtime.room.cinema.id IN :cinemaIds
+            """,
+           countQuery = """
+            SELECT COUNT(b) FROM Booking b
+            WHERE (:status IS NULL OR b.status = :status)
+              AND b.showtime.room.cinema.id IN :cinemaIds
+            """)
+    Page<UUID> findIdsByStatusAndCinemaIds(@Param("status") BookingStatus status,
+                                           @Param("cinemaIds") List<UUID> cinemaIds,
+                                           Pageable pageable);
+
     @Query("""
             SELECT DISTINCT b FROM Booking b
             JOIN FETCH b.user
@@ -106,10 +120,37 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     /** Số booking theo trạng thái */
     Long countByStatus(BookingStatus status);
 
+    @Query("""
+            SELECT COUNT(b)
+            FROM Booking b
+            WHERE b.status = :status
+              AND b.showtime.room.cinema.id IN :cinemaIds
+            """)
+    Long countByStatusAndCinemaIds(@Param("status") BookingStatus status,
+                                   @Param("cinemaIds") List<UUID> cinemaIds);
+
     /** Số booking hôm nay */
     @Query("SELECT COUNT(b) FROM Booking b WHERE b.createdAt >= :startOfDay AND b.createdAt < :endOfDay")
     Long countBookingsToday(@Param("startOfDay") LocalDateTime startOfDay,
                             @Param("endOfDay")   LocalDateTime endOfDay);
+
+    @Query("""
+            SELECT COUNT(b)
+            FROM Booking b
+            WHERE b.createdAt >= :startOfDay
+              AND b.createdAt < :endOfDay
+              AND b.showtime.room.cinema.id IN :cinemaIds
+            """)
+    Long countBookingsTodayByCinemaIds(@Param("startOfDay") LocalDateTime startOfDay,
+                                       @Param("endOfDay") LocalDateTime endOfDay,
+                                       @Param("cinemaIds") List<UUID> cinemaIds);
+
+    @Query("""
+            SELECT COUNT(DISTINCT b.user.id)
+            FROM Booking b
+            WHERE b.showtime.room.cinema.id IN :cinemaIds
+            """)
+    Long countDistinctUsersByCinemaIds(@Param("cinemaIds") List<UUID> cinemaIds);
 
     /**
      * Thống kê suất chiếu: số vé bán được, doanh thu.
@@ -145,5 +186,39 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             @Param("cinemaId") UUID cinemaId,
             @Param("from")     LocalDateTime from,
             @Param("to")       LocalDateTime to,
+            Pageable pageable);
+
+    @Query(value = """
+            SELECT st.id                                                AS showtime_id,
+                   m.title                                              AS movie_title,
+                   ro.name                                              AS room_name,
+                   ci.name                                              AS cinema_name,
+                   TO_CHAR(st.start_time, 'YYYY-MM-DD HH24:MI')        AS start_time,
+                   (SELECT COUNT(s.id) FROM seats s WHERE s.room_id = ro.id AND s.is_deleted = false) AS total_seats,
+                   COUNT(t.id)                                          AS booked_seats,
+                   COALESCE(SUM(p.amount / bd_count.cnt), 0)           AS revenue
+            FROM showtimes st
+            JOIN movies m         ON st.movie_id  = m.id
+            JOIN rooms ro         ON st.room_id   = ro.id
+            JOIN cinemas ci       ON ro.cinema_id = ci.id
+            JOIN bookings b       ON b.showtime_id = st.id AND b.status = 'SUCCESS'
+            JOIN booking_details bd ON bd.booking_id = b.id
+            JOIN tickets t        ON t.booking_detail_id = bd.id
+            JOIN payments p       ON p.booking_id = b.id AND p.status = 'SUCCESS'
+            JOIN (SELECT booking_id, COUNT(*) AS cnt FROM booking_details GROUP BY booking_id) bd_count
+                  ON bd_count.booking_id = b.id
+            WHERE st.is_deleted = false
+              AND ci.id IN (:cinemaIds)
+              AND (:cinemaId IS NULL OR ci.id = :cinemaId)
+              AND (:from IS NULL OR st.start_time >= :from)
+              AND (:to   IS NULL OR st.start_time <= :to)
+            GROUP BY st.id, m.title, ro.name, ci.name, st.start_time, ro.id
+            ORDER BY revenue DESC
+            """, nativeQuery = true)
+    Page<Object[]> findShowtimeStatsByCinemaIds(
+            @Param("cinemaIds") List<UUID> cinemaIds,
+            @Param("cinemaId") UUID cinemaId,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to,
             Pageable pageable);
 }

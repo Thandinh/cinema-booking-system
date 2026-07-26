@@ -6,8 +6,6 @@ import com.cinema.booking.dto.response.ShowtimeResponse;
 import com.cinema.booking.dto.response.TicketResponse;
 import com.cinema.booking.enums.ErrorCode;
 import com.cinema.booking.exception.AppException;
-import com.cinema.booking.mapper.TicketMapper;
-import com.cinema.booking.repository.TicketRepository;
 import com.cinema.booking.service.BookingService;
 import com.cinema.booking.service.ShowtimeService;
 import jakarta.validation.Valid;
@@ -29,8 +27,6 @@ import java.util.UUID;
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class TicketController {
 
-    TicketRepository ticketRepository;
-    TicketMapper ticketMapper;
     BookingService bookingService;
     ShowtimeService showtimeService;
 
@@ -78,8 +74,7 @@ public class TicketController {
             @PageableDefault(size = 20) Pageable pageable) {
         return ApiResponse.<Page<TicketResponse>>builder()
                 .code(1000)
-                .result(ticketRepository.findAllWithDetails(pageable)
-                        .map(ticketMapper::toTicketResponse))
+                .result(bookingService.getAllTickets(pageable))
                 .build();
     }
 

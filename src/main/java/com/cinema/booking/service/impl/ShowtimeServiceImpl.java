@@ -17,6 +17,7 @@ import com.cinema.booking.repository.RoomRepository;
 import com.cinema.booking.repository.SeatRepository;
 import com.cinema.booking.repository.SeatStatusRepository;
 import com.cinema.booking.repository.ShowtimeRepository;
+import com.cinema.booking.service.StaffCinemaScopeService;
 import com.cinema.booking.service.ShowtimeService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -47,6 +48,7 @@ public class ShowtimeServiceImpl implements ShowtimeService {
     SeatRepository seatRepository;
     SeatStatusRepository seatStatusRepository;
     ShowtimeMapper showtimeMapper;
+    StaffCinemaScopeService staffCinemaScopeService;
 
     @NonFinal
     @Value("${showtime.public-days-ahead:7}")
@@ -77,6 +79,7 @@ public class ShowtimeServiceImpl implements ShowtimeService {
 
         Room room = roomRepository.findActiveById(request.getRoomId())
                 .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
+        staffCinemaScopeService.validateCurrentStaffCanAccessCinema(room.getCinema().getId());
 
         // Nâng cấp: Tính thêm 15 phút dọn phòng (Cleaning buffer)
         LocalDateTime startTimeCheck = request.getStartTime().minusMinutes(15);
@@ -113,6 +116,7 @@ public class ShowtimeServiceImpl implements ShowtimeService {
     public ShowtimeResponse updateShowtime(UUID id, ShowtimeUpdateRequest request) {
         Showtime showtime = showtimeRepository.findActiveById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.SHOWTIME_NOT_FOUND));
+        staffCinemaScopeService.validateCurrentStaffCanAccessCinema(showtime.getRoom().getCinema().getId());
 
         LocalDateTime newStartTime = request.getStartTime() != null ? request.getStartTime() : showtime.getStartTime();
         LocalDateTime newEndTime = request.getEndTime() != null ? request.getEndTime() : showtime.getEndTime();
@@ -142,6 +146,7 @@ public class ShowtimeServiceImpl implements ShowtimeService {
     public void deleteShowtime(UUID id) {
         Showtime showtime = showtimeRepository.findActiveById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.SHOWTIME_NOT_FOUND));
+        staffCinemaScopeService.validateCurrentStaffCanAccessCinema(showtime.getRoom().getCinema().getId());
         
         showtime.setIsDeleted(true);
         showtimeRepository.save(showtime);
@@ -156,6 +161,14 @@ public class ShowtimeServiceImpl implements ShowtimeService {
     @Override
     @Transactional(readOnly = true)
     public Page<ShowtimeResponse> getAllShowtimes(Pageable pageable) {
+        if (staffCinemaScopeService.isStaffButNotAdmin()) {
+            List<UUID> cinemaIds = staffCinemaScopeService.getCurrentStaffCinemaIds();
+            if (cinemaIds.isEmpty()) {
+                return Page.empty(pageable);
+            }
+            return showtimeRepository.findAllActiveByCinemaIds(cinemaIds, pageable)
+                    .map(showtimeMapper::toShowtimeResponse);
+        }
         return showtimeRepository.findAllActive(pageable)
                 .map(showtimeMapper::toShowtimeResponse);
     }
@@ -188,6 +201,8 @@ public class ShowtimeServiceImpl implements ShowtimeService {
     @Override
     @Transactional(readOnly = true)
     public List<ShowtimeResponse> getOpenCheckInShowtimes(UUID cinemaId) {
+        staffCinemaScopeService.validateCurrentStaffCanAccessCinema(cinemaId);
+
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime earliestStartTime = now.minusMinutes(Math.max(0, checkInLateMinutes));
         LocalDateTime latestStartTime = now.plusMinutes(Math.max(0, checkInEarlyMinutes));

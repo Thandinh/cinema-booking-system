@@ -80,6 +80,55 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             @Param("keywordPattern") String keywordPattern,
             Pageable pageable);
 
+    @Query(value = """
+            SELECT p
+            FROM Payment p
+            LEFT JOIN FETCH p.booking b
+            LEFT JOIN FETCH b.user u
+            LEFT JOIN FETCH b.showtime st
+            LEFT JOIN FETCH st.movie m
+            LEFT JOIN FETCH st.room r
+            LEFT JOIN FETCH r.cinema c
+            WHERE (:status IS NULL OR p.status = :status)
+              AND (:method IS NULL OR p.method = :method)
+              AND c.id IN :cinemaIds
+              AND (
+                    :keywordPattern IS NULL
+                    OR LOWER(p.transactionNo) LIKE :keywordPattern
+                    OR LOWER(CAST(b.id AS string)) LIKE :keywordPattern
+                    OR LOWER(u.username) LIKE :keywordPattern
+                    OR LOWER(u.email) LIKE :keywordPattern
+                    OR LOWER(m.title) LIKE :keywordPattern
+              )
+            """,
+           countQuery = """
+            SELECT COUNT(p)
+            FROM Payment p
+            LEFT JOIN p.booking b
+            LEFT JOIN b.user u
+            LEFT JOIN b.showtime st
+            LEFT JOIN st.movie m
+            LEFT JOIN st.room r
+            LEFT JOIN r.cinema c
+            WHERE (:status IS NULL OR p.status = :status)
+              AND (:method IS NULL OR p.method = :method)
+              AND c.id IN :cinemaIds
+              AND (
+                    :keywordPattern IS NULL
+                    OR LOWER(p.transactionNo) LIKE :keywordPattern
+                    OR LOWER(CAST(b.id AS string)) LIKE :keywordPattern
+                    OR LOWER(u.username) LIKE :keywordPattern
+                    OR LOWER(u.email) LIKE :keywordPattern
+                    OR LOWER(m.title) LIKE :keywordPattern
+              )
+            """)
+    Page<Payment> findAllWithDetailsByCinemaIds(
+            @Param("status") PaymentStatus status,
+            @Param("method") com.cinema.booking.enums.PaymentMethod method,
+            @Param("keywordPattern") String keywordPattern,
+            @Param("cinemaIds") List<UUID> cinemaIds,
+            Pageable pageable);
+
     Optional<Payment> findByTransactionNo(String transactionNo);
 
     Optional<Payment> findFirstByBookingIdAndMethodAndStatusOrderByCreatedAtDesc(
@@ -349,6 +398,107 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
 
     @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.status = com.cinema.booking.enums.PaymentStatus.SUCCESS")
     BigDecimal sumTotalRevenue();
+
+    @Query("""
+            SELECT COALESCE(SUM(p.amount), 0)
+            FROM Payment p
+            WHERE p.status = com.cinema.booking.enums.PaymentStatus.SUCCESS
+              AND p.booking.showtime.room.cinema.id IN :cinemaIds
+            """)
+    BigDecimal sumTotalRevenueByCinemaIds(@Param("cinemaIds") List<UUID> cinemaIds);
+
+    @Query("""
+            SELECT COALESCE(SUM(p.amount), 0)
+            FROM Payment p
+            WHERE p.status = :status
+              AND p.paymentTime BETWEEN :from AND :to
+              AND p.booking.showtime.room.cinema.id IN :cinemaIds
+            """)
+    BigDecimal sumRevenueBetweenByCinemaIds(
+            @Param("status") PaymentStatus status,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to,
+            @Param("cinemaIds") List<UUID> cinemaIds);
+
+    @Query(value = """
+            SELECT TO_CHAR(p.payment_time, 'YYYY-MM-DD') AS period,
+                   COALESCE(SUM(p.amount), 0)             AS revenue,
+                   COUNT(DISTINCT p.booking_id)            AS total_bookings,
+                   COALESCE(SUM((
+                       SELECT COUNT(t.id)
+                       FROM booking_details bd
+                       JOIN tickets t ON t.booking_detail_id = bd.id
+                       WHERE bd.booking_id = p.booking_id
+                   )), 0)                                  AS total_tickets
+            FROM payments p
+            JOIN bookings b ON b.id = p.booking_id
+            JOIN showtimes st ON st.id = b.showtime_id
+            JOIN rooms r ON r.id = st.room_id
+            WHERE p.status = 'SUCCESS'
+              AND p.payment_time BETWEEN :from AND :to
+              AND r.cinema_id IN (:cinemaIds)
+            GROUP BY TO_CHAR(p.payment_time, 'YYYY-MM-DD')
+            ORDER BY period ASC
+            """, nativeQuery = true)
+    List<Object[]> findDailyRevenueBetweenByCinemaIds(
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to,
+            @Param("cinemaIds") List<UUID> cinemaIds);
+
+    @Query(value = """
+            SELECT TO_CHAR(p.payment_time, 'YYYY-MM') AS period,
+                   COALESCE(SUM(p.amount), 0)          AS revenue,
+                   COUNT(DISTINCT p.booking_id)         AS total_bookings,
+                   COALESCE(SUM((
+                       SELECT COUNT(t.id)
+                       FROM booking_details bd
+                       JOIN tickets t ON t.booking_detail_id = bd.id
+                       WHERE bd.booking_id = p.booking_id
+                   )), 0)                               AS total_tickets
+            FROM payments p
+            JOIN bookings b ON b.id = p.booking_id
+            JOIN showtimes st ON st.id = b.showtime_id
+            JOIN rooms r ON r.id = st.room_id
+            WHERE p.status = 'SUCCESS'
+              AND p.payment_time BETWEEN :from AND :to
+              AND r.cinema_id IN (:cinemaIds)
+            GROUP BY TO_CHAR(p.payment_time, 'YYYY-MM')
+            ORDER BY period ASC
+            """, nativeQuery = true)
+    List<Object[]> findMonthlyRevenueBetweenByCinemaIds(
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to,
+            @Param("cinemaIds") List<UUID> cinemaIds);
+
+    @Query(value = """
+            SELECT m.id                         AS movie_id,
+                   m.title                      AS title,
+                   m.poster_url                 AS poster_url,
+                   COALESCE(SUM(p.amount), 0)   AS revenue,
+                   COUNT(DISTINCT b.id)          AS total_bookings,
+                   COALESCE(SUM((
+                       SELECT COUNT(t.id)
+                       FROM booking_details bd
+                       JOIN tickets t ON t.booking_detail_id = bd.id
+                       WHERE bd.booking_id = b.id
+                   )), 0)                        AS total_tickets
+            FROM payments p
+            JOIN bookings b    ON p.booking_id  = b.id
+            JOIN showtimes st  ON b.showtime_id = st.id
+            JOIN rooms r       ON st.room_id    = r.id
+            JOIN movies m      ON st.movie_id   = m.id
+            WHERE p.status = 'SUCCESS'
+              AND p.payment_time BETWEEN :from AND :to
+              AND r.cinema_id IN (:cinemaIds)
+            GROUP BY m.id, m.title, m.poster_url
+            ORDER BY revenue DESC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<Object[]> findTopMoviesByRevenueByCinemaIds(
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to,
+            @Param("cinemaIds") List<UUID> cinemaIds,
+            @Param("limit") int limit);
 }
 
 

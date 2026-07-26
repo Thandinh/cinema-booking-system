@@ -10,6 +10,8 @@ import com.cinema.booking.entity.Movie;
 import com.cinema.booking.entity.Room;
 import com.cinema.booking.entity.Seat;
 import com.cinema.booking.entity.SeatStatus;
+import com.cinema.booking.entity.StaffCinema;
+import com.cinema.booking.entity.StaffCinemaId;
 import com.cinema.booking.entity.Showtime;
 import com.cinema.booking.entity.User;
 import com.cinema.booking.enums.BookingStatus;
@@ -28,6 +30,7 @@ import com.cinema.booking.repository.RoomRepository;
 import com.cinema.booking.repository.SeatRepository;
 import com.cinema.booking.repository.SeatStatusRepository;
 import com.cinema.booking.repository.ShowtimeRepository;
+import com.cinema.booking.repository.StaffCinemaRepository;
 import com.cinema.booking.repository.TicketRepository;
 import com.cinema.booking.repository.UserRepository;
 import com.cinema.booking.support.PostgresIntegrationTest;
@@ -100,6 +103,9 @@ class BookingWorkflowIntegrationTest extends PostgresIntegrationTest {
 
     @Autowired
     TicketRepository ticketRepository;
+
+    @Autowired
+    StaffCinemaRepository staffCinemaRepository;
 
     @MockitoBean
     EmailService emailService;
@@ -228,7 +234,15 @@ class BookingWorkflowIntegrationTest extends PostgresIntegrationTest {
         String qrCode = ticketRepository.findAll().getFirst().getQrCode();
 
         TestShowtimeData otherData = createShowtimeData();
-        authenticateAs(staff, "TICKET_CHECKIN");
+        staffCinemaRepository.save(StaffCinema.builder()
+                .id(StaffCinemaId.builder()
+                        .staffId(staff.getId())
+                        .cinemaId(data.cinema().getId())
+                        .build())
+                .staff(staff)
+                .cinema(data.cinema())
+                .build());
+        authenticateAs(staff, "ROLE_STAFF", "TICKET_CHECKIN");
 
         assertThatThrownBy(() -> bookingService.checkInTicket(
                 qrCode,
@@ -269,6 +283,7 @@ class BookingWorkflowIntegrationTest extends PostgresIntegrationTest {
 
     private void clearBusinessData() {
         ticketRepository.deleteAllInBatch();
+        staffCinemaRepository.deleteAllInBatch();
         paymentRepository.deleteAllInBatch();
         bookingRepository.deleteAllInBatch();
         seatStatusRepository.deleteAllInBatch();

@@ -20,6 +20,7 @@ DROP TABLE IF EXISTS promotions CASCADE;
 DROP TABLE IF EXISTS showtimes CASCADE;
 DROP TABLE IF EXISTS seats CASCADE;
 DROP TABLE IF EXISTS rooms CASCADE;
+DROP TABLE IF EXISTS staff_cinemas CASCADE;
 DROP TABLE IF EXISTS cinemas CASCADE;
 DROP TABLE IF EXISTS movies CASCADE;
 DROP TABLE IF EXISTS users_roles CASCADE;
@@ -134,6 +135,13 @@ CREATE TABLE cinemas (
     is_deleted BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE staff_cinemas (
+    staff_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    cinema_id UUID NOT NULL REFERENCES cinemas(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (staff_id, cinema_id)
 );
 
 CREATE TABLE rooms (
@@ -380,6 +388,12 @@ CREATE INDEX idx_users_roles_user_id
 
 CREATE INDEX idx_users_roles_role_id
     ON users_roles(role_id);
+
+CREATE INDEX idx_staff_cinemas_staff_id
+    ON staff_cinemas(staff_id);
+
+CREATE INDEX idx_staff_cinemas_cinema_id
+    ON staff_cinemas(cinema_id);
 
 CREATE INDEX idx_roles_permissions_role_id
     ON roles_permissions(role_id);

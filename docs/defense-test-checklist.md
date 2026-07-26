@@ -305,6 +305,19 @@ Ket qua mong doi:
 - [ ] Chon rap.
 - [ ] Chon suat chieu dang mo check-in.
 
+### Pham vi rap cua staff
+
+- [ ] Admin vao Quan ly nguoi dung.
+- [ ] Gan staff1 cho mot hoac nhieu rap.
+- [ ] Dang nhap staff1 va kiem tra danh sach soat ve/booking/payment chi hien du lieu rap duoc gan.
+- [ ] Thu goi API/quet ve cua rap khong duoc gan.
+
+Ket qua mong doi:
+
+- Staff khong thay du lieu rap ngoai pham vi.
+- Backend tra `UNAUTHORIZED` neu staff thao tac tren rap khong duoc gan.
+- Neu QR hop le nhung chon sai rap/sai suat, backend van bao sai rap/sai suat va khong set USED.
+
 ### QR dung
 
 - [ ] Quet QR bang camera.
@@ -467,4 +480,3 @@ De tranh ve dung nhung vao nham rap/nham suat. Backend chi set USED khi QR dung,
 ### Vi sao can audit log?
 
 De truy vet ai da thao tac gi, dang nhap that bai/thanh cong, va cac hanh vi bat thuong. Day la yeu cau quan trong cua he thong thuc te.
-

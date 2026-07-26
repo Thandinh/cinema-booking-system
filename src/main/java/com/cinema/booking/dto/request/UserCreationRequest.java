@@ -5,6 +5,8 @@ import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 import java.time.LocalDate;
+import java.util.Set;
+import java.util.UUID;
 
 @Data
 @NoArgsConstructor
@@ -41,4 +43,10 @@ public class UserCreationRequest {
 
     @Size(max = 500, message = "AVATAR_URL_INVALID")
     String avatarUrl;
+
+    /** Only admin-created users can receive roles. Public registration ignores this field. */
+    Set<UUID> roleIds;
+
+    /** Cinema scope for STAFF users. Ignored by public registration. */
+    Set<UUID> assignedCinemaIds;
 }
