@@ -7,6 +7,7 @@ import com.cinema.booking.dto.request.GoogleLoginRequest;
 import com.cinema.booking.dto.request.IntrospectRequest;
 import com.cinema.booking.dto.request.LogoutRequest;
 import com.cinema.booking.dto.request.RefreshRequest;
+import com.cinema.booking.dto.response.AuthSessionResponse;
 import com.cinema.booking.dto.response.AuthenticationResponse;
 import com.cinema.booking.dto.response.IntrospectResponse;
 import com.cinema.booking.entity.InvalidatedToken;
@@ -53,10 +54,12 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.text.ParseException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.HexFormat;
@@ -74,9 +77,19 @@ public class AuthenticationService {
     static final String TOKEN_USE_CLAIM = "token_use";
     static final String ACCESS_TOKEN_USE = "access";
     static final String REFRESH_TOKEN_USE = "refresh";
+    static final String EVENT_LOGIN_PASSWORD = "LOGIN_PASSWORD";
+    static final String EVENT_LOGIN_GOOGLE = "LOGIN_GOOGLE";
+    static final String EVENT_REFRESH_TOKEN = "REFRESH_TOKEN";
+    static final String EVENT_LOGOUT = "LOGOUT";
+    static final String EVENT_REVOKE_SESSION = "REVOKE_SESSION";
     static final String GOOGLE_ISSUER = "https://accounts.google.com";
     static final String GOOGLE_JWK_SET_URI = "https://www.googleapis.com/oauth2/v3/certs";
     static final ZoneId SYSTEM_ZONE = ZoneId.systemDefault();
+    static final int LOGIN_MAX_ATTEMPTS = 5;
+    static final int GOOGLE_LOGIN_MAX_ATTEMPTS = 15;
+    static final int REFRESH_MAX_ATTEMPTS = 60;
+    static final Duration LOGIN_WINDOW = Duration.ofMinutes(15);
+    static final Duration REFRESH_WINDOW = Duration.ofMinutes(1);
 
     UserRepository userRepository;
     RoleRepository roleRepository;
@@ -84,6 +97,8 @@ public class AuthenticationService {
     RefreshTokenRepository refreshTokenRepository;
     JwtProperties jwtProperties;
     GoogleOAuthProperties googleOAuthProperties;
+    AuthRateLimitService authRateLimitService;
+    AuthAuditService authAuditService;
 
     public IntrospectResponse introspect(IntrospectRequest request) {
         boolean isValid = true;
@@ -101,72 +116,153 @@ public class AuthenticationService {
 
     @Transactional
     public AuthenticationResponse authenticate(AuthenticationRequest request, HttpServletRequest servletRequest) {
-        PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(10);
-        User user = userRepository.findByUsername(request.getUsername())
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-        validateUserCanAuthenticate(user);
+        String username = normalizeUsername(request.getUsername());
+        String rateLimitKey = loginRateLimitKey(username, servletRequest);
+        User user = null;
+        try {
+            authRateLimitService.check(rateLimitKey, LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW);
 
-        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            throw new AppException(ErrorCode.UNAUTHENTICATED);
+            PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(10);
+            user = userRepository.findByUsername(username)
+                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+            validateUserCanAuthenticate(user);
+
+            if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+                throw new AppException(ErrorCode.UNAUTHENTICATED);
+            }
+
+            AuthenticationResponse response = issueTokenPair(user, servletRequest);
+            authRateLimitService.reset(rateLimitKey);
+            authAuditService.record(EVENT_LOGIN_PASSWORD, user, username, true, null, servletRequest);
+            return response;
+        } catch (RuntimeException exception) {
+            authAuditService.record(EVENT_LOGIN_PASSWORD, user, username, false, resolveFailureReason(exception), servletRequest);
+            throw exception;
         }
-
-        return issueTokenPair(user, servletRequest);
     }
 
     @Transactional
     public AuthenticationResponse authenticateWithGoogle(GoogleLoginRequest request, HttpServletRequest servletRequest) {
-        Jwt googleJwt = decodeGoogleIdToken(request.getIdToken());
+        String rateLimitKey = genericRateLimitKey("google", servletRequest);
+        User user = null;
+        String email = null;
+        try {
+            authRateLimitService.check(rateLimitKey, GOOGLE_LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW);
+            Jwt googleJwt = decodeGoogleIdToken(request.getIdToken());
 
-        Boolean emailVerified = googleJwt.getClaim("email_verified");
-        String email = googleJwt.getClaimAsString("email");
-        if (!Boolean.TRUE.equals(emailVerified) || !StringUtils.hasText(email)) {
-            throw new AppException(ErrorCode.UNAUTHENTICATED);
+            Boolean emailVerified = googleJwt.getClaim("email_verified");
+            email = googleJwt.getClaimAsString("email");
+            if (!Boolean.TRUE.equals(emailVerified) || !StringUtils.hasText(email)) {
+                throw new AppException(ErrorCode.UNAUTHENTICATED);
+            }
+
+            String verifiedEmail = email;
+            user = userRepository.findByEmailIgnoreCase(verifiedEmail)
+                    .map(existingUser -> {
+                        if (Boolean.FALSE.equals(existingUser.getEmailVerified())) {
+                            existingUser.setEmailVerified(true);
+                            existingUser.setEmailVerificationTokenHash(null);
+                            existingUser.setEmailVerificationExpiresAt(null);
+                        }
+                        updateMissingGoogleAvatar(existingUser, googleJwt);
+                        validateUserCanAuthenticate(existingUser);
+                        return existingUser;
+                    })
+                    .orElseGet(() -> createGoogleUser(googleJwt, verifiedEmail));
+
+            AuthenticationResponse response = issueTokenPair(user, servletRequest);
+            authAuditService.record(EVENT_LOGIN_GOOGLE, user, email, true, null, servletRequest);
+            return response;
+        } catch (RuntimeException exception) {
+            authAuditService.record(EVENT_LOGIN_GOOGLE, user, email, false, resolveFailureReason(exception), servletRequest);
+            throw exception;
         }
-
-        User user = userRepository.findByEmailIgnoreCase(email)
-                .map(existingUser -> {
-                    if (Boolean.FALSE.equals(existingUser.getEmailVerified())) {
-                        existingUser.setEmailVerified(true);
-                        existingUser.setEmailVerificationTokenHash(null);
-                        existingUser.setEmailVerificationExpiresAt(null);
-                    }
-                    updateMissingGoogleAvatar(existingUser, googleJwt);
-                    validateUserCanAuthenticate(existingUser);
-                    return existingUser;
-                })
-                .orElseGet(() -> createGoogleUser(googleJwt, email));
-
-        return issueTokenPair(user, servletRequest);
     }
 
     @Transactional
     public AuthenticationResponse refreshToken(RefreshRequest request, HttpServletRequest servletRequest)
             throws ParseException, JOSEException {
         String refreshToken = request.getToken();
-        verifyToken(refreshToken, true);
-        String tokenHash = hashToken(refreshToken);
-        RefreshToken currentRefreshToken = refreshTokenRepository.findByTokenHash(tokenHash)
-                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHENTICATED));
+        User user = null;
+        try {
+            authRateLimitService.check(genericRateLimitKey("refresh", servletRequest), REFRESH_MAX_ATTEMPTS, REFRESH_WINDOW);
+            verifyToken(refreshToken, true);
+            String tokenHash = hashToken(refreshToken);
+            RefreshToken currentRefreshToken = refreshTokenRepository.findByTokenHash(tokenHash)
+                    .orElseThrow(() -> new AppException(ErrorCode.UNAUTHENTICATED));
 
-        User user = currentRefreshToken.getUser();
-        validateUserCanAuthenticate(user);
+            user = currentRefreshToken.getUser();
+            validateUserCanAuthenticate(user);
 
-        String newRefreshToken = generateRefreshToken(user, servletRequest);
-        String newRefreshTokenId = SignedJWT.parse(newRefreshToken).getJWTClaimsSet().getJWTID();
+            String newRefreshToken = generateRefreshToken(user, servletRequest);
+            String newRefreshTokenId = SignedJWT.parse(newRefreshToken).getJWTClaimsSet().getJWTID();
 
-        currentRefreshToken.setRevokedAt(LocalDateTime.now());
-        currentRefreshToken.setRevokedReason("ROTATED");
-        currentRefreshToken.setReplacedByTokenId(newRefreshTokenId);
-        refreshTokenRepository.save(currentRefreshToken);
+            currentRefreshToken.setRevokedAt(LocalDateTime.now());
+            currentRefreshToken.setRevokedReason("ROTATED");
+            currentRefreshToken.setReplacedByTokenId(newRefreshTokenId);
+            refreshTokenRepository.save(currentRefreshToken);
 
-        String accessToken = generateAccessToken(user);
-        return buildAuthenticationResponse(accessToken, newRefreshToken);
+            String accessToken = generateAccessToken(user);
+            authAuditService.record(EVENT_REFRESH_TOKEN, user, user.getUsername(), true, null, servletRequest);
+            return buildAuthenticationResponse(accessToken, newRefreshToken);
+        } catch (RuntimeException | ParseException | JOSEException exception) {
+            authAuditService.record(EVENT_REFRESH_TOKEN, user, null, false, resolveFailureReason(exception), servletRequest);
+            throw exception;
+        }
     }
 
     @Transactional
-    public void logout(LogoutRequest request) throws ParseException, JOSEException {
-        invalidateAccessToken(request.getToken());
-        revokeRefreshToken(request.getRefreshToken(), "LOGOUT");
+    public void logout(LogoutRequest request, HttpServletRequest servletRequest) throws ParseException, JOSEException {
+        User user = resolveUserFromRefreshToken(request.getRefreshToken());
+        try {
+            invalidateAccessToken(request.getToken());
+            revokeRefreshToken(request.getRefreshToken(), "LOGOUT");
+            authAuditService.record(EVENT_LOGOUT, user, user == null ? null : user.getUsername(), true, null, servletRequest);
+        } catch (RuntimeException | ParseException | JOSEException exception) {
+            authAuditService.record(EVENT_LOGOUT, user, user == null ? null : user.getUsername(), false, resolveFailureReason(exception), servletRequest);
+            throw exception;
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public List<AuthSessionResponse> getSessions(String username, String currentRefreshToken) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHENTICATED));
+        String currentRefreshTokenHash = StringUtils.hasText(currentRefreshToken) ? hashToken(currentRefreshToken) : null;
+
+        return refreshTokenRepository.findAllByUserIdOrderByCreatedAtDesc(user.getId())
+                .stream()
+                .map(refreshToken -> toSessionResponse(refreshToken, currentRefreshTokenHash))
+                .toList();
+    }
+
+    @Transactional
+    public boolean revokeSession(String username, UUID sessionId, String currentRefreshToken, HttpServletRequest request) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHENTICATED));
+        RefreshToken refreshToken = refreshTokenRepository.findByIdAndUserId(sessionId, user.getId())
+                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHENTICATED));
+
+        boolean isCurrent = StringUtils.hasText(currentRefreshToken)
+                && hashToken(currentRefreshToken).equals(refreshToken.getTokenHash());
+        revokeRefreshTokenRecord(refreshToken, "SESSION_REVOKED");
+        authAuditService.record(EVENT_REVOKE_SESSION, user, user.getUsername(), true,
+                "sessionId=" + sessionId + ", current=" + isCurrent, request);
+        return isCurrent;
+    }
+
+    @Transactional
+    public void revokeOtherSessions(String username, String currentRefreshToken, HttpServletRequest request) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHENTICATED));
+        String currentRefreshTokenHash = StringUtils.hasText(currentRefreshToken) ? hashToken(currentRefreshToken) : null;
+
+        refreshTokenRepository.findAllByUserIdOrderByCreatedAtDesc(user.getId()).forEach(refreshToken -> {
+            if (refreshToken.getRevokedAt() == null && !refreshToken.getTokenHash().equals(currentRefreshTokenHash)) {
+                revokeRefreshTokenRecord(refreshToken, "OTHER_SESSIONS_REVOKED");
+            }
+        });
+        authAuditService.record(EVENT_REVOKE_SESSION, user, user.getUsername(), true, "other sessions", request);
     }
 
     public SignedJWT verifyToken(String token, boolean isRefresh) throws JOSEException, ParseException {
@@ -319,12 +415,60 @@ public class AuthenticationService {
         }
 
         refreshTokenRepository.findByTokenHash(hashToken(token)).ifPresent(refreshToken -> {
-            if (refreshToken.getRevokedAt() == null) {
-                refreshToken.setRevokedAt(LocalDateTime.now());
-                refreshToken.setRevokedReason(reason);
-                refreshTokenRepository.save(refreshToken);
-            }
+            revokeRefreshTokenRecord(refreshToken, reason);
         });
+    }
+
+    private void revokeRefreshTokenRecord(RefreshToken refreshToken, String reason) {
+        if (refreshToken.getRevokedAt() == null) {
+            refreshToken.setRevokedAt(LocalDateTime.now());
+            refreshToken.setRevokedReason(reason);
+            refreshTokenRepository.save(refreshToken);
+        }
+    }
+
+    private User resolveUserFromRefreshToken(String token) {
+        if (!StringUtils.hasText(token)) {
+            return null;
+        }
+        return refreshTokenRepository.findByTokenHash(hashToken(token))
+                .map(RefreshToken::getUser)
+                .orElse(null);
+    }
+
+    private AuthSessionResponse toSessionResponse(RefreshToken refreshToken, String currentRefreshTokenHash) {
+        boolean current = StringUtils.hasText(currentRefreshTokenHash)
+                && currentRefreshTokenHash.equals(refreshToken.getTokenHash());
+        return AuthSessionResponse.builder()
+                .id(refreshToken.getId())
+                .current(current)
+                .ipAddress(refreshToken.getIpAddress())
+                .userAgent(refreshToken.getUserAgent())
+                .createdAt(refreshToken.getCreatedAt())
+                .expiresAt(refreshToken.getExpiresAt())
+                .revokedAt(refreshToken.getRevokedAt())
+                .revokedReason(refreshToken.getRevokedReason())
+                .build();
+    }
+
+    private String normalizeUsername(String username) {
+        return StringUtils.hasText(username) ? username.trim() : "";
+    }
+
+    private String loginRateLimitKey(String username, HttpServletRequest request) {
+        return "login:" + extractClientIp(request) + ":" + username.toLowerCase(Locale.ROOT);
+    }
+
+    private String genericRateLimitKey(String prefix, HttpServletRequest request) {
+        return prefix + ":" + extractClientIp(request);
+    }
+
+    private String resolveFailureReason(Exception exception) {
+        if (exception instanceof AppException appException) {
+            return appException.getErrorCode().name();
+        }
+        String message = exception.getMessage();
+        return StringUtils.hasText(message) ? message : exception.getClass().getSimpleName();
     }
 
     private void validateUserCanAuthenticate(User user) {

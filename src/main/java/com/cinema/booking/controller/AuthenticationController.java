@@ -6,6 +6,7 @@ import com.cinema.booking.dto.request.IntrospectRequest;
 import com.cinema.booking.dto.request.LogoutRequest;
 import com.cinema.booking.dto.request.RefreshRequest;
 import com.cinema.booking.dto.response.ApiResponse;
+import com.cinema.booking.dto.response.AuthSessionResponse;
 import com.cinema.booking.dto.response.AuthenticationResponse;
 import com.cinema.booking.dto.response.IntrospectResponse;
 import com.cinema.booking.security.service.AuthenticationService;
@@ -18,7 +19,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
+import org.springframework.security.core.Authentication;
 import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -26,6 +31,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.text.ParseException;
 import java.time.Duration;
+import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/auth")
@@ -87,8 +94,45 @@ public class AuthenticationController {
         if (!StringUtils.hasText(resolvedRequest.getRefreshToken())) {
             resolvedRequest.setRefreshToken(readRefreshCookie(servletRequest));
         }
-        authenticationService.logout(resolvedRequest);
+        authenticationService.logout(resolvedRequest, servletRequest);
         clearRefreshCookie(servletResponse, servletRequest);
+        return ApiResponse.<Void>builder().build();
+    }
+
+    @GetMapping("/sessions")
+    ApiResponse<List<AuthSessionResponse>> getSessions(
+            Authentication authentication,
+            HttpServletRequest servletRequest) {
+        return ApiResponse.<List<AuthSessionResponse>>builder()
+                .result(authenticationService.getSessions(authentication.getName(), readRefreshCookie(servletRequest)))
+                .build();
+    }
+
+    @DeleteMapping("/sessions/{sessionId}")
+    ApiResponse<Void> revokeSession(
+            @PathVariable UUID sessionId,
+            Authentication authentication,
+            HttpServletRequest servletRequest,
+            HttpServletResponse servletResponse) {
+        boolean currentSessionRevoked = authenticationService.revokeSession(
+                authentication.getName(),
+                sessionId,
+                readRefreshCookie(servletRequest),
+                servletRequest);
+        if (currentSessionRevoked) {
+            clearRefreshCookie(servletResponse, servletRequest);
+        }
+        return ApiResponse.<Void>builder().build();
+    }
+
+    @DeleteMapping("/sessions/others")
+    ApiResponse<Void> revokeOtherSessions(
+            Authentication authentication,
+            HttpServletRequest servletRequest) {
+        authenticationService.revokeOtherSessions(
+                authentication.getName(),
+                readRefreshCookie(servletRequest),
+                servletRequest);
         return ApiResponse.<Void>builder().build();
     }
 

@@ -9,6 +9,7 @@
 
 -- 1. CLEAN UP
 DROP TABLE IF EXISTS admin_audit_logs CASCADE;
+DROP TABLE IF EXISTS auth_audit_logs CASCADE;
 DROP TABLE IF EXISTS tickets CASCADE;
 DROP TABLE IF EXISTS payment_events CASCADE;
 DROP TABLE IF EXISTS payments CASCADE;
@@ -303,6 +304,19 @@ CREATE TABLE admin_audit_logs (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE auth_audit_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID,
+    username VARCHAR(255),
+    event_type VARCHAR(80) NOT NULL,
+    success BOOLEAN NOT NULL,
+    failure_reason VARCHAR(1000),
+    ip_address VARCHAR(80),
+    user_agent VARCHAR(500),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE invalidated_token (
     id VARCHAR(255) PRIMARY KEY,
     expiry_time TIMESTAMP NOT NULL
@@ -343,6 +357,7 @@ CREATE TRIGGER update_payments_modtime BEFORE UPDATE ON payments FOR EACH ROW EX
 CREATE TRIGGER update_payment_events_modtime BEFORE UPDATE ON payment_events FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 CREATE TRIGGER update_tickets_modtime BEFORE UPDATE ON tickets FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 CREATE TRIGGER update_admin_audit_logs_modtime BEFORE UPDATE ON admin_audit_logs FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+CREATE TRIGGER update_auth_audit_logs_modtime BEFORE UPDATE ON auth_audit_logs FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 CREATE TRIGGER update_refresh_tokens_modtime BEFORE UPDATE ON refresh_tokens FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 
 -- =========================================
@@ -524,6 +539,19 @@ CREATE INDEX idx_admin_audit_logs_actor_created_at
 
 CREATE INDEX idx_admin_audit_logs_success_created_at
     ON admin_audit_logs(success, created_at DESC);
+
+CREATE INDEX idx_auth_audit_logs_created_at
+    ON auth_audit_logs(created_at DESC);
+
+CREATE INDEX idx_auth_audit_logs_user_created_at
+    ON auth_audit_logs(user_id, created_at DESC)
+    WHERE user_id IS NOT NULL;
+
+CREATE INDEX idx_auth_audit_logs_event_created_at
+    ON auth_audit_logs(event_type, created_at DESC);
+
+CREATE INDEX idx_auth_audit_logs_success_created_at
+    ON auth_audit_logs(success, created_at DESC);
 
 CREATE INDEX idx_refresh_tokens_token_hash
     ON refresh_tokens(token_hash);

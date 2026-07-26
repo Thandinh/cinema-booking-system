@@ -138,7 +138,34 @@ CREATE INDEX IF NOT EXISTS idx_refresh_tokens_active_user
     ON refresh_tokens(user_id, revoked_at, expires_at)
     WHERE revoked_at IS NULL;
 
+CREATE TABLE IF NOT EXISTS auth_audit_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID,
+    username VARCHAR(255),
+    event_type VARCHAR(80) NOT NULL,
+    success BOOLEAN NOT NULL,
+    failure_reason VARCHAR(1000),
+    ip_address VARCHAR(80),
+    user_agent VARCHAR(500),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_auth_audit_logs_created_at
+    ON auth_audit_logs(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_auth_audit_logs_user_created_at
+    ON auth_audit_logs(user_id, created_at DESC)
+    WHERE user_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_auth_audit_logs_event_created_at
+    ON auth_audit_logs(event_type, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_auth_audit_logs_success_created_at
+    ON auth_audit_logs(success, created_at DESC);
+
 DELETE FROM refresh_tokens;
+DELETE FROM auth_audit_logs;
 
 TRUNCATE TABLE
     tickets,

@@ -46,6 +46,7 @@ public enum ErrorCode {
     PERMISSION_NAME_INVALID(1032, "Permission name must be between {min} and 100 characters", HttpStatus.BAD_REQUEST),
     GOOGLE_ID_TOKEN_REQUIRED(1033, "Google ID token is required",                     HttpStatus.BAD_REQUEST),
     AVATAR_URL_INVALID     (1034, "Avatar URL must be at most 500 characters",        HttpStatus.BAD_REQUEST),
+    AUTH_RATE_LIMITED      (1035, "Too many authentication attempts. Please try again later", HttpStatus.TOO_MANY_REQUESTS),
 
     // ── Movie ────────────────────────────────────────────────────────────────
     MOVIE_NOT_FOUND        (2001, "Movie not found",                      HttpStatus.NOT_FOUND),
