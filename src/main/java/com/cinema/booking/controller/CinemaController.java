@@ -7,8 +7,6 @@ import com.cinema.booking.dto.response.CinemaMapResponse;
 import com.cinema.booking.dto.response.CinemaResponse;
 import com.cinema.booking.service.CinemaService;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.DecimalMax;
-import jakarta.validation.constraints.DecimalMin;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;

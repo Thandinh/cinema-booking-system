@@ -2,11 +2,14 @@ package com.cinema.booking.service;
 
 import com.cinema.booking.dto.request.CreateBookingRequest;
 import com.cinema.booking.dto.request.HoldSeatRequest;
+import com.cinema.booking.dto.request.ShowtimeCancelRequest;
 import com.cinema.booking.dto.response.BookingResponse;
 import com.cinema.booking.dto.response.HoldSeatResponse;
 import com.cinema.booking.dto.response.TicketResponse;
 import com.cinema.booking.entity.Cinema;
+import com.cinema.booking.entity.Payment;
 import com.cinema.booking.entity.Movie;
+import com.cinema.booking.entity.Promotion;
 import com.cinema.booking.entity.Room;
 import com.cinema.booking.entity.Seat;
 import com.cinema.booking.entity.SeatStatus;
@@ -15,8 +18,12 @@ import com.cinema.booking.entity.StaffCinemaId;
 import com.cinema.booking.entity.Showtime;
 import com.cinema.booking.entity.User;
 import com.cinema.booking.enums.BookingStatus;
+import com.cinema.booking.enums.DiscountType;
 import com.cinema.booking.enums.ErrorCode;
 import com.cinema.booking.enums.MovieStatus;
+import com.cinema.booking.enums.PaymentMethod;
+import com.cinema.booking.enums.PaymentEventType;
+import com.cinema.booking.enums.PaymentStatus;
 import com.cinema.booking.enums.SeatStatusType;
 import com.cinema.booking.enums.SeatType;
 import com.cinema.booking.enums.ShowtimeStatus;
@@ -26,6 +33,8 @@ import com.cinema.booking.repository.BookingRepository;
 import com.cinema.booking.repository.CinemaRepository;
 import com.cinema.booking.repository.MovieRepository;
 import com.cinema.booking.repository.PaymentRepository;
+import com.cinema.booking.repository.PaymentEventRepository;
+import com.cinema.booking.repository.PromotionRepository;
 import com.cinema.booking.repository.RoomRepository;
 import com.cinema.booking.repository.SeatRepository;
 import com.cinema.booking.repository.SeatStatusRepository;
@@ -55,6 +64,9 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 
 @SpringBootTest(properties = {
         "booking.seat-hold-minutes=5",
@@ -70,6 +82,9 @@ class BookingWorkflowIntegrationTest extends PostgresIntegrationTest {
 
     @Autowired
     BookingService bookingService;
+
+    @Autowired
+    ShowtimeService showtimeService;
 
     @Autowired
     TicketQrCodeService ticketQrCodeService;
@@ -100,6 +115,12 @@ class BookingWorkflowIntegrationTest extends PostgresIntegrationTest {
 
     @Autowired
     PaymentRepository paymentRepository;
+
+    @Autowired
+    PaymentEventRepository paymentEventRepository;
+
+    @Autowired
+    PromotionRepository promotionRepository;
 
     @Autowired
     TicketRepository ticketRepository;
@@ -220,6 +241,127 @@ class BookingWorkflowIntegrationTest extends PostgresIntegrationTest {
     }
 
     @Test
+    void applyPromotion_shouldRecalculateTotalAndExpirePendingPayments() {
+        TestShowtimeData data = createShowtimeData();
+        authenticateAs(customer, "BOOKING_CREATE", "BOOKING_VIEW_OWN");
+        List<UUID> selectedSeatIds = data.seats().stream().limit(2).map(Seat::getId).toList();
+
+        bookingService.holdSeats(new HoldSeatRequest(data.showtime().getId(), selectedSeatIds));
+        BookingResponse pendingBooking = bookingService.createBooking(CreateBookingRequest.builder()
+                .showtimeId(data.showtime().getId())
+                .seatIds(selectedSeatIds)
+                .build());
+
+        Payment stalePayment = paymentRepository.save(Payment.builder()
+                .booking(bookingRepository.findWithDetailsById(pendingBooking.getId()).orElseThrow())
+                .amount(pendingBooking.getTotalPrice())
+                .method(PaymentMethod.VNPAY)
+                .transactionNo("VNPAY_STALE_PROMO")
+                .status(PaymentStatus.PENDING)
+                .build());
+
+        promotionRepository.save(Promotion.builder()
+                .code("SAVE50K")
+                .description("Discount for booking workflow integration test")
+                .discountType(DiscountType.FIXED)
+                .discountValue(new BigDecimal("50000.00"))
+                .minOrderValue(BigDecimal.ZERO)
+                .startDate(LocalDateTime.now().minusDays(1))
+                .endDate(LocalDateTime.now().plusDays(1))
+                .usageLimit(100)
+                .usedCount(0)
+                .isActive(true)
+                .isDeleted(false)
+                .build());
+
+        BookingResponse discountedBooking = bookingService.applyPromotion(pendingBooking.getId(), "SAVE50K");
+
+        assertThat(discountedBooking.getDiscountAmount()).isEqualByComparingTo("50000.00");
+        assertThat(discountedBooking.getTotalPrice()).isEqualByComparingTo("150000.00");
+        assertThat(paymentRepository.findById(stalePayment.getId()).orElseThrow().getStatus())
+                .isEqualTo(PaymentStatus.EXPIRED);
+    }
+
+    @Test
+    void expirePendingBooking_shouldMarkBookingExpiredReleaseSeatsAndExpirePendingPayments() {
+        TestShowtimeData data = createShowtimeData();
+        authenticateAs(customer, "BOOKING_CREATE");
+        List<UUID> selectedSeatIds = data.seats().stream().limit(2).map(Seat::getId).toList();
+
+        bookingService.holdSeats(new HoldSeatRequest(data.showtime().getId(), selectedSeatIds));
+        BookingResponse pendingBooking = bookingService.createBooking(CreateBookingRequest.builder()
+                .showtimeId(data.showtime().getId())
+                .seatIds(selectedSeatIds)
+                .build());
+
+        com.cinema.booking.entity.Booking booking = bookingRepository
+                .findWithDetailsById(pendingBooking.getId())
+                .orElseThrow();
+        booking.setPaymentExpiresAt(LocalDateTime.now().minusMinutes(1));
+        bookingRepository.saveAndFlush(booking);
+
+        List<SeatStatus> heldSeats = seatStatusRepository.findAllByShowtimeId(data.showtime().getId()).stream()
+                .filter(seatStatus -> selectedSeatIds.contains(seatStatus.getSeat().getId()))
+                .peek(seatStatus -> seatStatus.setHoldUntil(LocalDateTime.now().minusMinutes(1)))
+                .toList();
+        seatStatusRepository.saveAllAndFlush(heldSeats);
+
+        Payment pendingPayment = paymentRepository.save(Payment.builder()
+                .booking(booking)
+                .amount(pendingBooking.getTotalPrice())
+                .method(PaymentMethod.SEPAY)
+                .transactionNo("SEPAY_EXPIRE_BOOKING")
+                .status(PaymentStatus.PENDING)
+                .build());
+
+        BookingResponse expiredBooking = bookingService.expirePendingBooking(pendingBooking.getId());
+
+        assertThat(expiredBooking.getStatus()).isEqualTo(BookingStatus.EXPIRED);
+        assertThat(bookingRepository.findById(pendingBooking.getId()).orElseThrow().getStatus())
+                .isEqualTo(BookingStatus.EXPIRED);
+        assertThat(paymentRepository.findById(pendingPayment.getId()).orElseThrow().getStatus())
+                .isEqualTo(PaymentStatus.EXPIRED);
+        assertThat(seatStatusRepository.findAllByShowtimeId(data.showtime().getId()))
+                .filteredOn(seatStatus -> selectedSeatIds.contains(seatStatus.getSeat().getId()))
+                .allSatisfy(seatStatus -> {
+                    assertThat(seatStatus.getStatus()).isEqualTo(SeatStatusType.AVAILABLE);
+                    assertThat(seatStatus.getHoldBy()).isNull();
+                    assertThat(seatStatus.getHoldUntil()).isNull();
+                });
+        verify(seatStatusPublisher).publishBulk(
+                eq(data.showtime().getId()),
+                argThat(ids -> ids.size() == selectedSeatIds.size() && ids.containsAll(selectedSeatIds)),
+                eq(SeatStatusType.AVAILABLE));
+    }
+
+    @Test
+    void getSeatMap_shouldReleaseExpiredHoldsAndPublishAvailableEvent() {
+        TestShowtimeData data = createShowtimeData();
+        Seat expiredHeldSeat = data.seats().getFirst();
+        SeatStatus expiredSeatStatus = seatStatusFor(data.showtime(), expiredHeldSeat);
+        expiredSeatStatus.setStatus(SeatStatusType.HOLD);
+        expiredSeatStatus.setHoldBy(customer);
+        expiredSeatStatus.setHoldUntil(LocalDateTime.now().minusMinutes(1));
+        seatStatusRepository.saveAndFlush(expiredSeatStatus);
+
+        List<com.cinema.booking.dto.response.SeatMapItemResponse> seatMap =
+                bookingService.getSeatMap(data.showtime().getId());
+
+        assertThat(seatMap)
+                .filteredOn(item -> item.getSeatId().equals(expiredHeldSeat.getId()))
+                .singleElement()
+                .satisfies(item -> assertThat(item.getStatus()).isEqualTo(SeatStatusType.AVAILABLE));
+        SeatStatus releasedSeat = seatStatusFor(data.showtime(), expiredHeldSeat);
+        assertThat(releasedSeat.getStatus()).isEqualTo(SeatStatusType.AVAILABLE);
+        assertThat(releasedSeat.getHoldBy()).isNull();
+        assertThat(releasedSeat.getHoldUntil()).isNull();
+        verify(seatStatusPublisher).publishBulk(
+                data.showtime().getId(),
+                List.of(expiredHeldSeat.getId()),
+                SeatStatusType.AVAILABLE);
+    }
+
+    @Test
     void checkInTicket_shouldRequireCorrectCinemaAndShowtimeBeforeMarkingUsed() {
         TestShowtimeData data = createShowtimeData();
         authenticateAs(customer, "BOOKING_CREATE");
@@ -281,11 +423,77 @@ class BookingWorkflowIntegrationTest extends PostgresIntegrationTest {
         assertThat(secondScan.getCheckedInById()).isEqualTo(staff.getId());
     }
 
+    @Test
+    void cancelShowtimeWithPolicy_shouldCancelBookingsTicketsReleaseSeatsAndRequestRefund() {
+        TestShowtimeData data = createShowtimeData();
+        authenticateAs(customer, "BOOKING_CREATE");
+        List<UUID> selectedSeatIds = data.seats().stream().limit(2).map(Seat::getId).toList();
+
+        bookingService.holdSeats(new HoldSeatRequest(data.showtime().getId(), selectedSeatIds));
+        BookingResponse pendingBooking = bookingService.createBooking(CreateBookingRequest.builder()
+                .showtimeId(data.showtime().getId())
+                .seatIds(selectedSeatIds)
+                .build());
+        BookingResponse paidBooking = bookingService.handlePaymentSuccess(pendingBooking.getSecureToken());
+        com.cinema.booking.entity.Booking booking = bookingRepository
+                .findWithDetailsById(paidBooking.getId())
+                .orElseThrow();
+        Payment payment = paymentRepository.save(Payment.builder()
+                .booking(booking)
+                .amount(paidBooking.getTotalPrice())
+                .method(PaymentMethod.SEPAY)
+                .transactionNo("SEPAY_REFUND_REQUEST_TEST")
+                .status(PaymentStatus.SUCCESS)
+                .paymentTime(LocalDateTime.now())
+                .build());
+
+        authenticateAs(staff, "ROLE_STAFF", "SHOWTIME_UPDATE");
+        staffCinemaRepository.save(StaffCinema.builder()
+                .id(StaffCinemaId.builder()
+                        .staffId(staff.getId())
+                        .cinemaId(data.cinema().getId())
+                        .build())
+                .staff(staff)
+                .cinema(data.cinema())
+                .build());
+
+        showtimeService.cancelShowtimeWithPolicy(
+                data.showtime().getId(),
+                ShowtimeCancelRequest.builder().reason("Projector maintenance").build());
+
+        assertThat(showtimeRepository.findById(data.showtime().getId()).orElseThrow().getStatus())
+                .isEqualTo(ShowtimeStatus.CANCELLED);
+        assertThat(bookingRepository.findById(paidBooking.getId()).orElseThrow().getStatus())
+                .isEqualTo(BookingStatus.CANCELLED);
+        assertThat(paymentRepository.findById(payment.getId()).orElseThrow().getStatus())
+                .isEqualTo(PaymentStatus.SUCCESS);
+        assertThat(ticketRepository.findAll())
+                .allSatisfy(ticket -> assertThat(ticket.getStatus()).isEqualTo(TicketStatus.CANCELLED));
+        assertThat(seatStatusRepository.findAllByShowtimeId(data.showtime().getId()))
+                .filteredOn(seatStatus -> selectedSeatIds.contains(seatStatus.getSeat().getId()))
+                .allSatisfy(seatStatus -> assertThat(seatStatus.getStatus()).isEqualTo(SeatStatusType.AVAILABLE));
+        assertThat(paymentEventRepository.findAll())
+                .anySatisfy(event -> {
+                    assertThat(event.getEventType()).isEqualTo(PaymentEventType.REFUND_REQUESTED);
+                    assertThat(event.getBookingId()).isEqualTo(paidBooking.getId());
+                    assertThat(event.getPaymentId()).isEqualTo(payment.getId());
+                });
+        verify(emailService).sendShowtimeCancellationEmail(
+                eq(paidBooking.getId()),
+                eq("Projector maintenance"));
+        verify(seatStatusPublisher).publishBulk(
+                eq(data.showtime().getId()),
+                argThat(ids -> ids.size() == selectedSeatIds.size() && ids.containsAll(selectedSeatIds)),
+                eq(SeatStatusType.AVAILABLE));
+    }
+
     private void clearBusinessData() {
+        paymentEventRepository.deleteAllInBatch();
         ticketRepository.deleteAllInBatch();
         staffCinemaRepository.deleteAllInBatch();
         paymentRepository.deleteAllInBatch();
         bookingRepository.deleteAllInBatch();
+        promotionRepository.deleteAllInBatch();
         seatStatusRepository.deleteAllInBatch();
         showtimeRepository.deleteAllInBatch();
         seatRepository.deleteAllInBatch();

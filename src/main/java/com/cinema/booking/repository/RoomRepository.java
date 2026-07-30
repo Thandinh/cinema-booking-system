@@ -1,6 +1,8 @@
 package com.cinema.booking.repository;
 
+import com.cinema.booking.configuration.CacheConfig;
 import com.cinema.booking.entity.Room;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -21,6 +23,7 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
               AND r.isDeleted = false
             ORDER BY r.name ASC
             """)
+    @Cacheable(cacheNames = CacheConfig.ROOMS_BY_CINEMA, key = "#cinemaId")
     List<Room> findAllByCinemaIdAndIsDeletedFalse(@Param("cinemaId") UUID cinemaId);
 
     @Query("SELECT r FROM Room r WHERE r.id = :id AND r.isDeleted = false")

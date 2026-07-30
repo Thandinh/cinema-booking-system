@@ -6,6 +6,7 @@ import com.cinema.booking.dto.response.BookingResponse;
 import com.cinema.booking.dto.response.HoldSeatResponse;
 import com.cinema.booking.dto.response.SeatMapItemResponse;
 import com.cinema.booking.dto.response.TicketResponse;
+import com.cinema.booking.configuration.CacheConfig;
 import com.cinema.booking.entity.*;
 import com.cinema.booking.enums.*;
 import com.cinema.booking.exception.AppException;
@@ -14,6 +15,7 @@ import com.cinema.booking.mapper.TicketMapper;
 import com.cinema.booking.repository.*;
 import com.cinema.booking.service.BookingService;
 import com.cinema.booking.service.EmailService;
+import com.cinema.booking.service.PaymentEventService;
 import com.cinema.booking.service.StaffCinemaScopeService;
 import com.cinema.booking.service.TicketQrCodeService;
 import com.cinema.booking.util.SecurityUtils;
@@ -24,6 +26,7 @@ import lombok.experimental.FieldDefaults;
 import lombok.experimental.NonFinal;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -63,6 +66,7 @@ public class BookingServiceImpl implements BookingService {
     EmailService         emailService;        // Gửi email vé
     TicketQrCodeService  ticketQrCodeService;
     PaymentRepository    paymentRepository;
+    PaymentEventService  paymentEventService;
     StaffCinemaScopeService staffCinemaScopeService;
 
     @Value("${ticket.check-in-early-minutes:30}")
@@ -265,6 +269,7 @@ public class BookingServiceImpl implements BookingService {
     // =========================================================================
     @Override
     @Transactional
+    @CacheEvict(cacheNames = CacheConfig.PROMOTIONS, allEntries = true)
     public BookingResponse handlePaymentSuccess(String secureToken) {
         Booking booking = bookingRepository.findBySecureToken(secureToken)
                 .orElseThrow(() -> new AppException(ErrorCode.BOOKING_NOT_FOUND));
@@ -413,6 +418,7 @@ public class BookingServiceImpl implements BookingService {
         booking.setPromotion(promotion);
         booking.setDiscountAmount(discountAmount);
         booking.setTotalPrice(subtotal.subtract(discountAmount).max(BigDecimal.ZERO));
+        expirePendingPaymentsAfterPriceChange(booking, "Booking amount changed after promotion was applied");
 
         Booking saved = bookingRepository.save(booking);
         log.info("Applied promotion {} to booking id={}", promotion.getCode(), bookingId);
@@ -428,6 +434,7 @@ public class BookingServiceImpl implements BookingService {
         booking.setPromotion(null);
         booking.setDiscountAmount(BigDecimal.ZERO);
         booking.setTotalPrice(subtotal);
+        expirePendingPaymentsAfterPriceChange(booking, "Booking amount changed after promotion was removed");
 
         Booking saved = bookingRepository.save(booking);
         log.info("Removed promotion from booking id={}", bookingId);
@@ -719,6 +726,32 @@ public class BookingServiceImpl implements BookingService {
                 .setScale(2, RoundingMode.HALF_UP);
     }
 
+    private void expirePendingPaymentsAfterPriceChange(Booking booking, String message) {
+        List<Payment> pendingPayments = paymentRepository.findByBookingIdAndStatus(
+                booking.getId(), PaymentStatus.PENDING);
+
+        if (pendingPayments.isEmpty()) {
+            return;
+        }
+
+        for (Payment payment : pendingPayments) {
+            PaymentStatus oldPaymentStatus = payment.getStatus();
+            payment.setStatus(PaymentStatus.EXPIRED);
+            paymentEventService.record(
+                    payment,
+                    booking,
+                    PaymentEventType.PAYMENT_EXPIRED,
+                    oldPaymentStatus,
+                    payment.getStatus(),
+                    booking.getStatus(),
+                    booking.getStatus(),
+                    true,
+                    message,
+                    Map.of("bookingAmount", booking.getTotalPrice()));
+        }
+        paymentRepository.saveAll(pendingPayments);
+    }
+
     private void releaseExpiredHoldsForShowtime(UUID showtimeId) {
         List<ExpiredSeatHoldProjection> expiredHolds = seatStatusRepository.findExpiredHoldRowsByShowtime(
                 showtimeId, LocalDateTime.now());
@@ -782,9 +815,11 @@ public class BookingServiceImpl implements BookingService {
     }
 
     private LocalDateTime paymentReleaseCutoff(Booking booking) {
-        return booking.getPaymentExpiresAt() != null
-                ? booking.getPaymentExpiresAt()
-                : LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now();
+        if (booking.getPaymentExpiresAt() == null || booking.getPaymentExpiresAt().isBefore(now)) {
+            return now;
+        }
+        return booking.getPaymentExpiresAt();
     }
 
     private void publishBulkAfterCommit(UUID showtimeId, List<UUID> seatIds, SeatStatusType status) {

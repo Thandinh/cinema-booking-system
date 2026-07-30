@@ -3,7 +3,6 @@ package com.cinema.booking.dto.request;
 import com.cinema.booking.enums.DiscountType;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Future;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.FieldDefaults;

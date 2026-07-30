@@ -21,6 +21,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 
 @Configuration
@@ -155,10 +156,11 @@ public class ApplicationInitConfig {
             String lastName,
             String email) {
 
+        String normalizedEmail = email == null ? null : email.trim().toLowerCase(Locale.ROOT);
         var existingUser = userRepository.findByUsername(username);
 
-        if (existingUser.isEmpty() && userRepository.findByEmail(email).isPresent()) {
-            log.warn("Skip seed user {} because email {} already exists.", username, email);
+        if (existingUser.isEmpty() && normalizedEmail != null && userRepository.findByEmailIgnoreCase(normalizedEmail).isPresent()) {
+            log.warn("Skip seed user {} because email {} already exists.", username, normalizedEmail);
             return;
         }
 
@@ -170,7 +172,7 @@ public class ApplicationInitConfig {
         user.setPassword(passwordEncoder.encode(rawPassword));
         user.setFirstName(firstName);
         user.setLastName(lastName);
-        user.setEmail(email);
+        user.setEmail(normalizedEmail);
         user.setEmailVerified(true);
         user.setEmailVerificationTokenHash(null);
         user.setEmailVerificationExpiresAt(null);

@@ -136,11 +136,23 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             PaymentMethod method,
             PaymentStatus status);
 
+    List<Payment> findByBookingIdAndStatus(UUID bookingId, PaymentStatus status);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT p FROM Payment p JOIN FETCH p.booking b WHERE p.transactionNo = :transactionNo")
     Optional<Payment> findLockedByTransactionNo(@Param("transactionNo") String transactionNo);
 
     List<Payment> findByBookingIdInAndStatus(List<UUID> bookingIds, PaymentStatus status);
+
+    @Query("""
+            SELECT p
+            FROM Payment p
+            JOIN FETCH p.booking b
+            WHERE b.id IN :bookingIds
+              AND p.status = :status
+            """)
+    List<Payment> findWithBookingByBookingIdInAndStatus(@Param("bookingIds") List<UUID> bookingIds,
+                                                        @Param("status") PaymentStatus status);
 
     // ── Analytics Queries ────────────────────────────────────────────────────
 
@@ -167,13 +179,14 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             SELECT TO_CHAR(p.payment_time, 'YYYY-MM-DD') AS period,
                    COALESCE(SUM(p.amount), 0)             AS revenue,
                    COUNT(DISTINCT p.booking_id)            AS total_bookings,
-                   COALESCE(SUM((
-                       SELECT COUNT(t.id)
-                       FROM booking_details bd
-                       JOIN tickets t ON t.booking_detail_id = bd.id
-                       WHERE bd.booking_id = p.booking_id
-                   )), 0)                                  AS total_tickets
+                   COALESCE(SUM(ticket_counts.ticket_count), 0) AS total_tickets
             FROM payments p
+            LEFT JOIN (
+                SELECT bd.booking_id, COUNT(t.id) AS ticket_count
+                FROM booking_details bd
+                JOIN tickets t ON t.booking_detail_id = bd.id
+                GROUP BY bd.booking_id
+            ) ticket_counts ON ticket_counts.booking_id = p.booking_id
             WHERE p.status = 'SUCCESS'
               AND p.payment_time BETWEEN :from AND :to
             GROUP BY TO_CHAR(p.payment_time, 'YYYY-MM-DD')
@@ -190,13 +203,14 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             SELECT TO_CHAR(p.payment_time, 'YYYY-MM') AS period,
                    COALESCE(SUM(p.amount), 0)          AS revenue,
                    COUNT(DISTINCT p.booking_id)         AS total_bookings,
-                   COALESCE(SUM((
-                       SELECT COUNT(t.id)
-                       FROM booking_details bd
-                       JOIN tickets t ON t.booking_detail_id = bd.id
-                       WHERE bd.booking_id = p.booking_id
-                   )), 0)                               AS total_tickets
+                   COALESCE(SUM(ticket_counts.ticket_count), 0) AS total_tickets
             FROM payments p
+            LEFT JOIN (
+                SELECT bd.booking_id, COUNT(t.id) AS ticket_count
+                FROM booking_details bd
+                JOIN tickets t ON t.booking_detail_id = bd.id
+                GROUP BY bd.booking_id
+            ) ticket_counts ON ticket_counts.booking_id = p.booking_id
             WHERE p.status = 'SUCCESS'
               AND p.payment_time BETWEEN :from AND :to
             GROUP BY TO_CHAR(p.payment_time, 'YYYY-MM')
@@ -216,16 +230,17 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
                    m.poster_url                 AS poster_url,
                    COALESCE(SUM(p.amount), 0)   AS revenue,
                    COUNT(DISTINCT b.id)          AS total_bookings,
-                   COALESCE(SUM((
-                       SELECT COUNT(t.id)
-                       FROM booking_details bd
-                       JOIN tickets t ON t.booking_detail_id = bd.id
-                       WHERE bd.booking_id = b.id
-                   )), 0)                        AS total_tickets
+                   COALESCE(SUM(ticket_counts.ticket_count), 0) AS total_tickets
             FROM payments p
             JOIN bookings b    ON p.booking_id  = b.id
             JOIN showtimes st  ON b.showtime_id = st.id
             JOIN movies m      ON st.movie_id   = m.id
+            LEFT JOIN (
+                SELECT bd.booking_id, COUNT(t.id) AS ticket_count
+                FROM booking_details bd
+                JOIN tickets t ON t.booking_detail_id = bd.id
+                GROUP BY bd.booking_id
+            ) ticket_counts ON ticket_counts.booking_id = b.id
             WHERE p.status = 'SUCCESS'
               AND p.payment_time BETWEEN :from AND :to
             GROUP BY m.id, m.title, m.poster_url
@@ -424,16 +439,17 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             SELECT TO_CHAR(p.payment_time, 'YYYY-MM-DD') AS period,
                    COALESCE(SUM(p.amount), 0)             AS revenue,
                    COUNT(DISTINCT p.booking_id)            AS total_bookings,
-                   COALESCE(SUM((
-                       SELECT COUNT(t.id)
-                       FROM booking_details bd
-                       JOIN tickets t ON t.booking_detail_id = bd.id
-                       WHERE bd.booking_id = p.booking_id
-                   )), 0)                                  AS total_tickets
+                   COALESCE(SUM(ticket_counts.ticket_count), 0) AS total_tickets
             FROM payments p
             JOIN bookings b ON b.id = p.booking_id
             JOIN showtimes st ON st.id = b.showtime_id
             JOIN rooms r ON r.id = st.room_id
+            LEFT JOIN (
+                SELECT bd.booking_id, COUNT(t.id) AS ticket_count
+                FROM booking_details bd
+                JOIN tickets t ON t.booking_detail_id = bd.id
+                GROUP BY bd.booking_id
+            ) ticket_counts ON ticket_counts.booking_id = p.booking_id
             WHERE p.status = 'SUCCESS'
               AND p.payment_time BETWEEN :from AND :to
               AND r.cinema_id IN (:cinemaIds)
@@ -449,16 +465,17 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             SELECT TO_CHAR(p.payment_time, 'YYYY-MM') AS period,
                    COALESCE(SUM(p.amount), 0)          AS revenue,
                    COUNT(DISTINCT p.booking_id)         AS total_bookings,
-                   COALESCE(SUM((
-                       SELECT COUNT(t.id)
-                       FROM booking_details bd
-                       JOIN tickets t ON t.booking_detail_id = bd.id
-                       WHERE bd.booking_id = p.booking_id
-                   )), 0)                               AS total_tickets
+                   COALESCE(SUM(ticket_counts.ticket_count), 0) AS total_tickets
             FROM payments p
             JOIN bookings b ON b.id = p.booking_id
             JOIN showtimes st ON st.id = b.showtime_id
             JOIN rooms r ON r.id = st.room_id
+            LEFT JOIN (
+                SELECT bd.booking_id, COUNT(t.id) AS ticket_count
+                FROM booking_details bd
+                JOIN tickets t ON t.booking_detail_id = bd.id
+                GROUP BY bd.booking_id
+            ) ticket_counts ON ticket_counts.booking_id = p.booking_id
             WHERE p.status = 'SUCCESS'
               AND p.payment_time BETWEEN :from AND :to
               AND r.cinema_id IN (:cinemaIds)
@@ -476,17 +493,18 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
                    m.poster_url                 AS poster_url,
                    COALESCE(SUM(p.amount), 0)   AS revenue,
                    COUNT(DISTINCT b.id)          AS total_bookings,
-                   COALESCE(SUM((
-                       SELECT COUNT(t.id)
-                       FROM booking_details bd
-                       JOIN tickets t ON t.booking_detail_id = bd.id
-                       WHERE bd.booking_id = b.id
-                   )), 0)                        AS total_tickets
+                   COALESCE(SUM(ticket_counts.ticket_count), 0) AS total_tickets
             FROM payments p
             JOIN bookings b    ON p.booking_id  = b.id
             JOIN showtimes st  ON b.showtime_id = st.id
             JOIN rooms r       ON st.room_id    = r.id
             JOIN movies m      ON st.movie_id   = m.id
+            LEFT JOIN (
+                SELECT bd.booking_id, COUNT(t.id) AS ticket_count
+                FROM booking_details bd
+                JOIN tickets t ON t.booking_detail_id = bd.id
+                GROUP BY bd.booking_id
+            ) ticket_counts ON ticket_counts.booking_id = b.id
             WHERE p.status = 'SUCCESS'
               AND p.payment_time BETWEEN :from AND :to
               AND r.cinema_id IN (:cinemaIds)

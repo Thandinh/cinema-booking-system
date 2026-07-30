@@ -108,10 +108,6 @@ public interface SeatStatusRepository extends JpaRepository<SeatStatus, UUID> {
             """, nativeQuery = true)
     int releaseExpiredHoldsByIds(@Param("ids") List<UUID> ids);
 
-    @Modifying
-    @Query("DELETE FROM SeatStatus ss WHERE ss.showtime.id = :showtimeId")
-    void deleteByShowtimeId(@Param("showtimeId") UUID showtimeId);
-
     boolean existsBySeatIdAndStatusIn(UUID seatId, List<SeatStatusType> statuses);
 
     @Modifying

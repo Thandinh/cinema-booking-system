@@ -2,7 +2,6 @@ package com.cinema.booking.dto.request;
 
 import com.cinema.booking.enums.SeatType;
 import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.Min;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 

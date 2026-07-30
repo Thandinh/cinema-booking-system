@@ -1,6 +1,7 @@
 package com.cinema.booking.service;
 
 import com.cinema.booking.dto.request.ShowtimeCreationRequest;
+import com.cinema.booking.dto.request.ShowtimeCancelRequest;
 import com.cinema.booking.dto.request.ShowtimeUpdateRequest;
 import com.cinema.booking.dto.response.ShowtimeResponse;
 import org.springframework.data.domain.Page;
@@ -16,6 +17,8 @@ public interface ShowtimeService {
     ShowtimeResponse updateShowtime(UUID id, ShowtimeUpdateRequest request);
 
     void deleteShowtime(UUID id);
+
+    ShowtimeResponse cancelShowtimeWithPolicy(UUID id, ShowtimeCancelRequest request);
 
     Page<ShowtimeResponse> getAllShowtimes(Pageable pageable);
 

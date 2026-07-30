@@ -6,15 +6,20 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.stereotype.Component;
 
-import org.springframework.security.core.AuthenticationException;
 import java.io.IOException;
+import java.time.OffsetDateTime;
 
-@Component // Đánh dấu là Component để Spring quản lý
+@Component
+@RequiredArgsConstructor
 public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
+
+    private final ObjectMapper objectMapper;
 
     @Override
     public void commence(
@@ -25,17 +30,16 @@ public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
         ErrorCode errorCode = ErrorCode.UNAUTHENTICATED;
 
-        response.setStatus(errorCode.getStatusCode().value());
-        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-
         ApiResponse<?> apiResponse = ApiResponse.builder()
                 .code(errorCode.getCode())
                 .message(errorCode.getMessage())
+                .timestamp(OffsetDateTime.now().toString())
+                .path(request.getRequestURI())
                 .build();
 
-        ObjectMapper objectMapper = new ObjectMapper();
-
-        // Ghi dữ liệu ra response stream
+        response.setStatus(errorCode.getStatusCode().value());
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding("UTF-8");
         response.getWriter().write(objectMapper.writeValueAsString(apiResponse));
         response.flushBuffer();
     }

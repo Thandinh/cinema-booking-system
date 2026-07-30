@@ -259,7 +259,7 @@ CREATE TABLE payments (
     payment_time TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT chk_payment_method CHECK (method IS NULL OR method IN ('VNPAY', 'MOMO', 'CREDIT_CARD', 'CASH')),
+    CONSTRAINT chk_payment_method CHECK (method IS NULL OR method IN ('VNPAY', 'MOMO', 'SEPAY', 'CREDIT_CARD', 'CASH')),
     CONSTRAINT chk_payment_status CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'EXPIRED'))
 );
 
@@ -379,6 +379,10 @@ CREATE UNIQUE INDEX uq_users_email_verification_token_hash
 CREATE UNIQUE INDEX uq_users_password_reset_token_hash
     ON users(password_reset_token_hash)
     WHERE password_reset_token_hash IS NOT NULL;
+
+CREATE UNIQUE INDEX uq_users_email_lower
+    ON users(lower(email))
+    WHERE email IS NOT NULL;
 
 CREATE INDEX idx_users_is_deleted_created_at
     ON users(is_deleted, created_at DESC);

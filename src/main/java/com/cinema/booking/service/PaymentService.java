@@ -37,4 +37,6 @@ public interface PaymentService {
 
     /** Xử lý IPN server-to-server từ MoMo. IPN là nguồn xác nhận đáng tin cậy nhất. */
     Map<String, Object> handleMomoIpn(Map<String, Object> payload);
+
+    Map<String, Object> handleSePayWebhook(String rawPayload, HttpServletRequest request);
 }

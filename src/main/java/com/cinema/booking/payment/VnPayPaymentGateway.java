@@ -14,14 +14,18 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.text.SimpleDateFormat;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @Component
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class VnPayPaymentGateway implements PaymentGateway {
+
+    private static final ZoneId VNPAY_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
+    private static final DateTimeFormatter VNPAY_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
 
     VNPayConfig vnpayConfig;
 
@@ -39,14 +43,12 @@ public class VnPayPaymentGateway implements PaymentGateway {
         vnpParamsMap.put("vnp_Amount", String.valueOf(payment.getAmount().multiply(new BigDecimal(100)).longValue()));
         vnpParamsMap.put("vnp_IpAddr", VNPayUtil.getIpAddress(request));
 
-        Calendar calendar = Calendar.getInstance(TimeZone.getTimeZone("Etc/GMT+7"));
-        SimpleDateFormat formatter = new SimpleDateFormat("yyyyMMddHHmmss");
-        vnpParamsMap.put("vnp_CreateDate", formatter.format(calendar.getTime()));
-
-        Date expireDate = booking.getPaymentExpiresAt() != null
-                ? Date.from(booking.getPaymentExpiresAt().atZone(ZoneId.systemDefault()).toInstant())
-                : new Date(System.currentTimeMillis() + 15 * 60 * 1000L);
-        vnpParamsMap.put("vnp_ExpireDate", formatter.format(expireDate));
+        LocalDateTime createDate = LocalDateTime.now(VNPAY_ZONE);
+        LocalDateTime expireDate = booking.getPaymentExpiresAt() != null
+                ? booking.getPaymentExpiresAt()
+                : createDate.plusMinutes(15);
+        vnpParamsMap.put("vnp_CreateDate", VNPAY_DATE_FORMATTER.format(createDate));
+        vnpParamsMap.put("vnp_ExpireDate", VNPAY_DATE_FORMATTER.format(expireDate));
 
         List<String> fieldNames = new ArrayList<>(vnpParamsMap.keySet());
         Collections.sort(fieldNames);

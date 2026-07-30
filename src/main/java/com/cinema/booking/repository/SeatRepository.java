@@ -1,6 +1,8 @@
 package com.cinema.booking.repository;
 
+import com.cinema.booking.configuration.CacheConfig;
 import com.cinema.booking.entity.Seat;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -22,6 +24,7 @@ public interface SeatRepository extends JpaRepository<Seat, UUID> {
             WHERE s.room.id = :roomId AND s.isDeleted = false
             ORDER BY s.rowLabel ASC, s.seatNumber ASC
             """)
+    @Cacheable(cacheNames = CacheConfig.SEATS_BY_ROOM, key = "#roomId")
     List<Seat> findActiveByRoomId(@Param("roomId") UUID roomId);
 
     /** Tìm ghế chưa xoá theo ID */

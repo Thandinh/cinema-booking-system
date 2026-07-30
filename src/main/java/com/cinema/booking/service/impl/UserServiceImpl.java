@@ -44,6 +44,7 @@ import java.util.Base64;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -91,9 +92,11 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public UserResponse register(UserCreationRequest request) {
-        validateUniqueConstraints(request.getUsername(), request.getEmail());
+        String normalizedEmail = normalizeEmail(request.getEmail());
+        validateUniqueConstraints(request.getUsername(), normalizedEmail);
 
         User user = userMapper.toUser(request);
+        user.setEmail(normalizedEmail);
         user.setPassword(passwordEncoder.encode(request.getPassword()));
         user.setRoles(Set.of(getDefaultUserRole()));
         String rawVerificationToken = prepareEmailVerification(user);
@@ -190,9 +193,11 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public UserResponse createByAdmin(UserCreationRequest request) {
-        validateUniqueConstraints(request.getUsername(), request.getEmail());
+        String normalizedEmail = normalizeEmail(request.getEmail());
+        validateUniqueConstraints(request.getUsername(), normalizedEmail);
 
         User user = userMapper.toUser(request);
+        user.setEmail(normalizedEmail);
         user.setPassword(passwordEncoder.encode(request.getPassword()));
         user.setRoles(Set.of(getDefaultUserRole())); // Admin sẽ assign role qua updateUser nếu cần
         user.setEmailVerified(true);
@@ -262,6 +267,14 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public UserResponse updateUser(UUID id, UserUpdateRequest request) {
         User user = findActiveUserById(id);
+        String normalizedEmail = normalizeEmail(request.getEmail());
+
+        if (normalizedEmail != null) {
+            userRepository.findByEmailIgnoreCase(normalizedEmail)
+                    .filter(existing -> !existing.getId().equals(id))
+                    .ifPresent(dup -> { throw new AppException(ErrorCode.EMAIL_EXISTED); });
+            request.setEmail(normalizedEmail);
+        }
 
         // Cập nhật các field cơ bản (partial update)
         userMapper.updateUser(user, request);
@@ -275,13 +288,6 @@ public class UserServiceImpl implements UserService {
         if (request.getRoleIds() != null && !request.getRoleIds().isEmpty()) {
             Set<Role> newRoles = resolveRoles(request.getRoleIds());
             user.setRoles(newRoles);
-        }
-
-        // Kiểm tra email mới có trùng với user khác không
-        if (request.getEmail() != null) {
-            userRepository.findByEmail(request.getEmail())
-                    .filter(existing -> !existing.getId().equals(id))
-                    .ifPresent(dup -> { throw new AppException(ErrorCode.EMAIL_EXISTED); });
         }
 
         User saved = userRepository.save(user);
@@ -362,12 +368,14 @@ public class UserServiceImpl implements UserService {
     public UserResponse updateMyProfile(String currentUsername, UserUpdateRequest request) {
         User user = userRepository.findByUsername(currentUsername)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        String normalizedEmail = normalizeEmail(request.getEmail());
 
         // Kiểm tra email mới không trùng user khác
-        if (request.getEmail() != null) {
-            userRepository.findByEmail(request.getEmail())
+        if (normalizedEmail != null) {
+            userRepository.findByEmailIgnoreCase(normalizedEmail)
                     .filter(existing -> !existing.getId().equals(user.getId()))
                     .ifPresent(dup -> { throw new AppException(ErrorCode.EMAIL_EXISTED); });
+            request.setEmail(normalizedEmail);
         }
 
         // Partial update (mapper bỏ qua null fields)
@@ -427,9 +435,16 @@ public class UserServiceImpl implements UserService {
         if (userRepository.existsByUsername(username)) {
             throw new AppException(ErrorCode.USER_EXISTED);
         }
-        if (email != null && userRepository.existsByEmail(email)) {
+        if (email != null && userRepository.existsByEmailIgnoreCase(email)) {
             throw new AppException(ErrorCode.EMAIL_EXISTED);
         }
+    }
+
+    private String normalizeEmail(String email) {
+        if (email == null) {
+            return null;
+        }
+        return email.trim().toLowerCase(Locale.ROOT);
     }
 
     /**

@@ -22,6 +22,14 @@ public interface CinemaRepository extends JpaRepository<Cinema, UUID> {
     @Query("SELECT c FROM Cinema c WHERE c.id = :id AND c.isDeleted = false")
     Optional<Cinema> findActiveById(UUID id);
 
+    @Query("""
+            SELECT DISTINCT c FROM Cinema c
+            LEFT JOIN FETCH c.rooms
+            WHERE c.id = :id
+              AND c.isDeleted = false
+            """)
+    Optional<Cinema> findActiveByIdWithRooms(@Param("id") UUID id);
+
     boolean existsByNameAndIsDeletedFalse(String name);
 
     /**

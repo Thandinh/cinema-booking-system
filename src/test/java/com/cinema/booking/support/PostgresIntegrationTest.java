@@ -10,6 +10,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 public abstract class PostgresIntegrationTest {
 
     @Container
+    @SuppressWarnings("resource")
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:17-alpine")
             .withDatabaseName("cinema_booking_test")
             .withUsername("cinema_user")
@@ -23,6 +24,7 @@ public abstract class PostgresIntegrationTest {
         registry.add("spring.sql.init.mode", () -> "never");
         registry.add("spring.flyway.enabled", () -> "true");
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
+        registry.add("booking.scheduling.enabled", () -> "false");
         registry.add("debug", () -> "false");
         registry.add("spring.main.banner-mode", () -> "off");
     }

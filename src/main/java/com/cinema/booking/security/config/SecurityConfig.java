@@ -23,6 +23,7 @@ import org.springframework.security.web.SecurityFilterChain;
 public class SecurityConfig {
 
     private final CustomJwtDecoder customJwtDecoder;
+    private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
 
     private static final String[] PUBLIC_POST_ENDPOINTS = {
             "/auth/token",
@@ -35,7 +36,8 @@ public class SecurityConfig {
             "/api/v1/users/resend-verification",
             "/api/v1/users/forgot-password",
             "/api/v1/users/reset-password",
-            "/api/v1/payments/momo-ipn"
+            "/api/v1/payments/momo-ipn",
+            "/api/v1/payments/sepay-webhook"
     };
 
     private static final String[] PUBLIC_GET_ENDPOINTS = {
@@ -78,7 +80,7 @@ public class SecurityConfig {
                 .jwt(jwt -> jwt
                         .decoder(customJwtDecoder)
                         .jwtAuthenticationConverter(jwtAuthenticationConverter()))
-                .authenticationEntryPoint(new JwtAuthenticationEntryPoint()));
+                .authenticationEntryPoint(jwtAuthenticationEntryPoint));
 
         httpSecurity.csrf(AbstractHttpConfigurer::disable);
         return httpSecurity.build();

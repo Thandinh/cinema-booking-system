@@ -3,6 +3,7 @@ package com.cinema.booking.service.impl;
 import com.cinema.booking.dto.request.PromotionCreationRequest;
 import com.cinema.booking.dto.request.PromotionUpdateRequest;
 import com.cinema.booking.dto.response.PromotionResponse;
+import com.cinema.booking.configuration.CacheConfig;
 import com.cinema.booking.entity.Promotion;
 import com.cinema.booking.enums.DiscountType;
 import com.cinema.booking.enums.ErrorCode;
@@ -15,6 +16,8 @@ import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -36,6 +39,7 @@ public class PromotionServiceImpl implements PromotionService {
 
     @Override
     @Transactional
+    @CacheEvict(cacheNames = CacheConfig.PROMOTIONS, allEntries = true)
     public PromotionResponse createPromotion(PromotionCreationRequest request) {
         // 1. Kiểm tra ngày tháng hợp lệ
         if (request.getEndDate().isBefore(request.getStartDate()) || request.getEndDate().isEqual(request.getStartDate())) {
@@ -75,6 +79,7 @@ public class PromotionServiceImpl implements PromotionService {
 
     @Override
     @Transactional
+    @CacheEvict(cacheNames = CacheConfig.PROMOTIONS, allEntries = true)
     public PromotionResponse updatePromotion(UUID id, PromotionUpdateRequest request) {
         Promotion promotion = promotionRepository.findActiveById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.PROMOTION_NOT_FOUND));
@@ -110,6 +115,7 @@ public class PromotionServiceImpl implements PromotionService {
 
     @Override
     @Transactional
+    @CacheEvict(cacheNames = CacheConfig.PROMOTIONS, allEntries = true)
     public void deletePromotion(UUID id) {
         Promotion promotion = promotionRepository.findActiveById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.PROMOTION_NOT_FOUND));
@@ -173,6 +179,10 @@ public class PromotionServiceImpl implements PromotionService {
 
     @Override
     @Transactional(readOnly = true)
+    @Cacheable(
+            cacheNames = CacheConfig.PROMOTIONS,
+            key = "'available:' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort"
+    )
     public Page<PromotionResponse> getAvailablePromotions(Pageable pageable) {
         return promotionRepository.findAvailablePromotions(LocalDateTime.now(), pageable)
                 .map(promotionMapper::toPromotionResponse);

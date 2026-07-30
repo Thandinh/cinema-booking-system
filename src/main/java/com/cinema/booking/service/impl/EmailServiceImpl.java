@@ -171,6 +171,64 @@ public class EmailServiceImpl implements EmailService {
 
     @Async
     @Override
+    @Transactional(readOnly = true)
+    public void sendShowtimeCancellationEmail(UUID bookingId, String reason) {
+        Booking booking = bookingRepository.findByIdForCancellationEmail(bookingId)
+                .orElseThrow(() -> new AppException(ErrorCode.BOOKING_NOT_FOUND));
+
+        String recipientEmail = booking.getUser().getEmail();
+        try {
+            String userName = (booking.getUser().getFirstName() != null ? booking.getUser().getFirstName() : "")
+                    + " " + (booking.getUser().getLastName() != null ? booking.getUser().getLastName() : "");
+            String seats = booking.getBookingDetails().stream()
+                    .map(bd -> bd.getSeat().getRowLabel() + bd.getSeat().getSeatNumber())
+                    .collect(Collectors.joining(", "));
+            Cinema cinema = booking.getShowtime().getRoom().getCinema();
+            DateTimeFormatter fmt = DateTimeFormatter.ofPattern("HH:mm - dd/MM/yyyy");
+
+            Context context = new Context();
+            context.setVariable("userName", userName.trim().isBlank() ? booking.getUser().getUsername() : userName.trim());
+            context.setVariable("movieTitle", booking.getShowtime().getMovie().getTitle());
+            context.setVariable("cinemaName", cinema.getName());
+            context.setVariable("cinemaAddress", buildCinemaAddress(cinema));
+            context.setVariable("roomName", booking.getShowtime().getRoom().getName());
+            context.setVariable("showTime", booking.getShowtime().getStartTime().format(fmt).replace(" - ", " · "));
+            context.setVariable("seats", seats);
+            context.setVariable("totalPrice", formatVnd(booking.getTotalPrice()));
+            context.setVariable("reason", reason);
+
+            String htmlContent = templateEngine.process("showtime-cancellation-email", context);
+            saveLocalShowtimeCancellationEmail(bookingId, context);
+
+            if (recipientEmail == null || recipientEmail.isBlank()) {
+                log.warn("[Async] Skip showtime cancellation email because booking {} user has no email.", bookingId);
+                return;
+            }
+            if (!isMailConfigured()) {
+                log.warn("SMTP credentials are not configured. Local cancellation email was saved for booking {}.", bookingId);
+                return;
+            }
+
+            MimeMessage message = javaMailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(senderEmail);
+            helper.setTo(recipientEmail);
+            helper.setSubject("Thông báo hủy suất chiếu - " + booking.getShowtime().getMovie().getTitle());
+            helper.setText(htmlContent, true);
+
+            javaMailSender.send(message);
+            log.info("[Async] Showtime cancellation email sent successfully to {}", recipientEmail);
+        } catch (MailAuthenticationException e) {
+            log.error("[Async] SMTP authentication failed while sending cancellation email for booking {}.", bookingId);
+        } catch (MailException | MessagingException e) {
+            log.error("[Async] Cancellation email send failed for booking {}: {}", bookingId, e.getMessage());
+        } catch (Exception e) {
+            log.error("[Async] Unexpected error while sending cancellation email for booking {}: {}", bookingId, e.getMessage());
+        }
+    }
+
+    @Async
+    @Override
     public void sendEmailVerification(String recipientEmail, String username, String rawToken) {
         try {
             if (recipientEmail == null || recipientEmail.isBlank()) {
@@ -296,6 +354,19 @@ public class EmailServiceImpl implements EmailService {
             log.info("[Async] Local password reset email saved at {}", emailPath.toAbsolutePath());
         } catch (Exception e) {
             log.warn("[Async] Could not save local password reset email for {}: {}", recipientEmail, e.getMessage());
+        }
+    }
+
+    private void saveLocalShowtimeCancellationEmail(UUID bookingId, Context context) {
+        try {
+            String localHtmlContent = templateEngine.process("showtime-cancellation-email", context);
+            Path outboxDir = Path.of("logs", "emails");
+            Files.createDirectories(outboxDir);
+            Path emailPath = outboxDir.resolve("showtime-cancelled-" + bookingId + ".html");
+            Files.writeString(emailPath, localHtmlContent);
+            log.info("[Async] Local showtime cancellation email saved at {}", emailPath.toAbsolutePath());
+        } catch (Exception e) {
+            log.warn("[Async] Could not save local showtime cancellation email for booking {}: {}", bookingId, e.getMessage());
         }
     }
 

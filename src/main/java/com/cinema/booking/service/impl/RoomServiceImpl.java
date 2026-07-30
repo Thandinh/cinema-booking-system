@@ -3,22 +3,29 @@ package com.cinema.booking.service.impl;
 import com.cinema.booking.dto.request.RoomCreationRequest;
 import com.cinema.booking.dto.request.RoomUpdateRequest;
 import com.cinema.booking.dto.response.RoomResponse;
+import com.cinema.booking.configuration.CacheConfig;
 import com.cinema.booking.entity.Cinema;
 import com.cinema.booking.entity.Room;
 import com.cinema.booking.enums.ErrorCode;
+import com.cinema.booking.enums.ShowtimeStatus;
 import com.cinema.booking.exception.AppException;
 import com.cinema.booking.mapper.RoomMapper;
 import com.cinema.booking.repository.CinemaRepository;
 import com.cinema.booking.repository.RoomRepository;
+import com.cinema.booking.repository.SeatRepository;
+import com.cinema.booking.repository.ShowtimeRepository;
 import com.cinema.booking.service.RoomService;
 import com.cinema.booking.service.StaffCinemaScopeService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -31,11 +38,17 @@ public class RoomServiceImpl implements RoomService {
 
     RoomRepository roomRepository;
     CinemaRepository cinemaRepository;
+    SeatRepository seatRepository;
+    ShowtimeRepository showtimeRepository;
     RoomMapper roomMapper;
     StaffCinemaScopeService staffCinemaScopeService;
 
     @Override
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(cacheNames = CacheConfig.ROOMS_BY_CINEMA, allEntries = true),
+            @CacheEvict(cacheNames = CacheConfig.CINEMAS, allEntries = true)
+    })
     public RoomResponse createRoom(RoomCreationRequest request) {
         Cinema cinema = cinemaRepository.findActiveById(request.getCinemaId())
                 .orElseThrow(() -> new AppException(ErrorCode.CINEMA_NOT_FOUND));
@@ -53,6 +66,11 @@ public class RoomServiceImpl implements RoomService {
 
     @Override
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(cacheNames = CacheConfig.ROOMS_BY_CINEMA, allEntries = true),
+            @CacheEvict(cacheNames = CacheConfig.SEATS_BY_ROOM, allEntries = true),
+            @CacheEvict(cacheNames = CacheConfig.CINEMAS, allEntries = true)
+    })
     public RoomResponse updateRoom(UUID id, RoomUpdateRequest request) {
         Room room = findActiveRoomById(id);
         staffCinemaScopeService.validateCurrentStaffCanAccessCinema(room.getCinema().getId());
@@ -71,9 +89,21 @@ public class RoomServiceImpl implements RoomService {
 
     @Override
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(cacheNames = CacheConfig.ROOMS_BY_CINEMA, allEntries = true),
+            @CacheEvict(cacheNames = CacheConfig.SEATS_BY_ROOM, allEntries = true),
+            @CacheEvict(cacheNames = CacheConfig.CINEMAS, allEntries = true)
+    })
     public void deleteRoom(UUID id) {
         Room room = findActiveRoomById(id);
         staffCinemaScopeService.validateCurrentStaffCanAccessCinema(room.getCinema().getId());
+        if (showtimeRepository.existsActiveScheduleByRoomId(
+                id,
+                List.of(ShowtimeStatus.UPCOMING, ShowtimeStatus.ONGOING),
+                LocalDateTime.now())) {
+            throw new AppException(ErrorCode.ROOM_HAS_ACTIVE_SHOWTIMES);
+        }
+        seatRepository.softDeleteByRoomId(id);
         room.setIsDeleted(true);
         roomRepository.save(room);
         log.info("Soft-deleted room id={}", id);

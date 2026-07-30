@@ -1,6 +1,7 @@
 package com.cinema.booking.repository;
 
 import com.cinema.booking.entity.Showtime;
+import com.cinema.booking.enums.ShowtimeStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -21,8 +22,12 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, UUID> {
             SELECT s FROM Showtime s 
             JOIN FETCH s.movie 
             JOIN FETCH s.room r 
-            JOIN FETCH r.cinema
-            WHERE s.id = :id AND s.isDeleted = false
+            JOIN FETCH r.cinema c
+            WHERE s.id = :id
+              AND s.isDeleted = false
+              AND s.movie.isDeleted = false
+              AND r.isDeleted = false
+              AND c.isDeleted = false
             """)
     Optional<Showtime> findActiveById(@Param("id") UUID id);
 
@@ -30,10 +35,19 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, UUID> {
             SELECT s FROM Showtime s
             JOIN FETCH s.movie
             JOIN FETCH s.room r
-            JOIN FETCH r.cinema
+            JOIN FETCH r.cinema c
             WHERE s.isDeleted = false
+              AND s.movie.isDeleted = false
+              AND r.isDeleted = false
+              AND c.isDeleted = false
             """,
-           countQuery = "SELECT COUNT(s) FROM Showtime s WHERE s.isDeleted = false")
+           countQuery = """
+            SELECT COUNT(s) FROM Showtime s
+            WHERE s.isDeleted = false
+              AND s.movie.isDeleted = false
+              AND s.room.isDeleted = false
+              AND s.room.cinema.isDeleted = false
+            """)
     Page<Showtime> findAllActive(Pageable pageable);
 
     @Query(value = """
@@ -42,11 +56,17 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, UUID> {
             JOIN FETCH s.room r
             JOIN FETCH r.cinema c
             WHERE s.isDeleted = false
+              AND s.movie.isDeleted = false
+              AND r.isDeleted = false
+              AND c.isDeleted = false
               AND c.id IN :cinemaIds
             """,
            countQuery = """
             SELECT COUNT(s) FROM Showtime s
             WHERE s.isDeleted = false
+              AND s.movie.isDeleted = false
+              AND s.room.isDeleted = false
+              AND s.room.cinema.isDeleted = false
               AND s.room.cinema.id IN :cinemaIds
             """)
     Page<Showtime> findAllActiveByCinemaIds(@Param("cinemaIds") List<UUID> cinemaIds, Pageable pageable);
@@ -84,8 +104,12 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, UUID> {
             SELECT s FROM Showtime s 
             JOIN FETCH s.movie 
             JOIN FETCH s.room r
-            JOIN FETCH r.cinema
-            WHERE s.movie.id = :movieId AND s.isDeleted = false 
+            JOIN FETCH r.cinema c
+            WHERE s.movie.id = :movieId
+              AND s.isDeleted = false
+              AND s.movie.isDeleted = false
+              AND r.isDeleted = false
+              AND c.isDeleted = false
             ORDER BY s.startTime ASC
             """)
     List<Showtime> findActiveByMovieId(@Param("movieId") UUID movieId);
@@ -94,9 +118,13 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, UUID> {
             SELECT s FROM Showtime s
             JOIN FETCH s.movie
             JOIN FETCH s.room r
-            JOIN FETCH r.cinema
+            JOIN FETCH r.cinema c
             WHERE s.movie.id = :movieId
               AND s.isDeleted = false
+              AND s.movie.isDeleted = false
+              AND r.isDeleted = false
+              AND c.isDeleted = false
+              AND c.isActive = true
               AND s.status = com.cinema.booking.enums.ShowtimeStatus.UPCOMING
               AND s.startTime >= :fromTime
               AND s.startTime < :toTime
@@ -111,10 +139,21 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, UUID> {
             SELECT s FROM Showtime s 
             JOIN FETCH s.movie 
             JOIN FETCH s.room r
-            JOIN FETCH r.cinema
-            WHERE r.cinema.id = :cinemaId AND s.isDeleted = false
+            JOIN FETCH r.cinema c
+            WHERE c.id = :cinemaId
+              AND s.isDeleted = false
+              AND s.movie.isDeleted = false
+              AND r.isDeleted = false
+              AND c.isDeleted = false
             """,
-           countQuery = "SELECT COUNT(s) FROM Showtime s WHERE s.room.cinema.id = :cinemaId AND s.isDeleted = false")
+           countQuery = """
+            SELECT COUNT(s) FROM Showtime s
+            WHERE s.room.cinema.id = :cinemaId
+              AND s.isDeleted = false
+              AND s.movie.isDeleted = false
+              AND s.room.isDeleted = false
+              AND s.room.cinema.isDeleted = false
+            """)
     Page<Showtime> findActiveByCinemaId(@Param("cinemaId") UUID cinemaId, Pageable pageable);
 
     @Query(value = """
@@ -124,6 +163,10 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, UUID> {
             JOIN FETCH r.cinema
             WHERE r.cinema.id = :cinemaId
               AND s.isDeleted = false
+              AND s.movie.isDeleted = false
+              AND r.isDeleted = false
+              AND r.cinema.isDeleted = false
+              AND r.cinema.isActive = true
               AND s.status = com.cinema.booking.enums.ShowtimeStatus.UPCOMING
               AND s.startTime >= :fromTime
               AND s.startTime < :toTime
@@ -132,6 +175,10 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, UUID> {
             SELECT COUNT(s) FROM Showtime s
             WHERE s.room.cinema.id = :cinemaId
               AND s.isDeleted = false
+              AND s.movie.isDeleted = false
+              AND s.room.isDeleted = false
+              AND s.room.cinema.isDeleted = false
+              AND s.room.cinema.isActive = true
               AND s.status = com.cinema.booking.enums.ShowtimeStatus.UPCOMING
               AND s.startTime >= :fromTime
               AND s.startTime < :toTime
@@ -145,9 +192,13 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, UUID> {
             SELECT s FROM Showtime s
             JOIN FETCH s.movie
             JOIN FETCH s.room r
-            JOIN FETCH r.cinema
+            JOIN FETCH r.cinema c
             WHERE r.cinema.id = :cinemaId
               AND s.isDeleted = false
+              AND s.movie.isDeleted = false
+              AND r.isDeleted = false
+              AND c.isDeleted = false
+              AND c.isActive = true
               AND s.status IN (
                   com.cinema.booking.enums.ShowtimeStatus.UPCOMING,
                   com.cinema.booking.enums.ShowtimeStatus.ONGOING
@@ -159,6 +210,42 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, UUID> {
     List<Showtime> findOpenForCheckIn(@Param("cinemaId") UUID cinemaId,
                                       @Param("earliestStartTime") LocalDateTime earliestStartTime,
                                       @Param("latestStartTime") LocalDateTime latestStartTime);
+
+    @Query("""
+            SELECT COUNT(s) > 0
+            FROM Showtime s
+            WHERE s.movie.id = :movieId
+              AND s.isDeleted = false
+              AND s.status IN :statuses
+              AND s.endTime > :now
+            """)
+    boolean existsActiveScheduleByMovieId(@Param("movieId") UUID movieId,
+                                          @Param("statuses") List<ShowtimeStatus> statuses,
+                                          @Param("now") LocalDateTime now);
+
+    @Query("""
+            SELECT COUNT(s) > 0
+            FROM Showtime s
+            WHERE s.room.id = :roomId
+              AND s.isDeleted = false
+              AND s.status IN :statuses
+              AND s.endTime > :now
+            """)
+    boolean existsActiveScheduleByRoomId(@Param("roomId") UUID roomId,
+                                         @Param("statuses") List<ShowtimeStatus> statuses,
+                                         @Param("now") LocalDateTime now);
+
+    @Query("""
+            SELECT COUNT(s) > 0
+            FROM Showtime s
+            WHERE s.room.cinema.id = :cinemaId
+              AND s.isDeleted = false
+              AND s.status IN :statuses
+              AND s.endTime > :now
+            """)
+    boolean existsActiveScheduleByCinemaId(@Param("cinemaId") UUID cinemaId,
+                                           @Param("statuses") List<ShowtimeStatus> statuses,
+                                           @Param("now") LocalDateTime now);
 
     // ── Analytics ─────────────────────────────────────────────────────────────
 

@@ -85,4 +85,13 @@ public interface TicketRepository extends JpaRepository<Ticket, UUID> {
             """)
     Long countByStatusAndCinemaIds(@Param("status") TicketStatus status,
                                    @Param("cinemaIds") List<UUID> cinemaIds);
+
+    @Query("""
+            SELECT COUNT(t) > 0
+            FROM Ticket t
+            WHERE t.bookingDetail.booking.showtime.id = :showtimeId
+              AND t.status = :status
+            """)
+    boolean existsByShowtimeIdAndStatus(@Param("showtimeId") UUID showtimeId,
+                                        @Param("status") TicketStatus status);
 }

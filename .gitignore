@@ -67,3 +67,4 @@ replay_pid*.log
 bin/
 temp/
 tmp/
+~$*.docx

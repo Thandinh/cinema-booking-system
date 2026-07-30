@@ -121,31 +121,35 @@ public class AdminAuditLogServiceImpl implements AdminAuditLogService {
             return null;
         }
 
-        String resource = normalizeResource(parts[2]);
+        if (isPublicAccountFlow(parts)) {
+            return null;
+        }
+
+        String resource = normalizeResource(parts);
         if (resource == null) {
             return null;
         }
 
-        String resourceId = parts.length >= 4 ? truncate(parts[3], 100) : null;
-        String action = switch (method.toUpperCase(Locale.ROOT)) {
-            case "POST" -> "CREATE";
-            case "PUT", "PATCH" -> "UPDATE";
-            case "DELETE" -> "DELETE";
-            default -> method.toUpperCase(Locale.ROOT);
-        };
-
-        if ("tickets".equals(parts[2]) && request.getRequestURI().contains("/check-in")) {
-            action = "CHECK_IN";
-        }
-        if ("bookings".equals(parts[2]) && request.getRequestURI().contains("/cancel")) {
-            action = "CANCEL";
-        }
+        String resourceId = resolveResourceId(parts);
+        String action = resolveAction(method, parts);
 
         return new AuditTarget(action, resource, resourceId);
     }
 
-    private String normalizeResource(String pathPart) {
-        return switch (pathPart) {
+    private boolean isPublicAccountFlow(String[] parts) {
+        return parts.length >= 4
+                && "users".equals(parts[2])
+                && switch (parts[3]) {
+                    case "register", "verify-email", "resend-verification", "forgot-password", "reset-password" -> true;
+                    default -> false;
+                };
+    }
+
+    private String normalizeResource(String[] parts) {
+        if ("bookings".equals(parts[2]) && parts.length >= 4 && "tickets".equals(parts[3])) {
+            return "TICKET";
+        }
+        return switch (parts[2]) {
             case "movies" -> "MOVIE";
             case "cinemas" -> "CINEMA";
             case "rooms" -> "ROOM";
@@ -158,6 +162,93 @@ public class AdminAuditLogServiceImpl implements AdminAuditLogService {
             case "tickets" -> "TICKET";
             default -> null;
         };
+    }
+
+    private String resolveResourceId(String[] parts) {
+        if ("bookings".equals(parts[2]) && parts.length >= 4 && !"tickets".equals(parts[3])) {
+            return truncate(parts[3], 100);
+        }
+        if ("bookings".equals(parts[2]) && parts.length >= 5 && "tickets".equals(parts[3])) {
+            return truncate(parts[4], 100);
+        }
+        if ("tickets".equals(parts[2]) && parts.length >= 4 && !"check-in".equals(parts[3])) {
+            return truncate(parts[3], 100);
+        }
+        if (parts.length >= 4 && isLikelyResourceId(parts[3])) {
+            return truncate(parts[3], 100);
+        }
+        return null;
+    }
+
+    private String resolveAction(String method, String[] parts) {
+        String httpMethod = method.toUpperCase(Locale.ROOT);
+
+        if ("tickets".equals(parts[2]) && containsPathPart(parts, "check-in")) {
+            return "CHECK_IN_TICKET";
+        }
+        if ("bookings".equals(parts[2]) && containsPathPart(parts, "tickets") && containsPathPart(parts, "check-in")) {
+            return "CHECK_IN_TICKET";
+        }
+        if ("bookings".equals(parts[2]) && containsPathPart(parts, "hold")) {
+            return "HOLD_SEATS";
+        }
+        if ("bookings".equals(parts[2]) && containsPathPart(parts, "cancel")) {
+            return "CANCEL_BOOKING";
+        }
+        if ("bookings".equals(parts[2]) && containsPathPart(parts, "promotion")) {
+            return "DELETE".equals(httpMethod) ? "REMOVE_PROMOTION" : "APPLY_PROMOTION";
+        }
+        if ("payments".equals(parts[2]) && containsPathPart(parts, "initiate")) {
+            return "INITIATE_PAYMENT";
+        }
+        if ("payments".equals(parts[2]) && containsPathPart(parts, "momo-ipn")) {
+            return "PAYMENT_IPN";
+        }
+        if ("users".equals(parts[2]) && containsPathPart(parts, "block")) {
+            return "BLOCK_USER";
+        }
+        if ("users".equals(parts[2]) && containsPathPart(parts, "unblock")) {
+            return "UNBLOCK_USER";
+        }
+        if ("users".equals(parts[2]) && containsPathPart(parts, "password")) {
+            return "CHANGE_PASSWORD";
+        }
+        if ("users".equals(parts[2]) && "me".equals(pathPart(parts, 3))) {
+            return "UPDATE_PROFILE";
+        }
+        if ("users".equals(parts[2]) && ("PUT".equals(httpMethod) || "PATCH".equals(httpMethod))) {
+            return "UPDATE_USER_AND_SCOPE";
+        }
+        if ("seats".equals(parts[2]) && containsPathPart(parts, "bulk-generate")) {
+            return "GENERATE_SEATS";
+        }
+
+        return switch (httpMethod) {
+            case "POST" -> "CREATE";
+            case "PUT", "PATCH" -> "UPDATE";
+            case "DELETE" -> "DELETE";
+            default -> httpMethod;
+        };
+    }
+
+    private boolean containsPathPart(String[] parts, String expected) {
+        return Arrays.asList(parts).contains(expected);
+    }
+
+    private String pathPart(String[] parts, int index) {
+        return index < parts.length ? parts[index] : null;
+    }
+
+    private boolean isLikelyResourceId(String value) {
+        return value != null
+                && !"me".equals(value)
+                && !"my".equals(value)
+                && !"hold".equals(value)
+                && !"bulk-generate".equals(value)
+                && !"check-in".equals(value)
+                && !"initiate".equals(value)
+                && !"events".equals(value)
+                && !"reconciliation".equals(value);
     }
 
     private UUID resolveActorId(Authentication authentication) {

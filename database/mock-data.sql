@@ -39,6 +39,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_users_email_verification_token_hash
     ON users(email_verification_token_hash)
     WHERE email_verification_token_hash IS NOT NULL;
 
+CREATE UNIQUE INDEX IF NOT EXISTS uq_users_email_lower
+    ON users(lower(email))
+    WHERE email IS NOT NULL;
+
 ALTER TABLE bookings
     ADD COLUMN IF NOT EXISTS payment_expires_at TIMESTAMP;
 
@@ -55,6 +59,13 @@ ALTER TABLE payments
 ALTER TABLE payments
     ADD CONSTRAINT chk_payment_status
     CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'EXPIRED'));
+
+ALTER TABLE payments
+    DROP CONSTRAINT IF EXISTS chk_payment_method;
+
+ALTER TABLE payments
+    ADD CONSTRAINT chk_payment_method
+    CHECK (method IS NULL OR method IN ('VNPAY', 'MOMO', 'SEPAY', 'CREDIT_CARD', 'CASH'));
 
 ALTER TABLE tickets
     ADD COLUMN IF NOT EXISTS checked_in_by UUID REFERENCES users(id) ON DELETE SET NULL;
@@ -213,9 +224,9 @@ INSERT INTO users (
     id, username, password, first_name, last_name, email,
     created_at, updated_at, is_active, is_deleted
 ) VALUES
-(uuid_generate_v4(), 'staff1', '$2a$12$R9h/cIPz0gi.URNNX3ch2e7vtPqUoXU/B6sO4m6m0/Y/YtWfC.7s6', 'Nhân', 'Viên', 'staff@cinema.com', NOW(), NOW(), true, false),
-(uuid_generate_v4(), 'user1',  '$2a$12$R9h/cIPz0gi.URNNX3ch2e7vtPqUoXU/B6sO4m6m0/Y/YtWfC.7s6', 'Khách', 'Hàng 1', 'user1@cinema.com', NOW(), NOW(), true, false),
-(uuid_generate_v4(), 'user2',  '$2a$12$R9h/cIPz0gi.URNNX3ch2e7vtPqUoXU/B6sO4m6m0/Y/YtWfC.7s6', 'Khách', 'Hàng 2', 'user2@cinema.com', NOW(), NOW(), true, false)
+(uuid_generate_v4(), 'staff1', '$2a$10$IB6dDsPRTXg.d94FjmekPe7TWIi/xAbgIT3vozfkaZ9Dj0cOobzky', 'Nhân', 'Viên', 'staff@cinema.com', NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'user1',  '$2a$10$IB6dDsPRTXg.d94FjmekPe7TWIi/xAbgIT3vozfkaZ9Dj0cOobzky', 'Khách', 'Hàng 1', 'user1@cinema.com', NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'user2',  '$2a$10$IB6dDsPRTXg.d94FjmekPe7TWIi/xAbgIT3vozfkaZ9Dj0cOobzky', 'Khách', 'Hàng 2', 'user2@cinema.com', NOW(), NOW(), true, false)
 ON CONFLICT (username) DO UPDATE SET
     password = EXCLUDED.password,
     first_name = EXCLUDED.first_name,

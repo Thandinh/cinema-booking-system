@@ -11,8 +11,10 @@ import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
@@ -74,12 +76,13 @@ public class MomoPaymentGateway implements PaymentGateway {
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        ResponseEntity<Map> response;
+        ResponseEntity<Map<String, Object>> response;
         try {
-            response = momoRestTemplate.postForEntity(
+            response = momoRestTemplate.exchange(
                     momoConfig.getEndpoint(),
+                    HttpMethod.POST,
                     new HttpEntity<>(payload, headers),
-                    Map.class);
+                    new ParameterizedTypeReference<>() {});
         } catch (RuntimeException ex) {
             log.error("MoMo create payment request failed for transaction {}", payment.getTransactionNo(), ex);
             throw new AppException(ErrorCode.PAYMENT_PROVIDER_ERROR);

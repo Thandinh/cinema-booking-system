@@ -110,7 +110,7 @@ public class PaymentController {
             String path = result.substring("redirect:".length());
             response.sendRedirect(normalizedFrontendUrl() + path);
         } else {
-            response.sendRedirect(normalizedFrontendUrl() + "/payment-failed?reason=invalid_callback");
+            response.sendRedirect(normalizedFrontendUrl() + "/payment/result?status=FAILED&reason=invalid_callback");
         }
     }
 
@@ -124,13 +124,20 @@ public class PaymentController {
             String path = result.substring("redirect:".length());
             response.sendRedirect(normalizedFrontendUrl() + path);
         } else {
-            response.sendRedirect(normalizedFrontendUrl() + "/payment-failed?reason=invalid_callback");
+            response.sendRedirect(normalizedFrontendUrl() + "/payment/result?status=FAILED&reason=invalid_callback");
         }
     }
 
     @PostMapping("/momo-ipn")
     public Map<String, Object> momoIpn(@RequestBody(required = false) Map<String, Object> payload) {
         return paymentService.handleMomoIpn(payload);
+    }
+
+    @PostMapping("/sepay-webhook")
+    public Map<String, Object> sePayWebhook(
+            @RequestBody(required = false) String rawPayload,
+            jakarta.servlet.http.HttpServletRequest request) {
+        return paymentService.handleSePayWebhook(rawPayload, request);
     }
 
     private String normalizedFrontendUrl() {

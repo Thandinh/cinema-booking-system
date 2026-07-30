@@ -35,9 +35,9 @@ public class SeatBulkGenerateRequest {
     UUID roomId;
 
     /** Danh sách nhãn hàng theo thứ tự, ví dụ: ["A","B","C"] */
-    @NotNull
+    @NotNull(message = "SEAT_ROW_REQUIRED")
     @Size(min = 1, max = 26, message = "SEAT_ROW_SIZE_INVALID")
-    List<@NotBlank String> rowLabels;
+    List<@NotBlank(message = "SEAT_ROW_REQUIRED") String> rowLabels;
 
     /** Số ghế mỗi hàng */
     @NotNull(message = "SEAT_NUMBER_REQUIRED")

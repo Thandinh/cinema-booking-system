@@ -4,23 +4,31 @@ import com.cinema.booking.dto.request.CinemaCreationRequest;
 import com.cinema.booking.dto.request.CinemaUpdateRequest;
 import com.cinema.booking.dto.response.CinemaMapResponse;
 import com.cinema.booking.dto.response.CinemaResponse;
+import com.cinema.booking.configuration.CacheConfig;
 import com.cinema.booking.entity.Cinema;
 import com.cinema.booking.enums.ErrorCode;
+import com.cinema.booking.enums.ShowtimeStatus;
 import com.cinema.booking.exception.AppException;
 import com.cinema.booking.mapper.CinemaMapper;
 import com.cinema.booking.repository.CinemaRepository;
 import com.cinema.booking.repository.RoomRepository;
 import com.cinema.booking.repository.SeatRepository;
+import com.cinema.booking.repository.ShowtimeRepository;
+import com.cinema.booking.repository.StaffCinemaRepository;
 import com.cinema.booking.service.CinemaService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -34,10 +42,18 @@ public class CinemaServiceImpl implements CinemaService {
     CinemaRepository cinemaRepository;
     RoomRepository   roomRepository;
     SeatRepository   seatRepository;
+    ShowtimeRepository showtimeRepository;
+    StaffCinemaRepository staffCinemaRepository;
     CinemaMapper     cinemaMapper;
 
     @Override
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(cacheNames = CacheConfig.CINEMAS, allEntries = true),
+            @CacheEvict(cacheNames = CacheConfig.CINEMA_MAP, allEntries = true),
+            @CacheEvict(cacheNames = CacheConfig.ROOMS_BY_CINEMA, allEntries = true),
+            @CacheEvict(cacheNames = CacheConfig.SEATS_BY_ROOM, allEntries = true)
+    })
     public CinemaResponse createCinema(CinemaCreationRequest request) {
         if (cinemaRepository.existsByNameAndIsDeletedFalse(request.getName())) {
             throw new AppException(ErrorCode.CINEMA_NAME_EXISTED);
@@ -49,6 +65,12 @@ public class CinemaServiceImpl implements CinemaService {
 
     @Override
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(cacheNames = CacheConfig.CINEMAS, allEntries = true),
+            @CacheEvict(cacheNames = CacheConfig.CINEMA_MAP, allEntries = true),
+            @CacheEvict(cacheNames = CacheConfig.ROOMS_BY_CINEMA, allEntries = true),
+            @CacheEvict(cacheNames = CacheConfig.SEATS_BY_ROOM, allEntries = true)
+    })
     public CinemaResponse updateCinema(UUID id, CinemaUpdateRequest request) {
         Cinema cinema = findActiveCinemaById(id);
 
@@ -68,8 +90,22 @@ public class CinemaServiceImpl implements CinemaService {
      */
     @Override
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(cacheNames = CacheConfig.CINEMAS, allEntries = true),
+            @CacheEvict(cacheNames = CacheConfig.CINEMA_MAP, allEntries = true),
+            @CacheEvict(cacheNames = CacheConfig.ROOMS_BY_CINEMA, allEntries = true),
+            @CacheEvict(cacheNames = CacheConfig.SEATS_BY_ROOM, allEntries = true)
+    })
     public void deleteCinema(UUID id) {
         Cinema cinema = findActiveCinemaById(id);
+
+        // Do not delete an operational cinema while active schedules still exist.
+        if (showtimeRepository.existsActiveScheduleByCinemaId(
+                id,
+                List.of(ShowtimeStatus.UPCOMING, ShowtimeStatus.ONGOING),
+                LocalDateTime.now())) {
+            throw new AppException(ErrorCode.CINEMA_HAS_ACTIVE_SHOWTIMES);
+        }
 
         // 1. Lấy danh sách room IDs để cascade xoá ghế
         List<UUID> roomIds = roomRepository.findActiveRoomIdsByCinemaId(id);
@@ -85,18 +121,26 @@ public class CinemaServiceImpl implements CinemaService {
         // 4. Soft-delete Cinema
         cinema.setIsDeleted(true);
         cinemaRepository.save(cinema);
+        staffCinemaRepository.deleteByCinemaId(id);
 
         log.info("Soft-deleted cinema id={} (cascaded {} rooms)", id, roomIds.size());
     }
 
     @Override
     @Transactional(readOnly = true)
+    @Cacheable(cacheNames = CacheConfig.CINEMAS, key = "'detail:' + #id")
     public CinemaResponse getCinemaById(UUID id) {
-        return cinemaMapper.toCinemaResponse(findActiveCinemaById(id), true);
+        Cinema cinema = cinemaRepository.findActiveByIdWithRooms(id)
+                .orElseThrow(() -> new AppException(ErrorCode.CINEMA_NOT_FOUND));
+        return cinemaMapper.toCinemaResponse(cinema, true);
     }
 
     @Override
     @Transactional(readOnly = true)
+    @Cacheable(
+            cacheNames = CacheConfig.CINEMAS,
+            key = "'list:' + #onlyActive + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort"
+    )
     public Page<CinemaResponse> getAllCinemas(Pageable pageable, boolean onlyActive) {
         Page<Cinema> page = onlyActive
                 ? cinemaRepository.findAllByIsActiveTrueAndIsDeletedFalse(pageable)
@@ -114,6 +158,7 @@ public class CinemaServiceImpl implements CinemaService {
      */
     @Override
     @Transactional(readOnly = true)
+    @Cacheable(cacheNames = CacheConfig.CINEMA_MAP, key = "'all'")
     public List<CinemaMapResponse> getMapData() {
         return cinemaRepository.findAllForMap()
                 .stream()

@@ -5,6 +5,7 @@ import com.cinema.booking.dto.request.SeatCreationRequest;
 import com.cinema.booking.dto.request.SeatUpdateRequest;
 import com.cinema.booking.dto.response.SeatBulkGenerateResponse;
 import com.cinema.booking.dto.response.SeatResponse;
+import com.cinema.booking.configuration.CacheConfig;
 import com.cinema.booking.entity.Room;
 import com.cinema.booking.entity.Seat;
 import com.cinema.booking.enums.ErrorCode;
@@ -20,6 +21,7 @@ import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -50,6 +52,7 @@ public class SeatServiceImpl implements SeatService {
 
     @Override
     @Transactional
+    @CacheEvict(cacheNames = CacheConfig.SEATS_BY_ROOM, allEntries = true)
     public SeatResponse createSeat(SeatCreationRequest request) {
         Room room = findActiveRoom(request.getRoomId());
         validateRoomScope(room);
@@ -73,6 +76,7 @@ public class SeatServiceImpl implements SeatService {
 
     @Override
     @Transactional
+    @CacheEvict(cacheNames = CacheConfig.SEATS_BY_ROOM, allEntries = true)
     public SeatBulkGenerateResponse bulkGenerateSeats(SeatBulkGenerateRequest request) {
         Room room = findActiveRoom(request.getRoomId());
         validateRoomScope(room);
@@ -150,6 +154,7 @@ public class SeatServiceImpl implements SeatService {
 
     @Override
     @Transactional
+    @CacheEvict(cacheNames = CacheConfig.SEATS_BY_ROOM, allEntries = true)
     public SeatResponse updateSeat(UUID id, SeatUpdateRequest request) {
         Seat seat = findActiveSeat(id);
         validateSeatScope(seat);
@@ -163,6 +168,7 @@ public class SeatServiceImpl implements SeatService {
 
     @Override
     @Transactional
+    @CacheEvict(cacheNames = CacheConfig.SEATS_BY_ROOM, allEntries = true)
     public void deleteSeat(UUID id) {
         Seat seat = findActiveSeat(id);
         validateSeatScope(seat);

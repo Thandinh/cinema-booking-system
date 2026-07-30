@@ -102,6 +102,32 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
                                              @Param("legacyCutoff") LocalDateTime legacyCutoff,
                                              @Param("limit") int limit);
 
+    @Query("""
+            SELECT COUNT(b) > 0
+            FROM Booking b
+            WHERE b.showtime.id = :showtimeId
+              AND b.status IN :statuses
+            """)
+    boolean existsProtectedBookingForShowtime(@Param("showtimeId") UUID showtimeId,
+                                              @Param("statuses") List<BookingStatus> statuses);
+
+    @Query("""
+            SELECT DISTINCT b
+            FROM Booking b
+            JOIN FETCH b.user
+            JOIN FETCH b.showtime s
+            JOIN FETCH s.movie
+            JOIN FETCH s.room r
+            JOIN FETCH r.cinema
+            LEFT JOIN FETCH b.bookingDetails bd
+            LEFT JOIN FETCH bd.seat
+            LEFT JOIN FETCH bd.ticket
+            WHERE s.id = :showtimeId
+              AND b.status IN :statuses
+            """)
+    List<Booking> findWithDetailsByShowtimeIdAndStatuses(@Param("showtimeId") UUID showtimeId,
+                                                         @Param("statuses") List<BookingStatus> statuses);
+
     /**
      * Query chuyên dùng cho tác vụ gửi Email.
      * JOIN FETCH tất cả các quan hệ cần thiết: user, showtime-movie-room-cinema,
@@ -114,6 +140,13 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
            "LEFT JOIN FETCH b.bookingDetails bd LEFT JOIN FETCH bd.seat LEFT JOIN FETCH bd.ticket " +
            "WHERE b.id = :id AND (s.isDeleted = false OR s.isDeleted IS NULL)")
     Optional<Booking> findByIdForEmail(@Param("id") UUID id);
+
+    @Query("SELECT DISTINCT b FROM Booking b " +
+           "JOIN FETCH b.user u " +
+           "JOIN FETCH b.showtime s JOIN FETCH s.movie JOIN FETCH s.room r JOIN FETCH r.cinema " +
+           "LEFT JOIN FETCH b.bookingDetails bd LEFT JOIN FETCH bd.seat LEFT JOIN FETCH bd.ticket " +
+           "WHERE b.id = :id")
+    Optional<Booking> findByIdForCancellationEmail(@Param("id") UUID id);
 
     // ── Analytics ──────────────────────────────────────────────────────────────
 

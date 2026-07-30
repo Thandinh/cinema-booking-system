@@ -1,24 +1,38 @@
 package com.cinema.booking.service.impl;
 
 import com.cinema.booking.dto.request.ShowtimeCreationRequest;
+import com.cinema.booking.dto.request.ShowtimeCancelRequest;
 import com.cinema.booking.dto.request.ShowtimeUpdateRequest;
 import com.cinema.booking.dto.response.ShowtimeResponse;
+import com.cinema.booking.entity.Booking;
 import com.cinema.booking.entity.Movie;
+import com.cinema.booking.entity.Payment;
 import com.cinema.booking.entity.Room;
 import com.cinema.booking.entity.Seat;
 import com.cinema.booking.entity.SeatStatus;
 import com.cinema.booking.entity.Showtime;
+import com.cinema.booking.enums.BookingStatus;
 import com.cinema.booking.enums.ErrorCode;
+import com.cinema.booking.enums.PaymentEventType;
+import com.cinema.booking.enums.PaymentStatus;
 import com.cinema.booking.enums.SeatStatusType;
+import com.cinema.booking.enums.ShowtimeStatus;
+import com.cinema.booking.enums.TicketStatus;
 import com.cinema.booking.exception.AppException;
 import com.cinema.booking.mapper.ShowtimeMapper;
+import com.cinema.booking.repository.BookingRepository;
 import com.cinema.booking.repository.MovieRepository;
+import com.cinema.booking.repository.PaymentRepository;
 import com.cinema.booking.repository.RoomRepository;
 import com.cinema.booking.repository.SeatRepository;
 import com.cinema.booking.repository.SeatStatusRepository;
 import com.cinema.booking.repository.ShowtimeRepository;
+import com.cinema.booking.repository.TicketRepository;
+import com.cinema.booking.service.EmailService;
+import com.cinema.booking.service.PaymentEventService;
 import com.cinema.booking.service.StaffCinemaScopeService;
 import com.cinema.booking.service.ShowtimeService;
+import com.cinema.booking.websocket.SeatStatusPublisher;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -29,10 +43,14 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -49,6 +67,12 @@ public class ShowtimeServiceImpl implements ShowtimeService {
     SeatStatusRepository seatStatusRepository;
     ShowtimeMapper showtimeMapper;
     StaffCinemaScopeService staffCinemaScopeService;
+    BookingRepository bookingRepository;
+    PaymentRepository paymentRepository;
+    TicketRepository ticketRepository;
+    PaymentEventService paymentEventService;
+    EmailService emailService;
+    SeatStatusPublisher seatStatusPublisher;
 
     @NonFinal
     @Value("${showtime.public-days-ahead:7}")
@@ -147,15 +171,94 @@ public class ShowtimeServiceImpl implements ShowtimeService {
         Showtime showtime = showtimeRepository.findActiveById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.SHOWTIME_NOT_FOUND));
         staffCinemaScopeService.validateCurrentStaffCanAccessCinema(showtime.getRoom().getCinema().getId());
+
+        if (bookingRepository.existsProtectedBookingForShowtime(
+                id,
+                List.of(BookingStatus.PENDING, BookingStatus.SUCCESS))) {
+            throw new AppException(ErrorCode.SHOWTIME_HAS_ACTIVE_BOOKINGS);
+        }
         
+        showtime.setStatus(ShowtimeStatus.CANCELLED);
         showtime.setIsDeleted(true);
         showtimeRepository.save(showtime);
         
-        // Hard delete các SeatStatus vì nó chứa quá nhiều data và không cần giữ nếu suất chiếu huỷ (hoặc soft delete tuỳ business). 
-        // Dùng delete hard để tối ưu DB nếu cần.
-        seatStatusRepository.deleteByShowtimeId(id);
-        
-        log.info("Soft-deleted showtime id={} and removed its seat_status records", id);
+        // Keep seat_status rows for audit/history. They are hidden through showtime.isDeleted.
+
+        log.info("Cancelled and soft-deleted showtime id={}", id);
+    }
+
+    @Override
+    @Transactional
+    public ShowtimeResponse cancelShowtimeWithPolicy(UUID id, ShowtimeCancelRequest request) {
+        Showtime showtime = showtimeRepository.findActiveById(id)
+                .orElseThrow(() -> new AppException(ErrorCode.SHOWTIME_NOT_FOUND));
+        staffCinemaScopeService.validateCurrentStaffCanAccessCinema(showtime.getRoom().getCinema().getId());
+
+        if (showtime.getStatus() != ShowtimeStatus.UPCOMING && showtime.getStatus() != ShowtimeStatus.ONGOING) {
+            throw new AppException(ErrorCode.SHOWTIME_NOT_CANCELLABLE);
+        }
+
+        if (ticketRepository.existsByShowtimeIdAndStatus(id, TicketStatus.USED)) {
+            throw new AppException(ErrorCode.SHOWTIME_HAS_USED_TICKETS);
+        }
+
+        String reason = request.getReason().trim();
+        List<Booking> affectedBookings = bookingRepository.findWithDetailsByShowtimeIdAndStatuses(
+                id,
+                List.of(BookingStatus.PENDING, BookingStatus.SUCCESS));
+
+        List<UUID> affectedBookingIds = affectedBookings.stream()
+                .map(Booking::getId)
+                .toList();
+        List<Payment> successPayments = affectedBookingIds.isEmpty()
+                ? List.of()
+                : paymentRepository.findWithBookingByBookingIdInAndStatus(affectedBookingIds, PaymentStatus.SUCCESS);
+        List<Payment> pendingPayments = affectedBookingIds.isEmpty()
+                ? List.of()
+                : paymentRepository.findWithBookingByBookingIdInAndStatus(affectedBookingIds, PaymentStatus.PENDING);
+
+        Map<UUID, List<Payment>> successPaymentsByBookingId = successPayments.stream()
+                .filter(payment -> payment.getBooking() != null)
+                .collect(Collectors.groupingBy(payment -> payment.getBooking().getId()));
+
+        for (Booking booking : affectedBookings) {
+            BookingStatus beforeStatus = booking.getStatus();
+            booking.setStatus(BookingStatus.CANCELLED);
+
+            List<UUID> seatIds = booking.getBookingDetails().stream()
+                    .map(detail -> detail.getSeat().getId())
+                    .toList();
+            if (!seatIds.isEmpty()) {
+                seatStatusRepository.bulkUpdateStatusAndClearHold(id, seatIds, SeatStatusType.AVAILABLE);
+                publishSeatAvailabilityAfterCommit(id, seatIds);
+            }
+
+            booking.getBookingDetails().forEach(detail -> {
+                if (detail.getTicket() != null && detail.getTicket().getStatus() == TicketStatus.ACTIVE) {
+                    detail.getTicket().setStatus(TicketStatus.CANCELLED);
+                }
+            });
+
+            if (beforeStatus == BookingStatus.SUCCESS) {
+                successPaymentsByBookingId.getOrDefault(booking.getId(), List.of())
+                        .forEach(payment -> recordRefundRequested(payment, booking, reason, showtime));
+                sendCancellationEmailAfterCommit(booking.getId(), reason);
+            }
+        }
+
+        pendingPayments.forEach(payment -> {
+            payment.setStatus(PaymentStatus.FAILED);
+            recordPendingPaymentCancelled(payment, reason, showtime);
+        });
+        paymentRepository.saveAll(pendingPayments);
+        bookingRepository.saveAll(affectedBookings);
+
+        showtime.setStatus(ShowtimeStatus.CANCELLED);
+        Showtime saved = showtimeRepository.save(showtime);
+
+        log.info("Cancelled showtime id={} with policy. affectedBookings={}, refundRequests={}",
+                id, affectedBookings.size(), successPayments.size());
+        return showtimeMapper.toShowtimeResponse(saved);
     }
 
     @Override
@@ -210,6 +313,74 @@ public class ShowtimeServiceImpl implements ShowtimeService {
         return showtimeRepository.findOpenForCheckIn(cinemaId, earliestStartTime, latestStartTime).stream()
                 .map(showtimeMapper::toShowtimeResponse)
                 .toList();
+    }
+
+    private void recordRefundRequested(Payment payment, Booking booking, String reason, Showtime showtime) {
+        paymentEventService.record(
+                payment,
+                booking,
+                PaymentEventType.REFUND_REQUESTED,
+                payment.getStatus(),
+                payment.getStatus(),
+                BookingStatus.SUCCESS,
+                BookingStatus.CANCELLED,
+                true,
+                "Showtime cancelled. Manual refund is required.",
+                cancellationPayload(reason, showtime));
+    }
+
+    private void recordPendingPaymentCancelled(Payment payment, String reason, Showtime showtime) {
+        paymentEventService.record(
+                payment,
+                payment.getBooking(),
+                PaymentEventType.PAYMENT_FAILED,
+                PaymentStatus.PENDING,
+                PaymentStatus.FAILED,
+                BookingStatus.PENDING,
+                BookingStatus.CANCELLED,
+                false,
+                "Pending payment was cancelled because showtime was cancelled.",
+                cancellationPayload(reason, showtime));
+    }
+
+    private Map<String, Object> cancellationPayload(String reason, Showtime showtime) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("reason", reason);
+        payload.put("showtimeId", showtime.getId().toString());
+        payload.put("movieTitle", showtime.getMovie().getTitle());
+        payload.put("cinemaName", showtime.getRoom().getCinema().getName());
+        payload.put("roomName", showtime.getRoom().getName());
+        payload.put("startTime", showtime.getStartTime().toString());
+        return payload;
+    }
+
+    private void publishSeatAvailabilityAfterCommit(UUID showtimeId, List<UUID> seatIds) {
+        if (seatIds.isEmpty()) {
+            return;
+        }
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            seatStatusPublisher.publishBulk(showtimeId, seatIds, SeatStatusType.AVAILABLE);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                seatStatusPublisher.publishBulk(showtimeId, seatIds, SeatStatusType.AVAILABLE);
+            }
+        });
+    }
+
+    private void sendCancellationEmailAfterCommit(UUID bookingId, String reason) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            emailService.sendShowtimeCancellationEmail(bookingId, reason);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                emailService.sendShowtimeCancellationEmail(bookingId, reason);
+            }
+        });
     }
 
     private ShowtimeSearchWindow getPublicShowtimeWindow() {

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Thông báo hủy suất chiếu</title>
+    <style>
+        body { margin: 0; background: #f5f7fb; color: #111827; font-family: Arial, Helvetica, sans-serif; }
+        .wrap { max-width: 680px; margin: 0 auto; padding: 28px 14px; }
+        .card { overflow: hidden; border: 1px solid #e5e7eb; border-radius: 18px; background: #fff; }
+        .head { padding: 24px; background: #111827; color: #fff; }
+        .brand { margin: 0 0 12px; font-size: 24px; font-weight: 900; line-height: 1; }
+        .brand-sub { color: rgba(255,255,255,.55); }
+        .brand-vn { display: inline-block; margin-left: 3px; padding: 4px 7px; border-radius: 7px; background: #fbbf24; color: #111827; font-size: 16px; line-height: 1; vertical-align: 2px; }
+        .head h1 { margin: 0; font-size: 24px; line-height: 1.25; }
+        .body { padding: 24px; }
+        .hello { margin: 0 0 18px; line-height: 1.6; color: #374151; }
+        .notice { margin: 0 0 18px; padding: 14px 16px; border: 1px solid #fecaca; border-radius: 14px; background: #fff1f2; color: #991b1b; line-height: 1.55; }
+        .summary { border: 1px solid #e5e7eb; border-radius: 14px; background: #f8fafc; padding: 18px; }
+        .summary h2 { margin: 0 0 14px; font-size: 20px; }
+        .row { margin: 9px 0; color: #4b5563; line-height: 1.5; }
+        .row strong { color: #111827; }
+        .price { margin-top: 14px; color: #b45309; font-size: 18px; font-weight: 800; }
+        .refund { margin-top: 20px; padding: 16px; border-radius: 14px; background: #fffbeb; border: 1px solid #fde68a; color: #92400e; line-height: 1.55; }
+        .footer { padding: 18px 24px 24px; color: #6b7280; font-size: 13px; line-height: 1.6; }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <div class="card">
+        <div class="head">
+            <p class="brand"><span>cinema</span><span class="brand-sub">booking</span><span class="brand-vn">.vn</span></p>
+            <h1>Suất chiếu của bạn đã được hủy</h1>
+        </div>
+        <div class="body">
+            <p class="hello">
+                Xin chào <strong th:text="${userName}">bạn</strong>, rất tiếc suất chiếu dưới đây đã được rạp hủy.
+            </p>
+            <div class="notice">
+                <strong>Lý do hủy:</strong>
+                <span th:text="${reason}">Rạp cần điều chỉnh lịch vận hành.</span>
+            </div>
+            <div class="summary">
+                <h2 th:text="${movieTitle}">Tên phim</h2>
+                <p class="row"><strong>Rạp:</strong> <span th:text="${cinemaName}">Tên rạp</span></p>
+                <p class="row"><strong>Địa chỉ:</strong> <span th:text="${cinemaAddress}">Địa chỉ rạp</span></p>
+                <p class="row"><strong>Phòng:</strong> <span th:text="${roomName}">Phòng chiếu</span></p>
+                <p class="row"><strong>Suất chiếu:</strong> <span th:text="${showTime}">19:30 · 30/07/2026</span></p>
+                <p class="row"><strong>Ghế:</strong> <span th:text="${seats}">A1, A2</span></p>
+                <p class="price">Số tiền cần hoàn: <span th:text="${totalPrice}">0 đ</span></p>
+            </div>
+            <div class="refund">
+                Vé của bạn đã được hủy trên hệ thống. Bộ phận hỗ trợ sẽ kiểm tra giao dịch và xử lý hoàn tiền theo phương thức thanh toán ban đầu hoặc liên hệ bạn nếu cần thêm thông tin.
+            </div>
+        </div>
+        <div class="footer">
+            Email này được gửi tự động từ cinemabooking.vn. Vui lòng giữ lại email để đối chiếu khi cần hỗ trợ.
+        </div>
+    </div>
+</div>
+</body>
+</html>

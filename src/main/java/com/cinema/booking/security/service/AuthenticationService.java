@@ -46,7 +46,10 @@ import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
@@ -99,6 +102,7 @@ public class AuthenticationService {
     GoogleOAuthProperties googleOAuthProperties;
     AuthRateLimitService authRateLimitService;
     AuthAuditService authAuditService;
+    PlatformTransactionManager transactionManager;
 
     public IntrospectResponse introspect(IntrospectRequest request) {
         boolean isValid = true;
@@ -386,7 +390,7 @@ public class AuthenticationService {
 
         if (!refreshToken.isActive(now)) {
             if (refreshToken.getRevokedAt() != null) {
-                refreshTokenRepository.revokeAllActiveByUserId(
+                revokeAllActiveRefreshTokensInNewTransaction(
                         refreshToken.getUser().getId(),
                         now,
                         "REUSE_DETECTED");
@@ -394,6 +398,13 @@ public class AuthenticationService {
             }
             throw new AppException(ErrorCode.UNAUTHENTICATED);
         }
+    }
+
+    private void revokeAllActiveRefreshTokensInNewTransaction(UUID userId, LocalDateTime revokedAt, String reason) {
+        TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
+        transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        transactionTemplate.executeWithoutResult(status ->
+                refreshTokenRepository.revokeAllActiveByUserId(userId, revokedAt, reason));
     }
 
     private void invalidateAccessToken(String token) throws ParseException, JOSEException {

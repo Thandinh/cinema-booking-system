@@ -41,7 +41,7 @@ public class StaffCinemaScopeService {
         if (cinemaId == null || !isStaffButNotAdmin()) {
             return;
         }
-        boolean assigned = staffCinemaRepository.existsByIdStaffIdAndIdCinemaId(
+        boolean assigned = staffCinemaRepository.existsActiveAssignment(
                 SecurityUtils.getCurrentUserId(),
                 cinemaId);
         if (!assigned) {

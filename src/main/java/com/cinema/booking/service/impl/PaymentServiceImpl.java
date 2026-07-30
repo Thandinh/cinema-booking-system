@@ -1,6 +1,7 @@
 package com.cinema.booking.service.impl;
 
 import com.cinema.booking.configuration.MomoConfig;
+import com.cinema.booking.configuration.SePayConfig;
 import com.cinema.booking.configuration.VNPayConfig;
 import com.cinema.booking.dto.response.PaymentReconciliationIssueResponse;
 import com.cinema.booking.dto.response.PaymentResponse;
@@ -22,6 +23,8 @@ import com.cinema.booking.service.PaymentService;
 import com.cinema.booking.service.StaffCinemaScopeService;
 import com.cinema.booking.util.SecurityUtils;
 import com.cinema.booking.util.VNPayUtil;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -37,8 +40,11 @@ import java.math.RoundingMode;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
+import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.*;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -53,11 +59,13 @@ public class PaymentServiceImpl implements PaymentService {
     BookingRepository bookingRepository;
     VNPayConfig vnpayConfig;
     MomoConfig momoConfig;
+    SePayConfig sePayConfig;
     com.cinema.booking.service.BookingService bookingService;
     PaymentEventService paymentEventService;
     PaymentMapper paymentMapper;
     List<PaymentGateway> paymentGateways;
     StaffCinemaScopeService staffCinemaScopeService;
+    ObjectMapper objectMapper;
 
     @Override
     @Transactional
@@ -92,19 +100,38 @@ public class PaymentServiceImpl implements PaymentService {
                         PaymentStatus.PENDING);
         if (pendingPayment.isPresent()) {
             Payment payment = pendingPayment.get();
-            log.info("Reusing pending payment {} for booking {}", payment.getTransactionNo(), bookingId);
+            if (isSameAmount(payment.getAmount(), booking.getTotalPrice())) {
+                log.info("Reusing pending payment {} for booking {}", payment.getTransactionNo(), bookingId);
+                paymentEventService.record(
+                        payment,
+                        booking,
+                        PaymentEventType.PAYMENT_REUSED,
+                        payment.getStatus(),
+                        payment.getStatus(),
+                        booking.getStatus(),
+                        booking.getStatus(),
+                        true,
+                        "Reused pending payment for booking",
+                        null);
+                return createPaymentUrlWithAudit(payment, booking, request);
+            }
+
+            PaymentStatus oldPaymentStatus = payment.getStatus();
+            payment.setStatus(PaymentStatus.EXPIRED);
+            paymentRepository.save(payment);
             paymentEventService.record(
                     payment,
                     booking,
-                    PaymentEventType.PAYMENT_REUSED,
-                    payment.getStatus(),
+                    PaymentEventType.PAYMENT_EXPIRED,
+                    oldPaymentStatus,
                     payment.getStatus(),
                     booking.getStatus(),
                     booking.getStatus(),
                     true,
-                    "Reused pending payment for booking",
-                    null);
-            return createPaymentUrlWithAudit(payment, booking, request);
+                    "Expired stale pending payment because booking amount changed",
+                    Map.of(
+                            "paymentAmount", payment.getAmount(),
+                            "bookingAmount", booking.getTotalPrice()));
         }
 
         String txnNo = generateTransactionNo(method, bookingId);
@@ -221,6 +248,7 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     @Transactional
     public String handleVNPayCallback(HttpServletRequest request) {
+        Map<String, Object> callbackPayload = requestParamsToMap(request);
         Map<String, String> fields = new HashMap<>();
         for (Enumeration<String> params = request.getParameterNames(); params.hasMoreElements();) {
             String fieldName = params.nextElement();
@@ -264,7 +292,7 @@ public class PaymentServiceImpl implements PaymentService {
         // Remove trailing spaces from secret key just in case
         String hashSecret = vnpayConfig.getHashSecret().trim();
         String signValue = VNPayUtil.hmacSHA512(hashSecret, hashData.toString());
-        if (!signValue.equals(vnp_SecureHash)) {
+        if (!signValue.equalsIgnoreCase(vnp_SecureHash)) {
             log.error("Invalid VNPay signature");
             paymentEventService.recordDetached(
                     null,
@@ -278,29 +306,41 @@ public class PaymentServiceImpl implements PaymentService {
                     null,
                     false,
                     "Invalid VNPay callback signature",
-                    requestParamsToMap(request));
-            return "redirect:/payment-failed?reason=invalid-signature";
+                    callbackPayload);
+            return "redirect:/payment/result?status=FAILED&reason=invalid-signature";
         }
 
         String txnRef = request.getParameter("vnp_TxnRef");
         String responseCode = request.getParameter("vnp_ResponseCode");
-        String orderInfo = request.getParameter("vnp_OrderInfo");
-        
-        // Extract secureToken from orderInfo (format: Thanh toan ve xem phim|SECURE_TOKEN)
-        String[] parts = orderInfo.split("\\|");
-        String secureToken = parts[parts.length - 1];
+        if (txnRef == null || txnRef.isBlank()) {
+            paymentEventService.recordDetached(
+                    null,
+                    null,
+                    PaymentMethod.VNPAY,
+                    "",
+                    PaymentEventType.PAYMENT_PROVIDER_ERROR,
+                    null,
+                    null,
+                    null,
+                    null,
+                    false,
+                    "VNPay callback missing transaction reference",
+                    callbackPayload);
+            return "redirect:/payment/result?status=FAILED&reason=invalid_callback";
+        }
 
         Payment payment = paymentRepository.findLockedByTransactionNo(txnRef)
                 .orElseThrow(() -> new AppException(ErrorCode.BOOKING_NOT_FOUND));
         Booking booking = payment.getBooking();
-        appendProviderResponse(payment, "vnpayCallback", requestParamsToMap(request));
+        String secureToken = booking.getSecureToken();
+        appendProviderResponse(payment, "vnpayCallback", callbackPayload);
         recordPaymentEvent(
                 payment,
                 booking,
                 PaymentEventType.VNPAY_CALLBACK_RECEIVED,
                 true,
                 "VNPay callback received",
-                requestParamsToMap(request));
+                callbackPayload);
 
         if (payment.getStatus() != PaymentStatus.PENDING) {
             log.warn("Payment {} already processed", txnRef);
@@ -311,7 +351,7 @@ public class PaymentServiceImpl implements PaymentService {
                     PaymentEventType.PAYMENT_ALREADY_PROCESSED,
                     true,
                     "VNPay callback ignored because payment was already processed",
-                    requestParamsToMap(request));
+                    callbackPayload);
             return "redirect:/payment/result?status=" + payment.getStatus()
                     + "&bookingId=" + booking.getId()
                     + "&txn=" + txnRef;
@@ -332,7 +372,7 @@ public class PaymentServiceImpl implements PaymentService {
                     PaymentEventType.PAYMENT_ALREADY_PROCESSED,
                     true,
                     "VNPay callback aligned payment with already finalized booking",
-                    requestParamsToMap(request));
+                    callbackPayload);
             return "redirect:/payment/result?status=" + payment.getStatus()
                     + "&bookingId=" + booking.getId()
                     + "&txn=" + txnRef;
@@ -349,7 +389,7 @@ public class PaymentServiceImpl implements PaymentService {
                     PaymentEventType.VNPAY_AMOUNT_MISMATCH,
                     false,
                     "VNPay callback amount does not match payment amount",
-                    requestParamsToMap(request));
+                    callbackPayload);
             return "redirect:/payment/result?status=FAILED"
                     + "&bookingId=" + booking.getId()
                     + "&txn=" + txnRef;
@@ -365,7 +405,7 @@ public class PaymentServiceImpl implements PaymentService {
                     PaymentEventType.PAYMENT_EXPIRED,
                     false,
                     "VNPay callback arrived after payment window expired",
-                    requestParamsToMap(request));
+                    callbackPayload);
             return "redirect:/payment/result?status=EXPIRED"
                     + "&bookingId=" + booking.getId()
                     + "&txn=" + txnRef;
@@ -384,7 +424,7 @@ public class PaymentServiceImpl implements PaymentService {
                     PaymentEventType.PAYMENT_SUCCESS,
                     true,
                     "VNPay payment succeeded",
-                    requestParamsToMap(request));
+                    callbackPayload);
             return "redirect:/payment/result?status=SUCCESS"
                     + "&bookingId=" + booking.getId()
                     + "&txn=" + txnRef;
@@ -400,7 +440,7 @@ public class PaymentServiceImpl implements PaymentService {
                     PaymentEventType.PAYMENT_FAILED,
                     false,
                     "VNPay payment failed",
-                    requestParamsToMap(request));
+                    callbackPayload);
             return "redirect:/payment/result?status=FAILED"
                     + "&bookingId=" + booking.getId()
                     + "&txn=" + txnRef;
@@ -429,6 +469,158 @@ public class PaymentServiceImpl implements PaymentService {
         response.put("message", result.message());
         response.put("responseTime", System.currentTimeMillis());
         return response;
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> handleSePayWebhook(String rawPayload, HttpServletRequest request) {
+        Map<String, Object> payload = parseJsonPayload(rawPayload);
+        String transactionNo = resolveSePayTransactionNo(payload);
+
+        if (!isValidSePayWebhookSignature(rawPayload, request)) {
+            paymentEventService.recordDetached(
+                    null,
+                    null,
+                    PaymentMethod.SEPAY,
+                    transactionNo,
+                    PaymentEventType.SEPAY_WEBHOOK_INVALID_SIGNATURE,
+                    null,
+                    null,
+                    null,
+                    null,
+                    false,
+                    "Invalid SePay webhook authentication",
+                    payload);
+            return sePayWebhookResponse(false, "Invalid webhook authentication");
+        }
+
+        if (transactionNo.isBlank()) {
+            paymentEventService.recordDetached(
+                    null,
+                    null,
+                    PaymentMethod.SEPAY,
+                    "",
+                    PaymentEventType.SEPAY_PAYMENT_NOT_FOUND,
+                    null,
+                    null,
+                    null,
+                    null,
+                    false,
+                    "SePay webhook missing payment code",
+                    payload);
+            return sePayWebhookResponse(false, "Payment code not found");
+        }
+
+        Optional<Payment> optionalPayment = paymentRepository.findLockedByTransactionNo(transactionNo);
+        if (optionalPayment.isEmpty()) {
+            paymentEventService.recordDetached(
+                    null,
+                    null,
+                    PaymentMethod.SEPAY,
+                    transactionNo,
+                    PaymentEventType.SEPAY_PAYMENT_NOT_FOUND,
+                    null,
+                    null,
+                    null,
+                    null,
+                    false,
+                    "SePay webhook payment not found",
+                    payload);
+            return sePayWebhookResponse(false, "Payment not found");
+        }
+
+        Payment payment = optionalPayment.get();
+        Booking booking = payment.getBooking();
+        appendProviderResponse(payment, "sepayWebhook", payload);
+        recordPaymentEvent(
+                payment,
+                booking,
+                PaymentEventType.SEPAY_WEBHOOK_RECEIVED,
+                true,
+                "SePay webhook received",
+                payload);
+
+        if (!"in".equalsIgnoreCase(stringValue(payload, "transferType"))) {
+            paymentRepository.save(payment);
+            recordPaymentEvent(
+                    payment,
+                    booking,
+                    PaymentEventType.PAYMENT_FAILED,
+                    false,
+                    "SePay webhook ignored because transfer type is not incoming",
+                    payload);
+            return sePayWebhookResponse(false, "Only incoming transfers are accepted");
+        }
+
+        long transferAmount = longValue(payload.get("transferAmount"));
+        if (transferAmount != toVndAmount(payment.getAmount())) {
+            paymentRepository.save(payment);
+            recordPaymentEvent(
+                    payment,
+                    booking,
+                    PaymentEventType.SEPAY_AMOUNT_MISMATCH,
+                    false,
+                    "SePay webhook amount does not match payment amount",
+                    payload);
+            return sePayWebhookResponse(false, "Amount mismatch");
+        }
+
+        if (payment.getStatus() != PaymentStatus.PENDING) {
+            paymentRepository.save(payment);
+            recordPaymentEvent(
+                    payment,
+                    booking,
+                    PaymentEventType.PAYMENT_ALREADY_PROCESSED,
+                    true,
+                    "SePay webhook ignored because payment was already processed",
+                    payload);
+            return sePayWebhookResponse(true, "Already processed");
+        }
+
+        if (booking.getStatus() != BookingStatus.PENDING) {
+            payment.setStatus(booking.getStatus() == BookingStatus.SUCCESS
+                    ? PaymentStatus.SUCCESS
+                    : PaymentStatus.FAILED);
+            if (payment.getStatus() == PaymentStatus.SUCCESS && payment.getPaymentTime() == null) {
+                payment.setPaymentTime(LocalDateTime.now());
+            }
+            paymentRepository.save(payment);
+            recordPaymentEvent(
+                    payment,
+                    booking,
+                    PaymentEventType.PAYMENT_ALREADY_PROCESSED,
+                    true,
+                    "SePay webhook aligned payment with already finalized booking",
+                    payload);
+            return sePayWebhookResponse(true, "Booking already finalized");
+        }
+
+        if (isPaymentWindowExpired(booking)) {
+            payment.setStatus(PaymentStatus.EXPIRED);
+            paymentRepository.save(payment);
+            bookingService.expirePendingBooking(booking.getId());
+            recordPaymentEvent(
+                    payment,
+                    booking,
+                    PaymentEventType.PAYMENT_EXPIRED,
+                    false,
+                    "SePay webhook arrived after payment window expired",
+                    payload);
+            return sePayWebhookResponse(false, "Booking expired");
+        }
+
+        payment.setStatus(PaymentStatus.SUCCESS);
+        payment.setPaymentTime(resolveSePayPaymentTime(payload));
+        paymentRepository.save(payment);
+        bookingService.handlePaymentSuccess(booking.getSecureToken());
+        recordPaymentEvent(
+                payment,
+                booking,
+                PaymentEventType.PAYMENT_SUCCESS,
+                true,
+                "SePay payment succeeded",
+                payload);
+        return sePayWebhookResponse(true, "Success");
     }
 
     private MomoProcessingResult processMomoCallback(Map<String, Object> payload) {
@@ -591,6 +783,107 @@ public class PaymentServiceImpl implements PaymentService {
                 && !booking.getPaymentExpiresAt().isAfter(LocalDateTime.now());
     }
 
+    private boolean isSameAmount(BigDecimal left, BigDecimal right) {
+        return left != null && right != null && left.compareTo(right) == 0;
+    }
+
+    private Map<String, Object> parseJsonPayload(String rawPayload) {
+        if (rawPayload == null || rawPayload.isBlank()) {
+            return new LinkedHashMap<>();
+        }
+        try {
+            return objectMapper.readValue(rawPayload, new TypeReference<LinkedHashMap<String, Object>>() {
+            });
+        } catch (Exception ex) {
+            throw new AppException(ErrorCode.REQUEST_BODY_INVALID);
+        }
+    }
+
+    private boolean isValidSePayWebhookSignature(String rawPayload, HttpServletRequest request) {
+        boolean hasConfiguredAuth = false;
+
+        if (sePayConfig.hasWebhookHmacSecret()) {
+            hasConfiguredAuth = true;
+            String signature = firstNonBlank(
+                    request.getHeader("X-SePay-Signature"),
+                    request.getHeader("X-Sepay-Signature"),
+                    request.getHeader("X-Signature"));
+            String timestamp = firstNonBlank(
+                    request.getHeader("X-SePay-Timestamp"),
+                    request.getHeader("X-Sepay-Timestamp"));
+            if (!signature.isBlank() && !timestamp.isBlank()) {
+                String signedPayload = timestamp + "." + (rawPayload == null ? "" : rawPayload);
+                String expected = hmacSha256(sePayConfig.getWebhookHmacSecret(), signedPayload);
+                if (constantTimeEquals(expected, signature)
+                        || constantTimeEquals("sha256=" + expected, signature)) {
+                    return true;
+                }
+            }
+        }
+
+        if (sePayConfig.hasWebhookApiKey()) {
+            hasConfiguredAuth = true;
+            String apiKey = firstNonBlank(
+                    request.getHeader("X-API-Key"),
+                    request.getHeader("X-Sepay-Api-Key"),
+                    authorizationCredential(request.getHeader("Authorization")));
+            if (sePayConfig.getWebhookApiKey().equals(apiKey)) {
+                return true;
+            }
+        }
+
+        if (!hasConfiguredAuth && sePayConfig.isReady()) {
+            log.warn("SePay webhook rejected because no webhook credential is configured");
+            return false;
+        }
+
+        return !hasConfiguredAuth;
+    }
+
+    private String resolveSePayTransactionNo(Map<String, Object> payload) {
+        String code = stringValue(payload, "code").trim();
+        if (!code.isBlank() && paymentRepository.findByTransactionNo(code).isPresent()) {
+            return code;
+        }
+
+        String searchable = (stringValue(payload, "content") + " "
+                + stringValue(payload, "description") + " "
+                + code).toUpperCase(Locale.ROOT);
+        String prefix = (sePayConfig.getDescriptionPrefix() == null || sePayConfig.getDescriptionPrefix().isBlank())
+                ? "CBK"
+                : sePayConfig.getDescriptionPrefix().toUpperCase(Locale.ROOT);
+
+        for (String token : searchable.split("[^A-Z0-9_]+")) {
+            if ((token.startsWith("SEPAY_") || token.startsWith(prefix))
+                    && paymentRepository.findByTransactionNo(token).isPresent()) {
+                return token;
+            }
+        }
+
+        return code;
+    }
+
+    private LocalDateTime resolveSePayPaymentTime(Map<String, Object> payload) {
+        String transactionDate = stringValue(payload, "transactionDate");
+        if (transactionDate.isBlank()) {
+            return LocalDateTime.now();
+        }
+        try {
+            return LocalDateTime.parse(transactionDate, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        } catch (DateTimeParseException ignored) {
+            return LocalDateTime.now();
+        }
+    }
+
+    private Map<String, Object> sePayWebhookResponse(boolean success, String message) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("success", success);
+        if (message != null && !message.isBlank()) {
+            response.put("message", message);
+        }
+        return response;
+    }
+
     private void recordPaymentEvent(
             Payment payment,
             Booking booking,
@@ -628,6 +921,9 @@ public class PaymentServiceImpl implements PaymentService {
         if (method == PaymentMethod.MOMO) {
             return "MOMO_" + bookingId.toString().replace("-", "") + "_" + VNPayUtil.getRandomNumber(8);
         }
+        if (method == PaymentMethod.SEPAY) {
+            return normalizedSePayPaymentPrefix() + VNPayUtil.getRandomNumber(10);
+        }
         return VNPayUtil.getRandomNumber(8);
     }
 
@@ -636,6 +932,16 @@ public class PaymentServiceImpl implements PaymentService {
                 .filter(gateway -> gateway.getMethod() == method)
                 .findFirst()
                 .orElseThrow(() -> new AppException(ErrorCode.PAYMENT_METHOD_UNAVAILABLE));
+    }
+
+    private String normalizedSePayPaymentPrefix() {
+        String prefix = sePayConfig.getDescriptionPrefix() == null
+                ? "CBK"
+                : sePayConfig.getDescriptionPrefix().trim().toUpperCase(Locale.ROOT);
+        if (!prefix.matches("[A-Z0-9]{2,5}")) {
+            return "CBK";
+        }
+        return prefix;
     }
 
     private boolean isValidMomoCallbackSignature(Map<String, Object> payload) {
@@ -722,6 +1028,39 @@ public class PaymentServiceImpl implements PaymentService {
         }
         Object value = map.get(key);
         return value == null ? "" : value.toString();
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+        return "";
+    }
+
+    private String authorizationCredential(String authorizationHeader) {
+        if (authorizationHeader == null || authorizationHeader.isBlank()) {
+            return "";
+        }
+        for (String prefix : List.of("Bearer ", "Apikey ", "ApiKey ")) {
+            if (authorizationHeader.regionMatches(true, 0, prefix, 0, prefix.length())) {
+                return authorizationHeader.substring(prefix.length()).trim();
+            }
+        }
+        return "";
+    }
+
+    private boolean constantTimeEquals(String expected, String actual) {
+        if (expected == null || actual == null) {
+            return false;
+        }
+        return MessageDigest.isEqual(
+                expected.toLowerCase(Locale.ROOT).getBytes(StandardCharsets.UTF_8),
+                actual.toLowerCase(Locale.ROOT).getBytes(StandardCharsets.UTF_8));
     }
 
     private String urlEncode(String value) {

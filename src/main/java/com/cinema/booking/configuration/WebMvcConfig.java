@@ -20,6 +20,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/api/v1/admin/audit-logs/**",
                         "/api/v1/payments/vnpay-callback",
                         "/api/v1/payments/momo-return",
-                        "/api/v1/payments/momo-ipn");
+                        "/api/v1/payments/momo-ipn",
+                        "/api/v1/payments/sepay-webhook");
     }
 }

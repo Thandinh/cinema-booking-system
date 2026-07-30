@@ -1,6 +1,7 @@
 package com.cinema.booking.controller;
 
 import com.cinema.booking.dto.request.ShowtimeCreationRequest;
+import com.cinema.booking.dto.request.ShowtimeCancelRequest;
 import com.cinema.booking.dto.request.ShowtimeUpdateRequest;
 import com.cinema.booking.dto.response.ApiResponse;
 import com.cinema.booking.dto.response.SeatMapItemResponse;
@@ -103,6 +104,18 @@ public class ShowtimeController {
         return ApiResponse.<Void>builder()
                 .code(1000)
                 .message("Showtime deleted successfully")
+                .build();
+    }
+
+    @PostMapping("/{id}/cancel")
+    @PreAuthorize("hasAuthority('SHOWTIME_UPDATE')")
+    public ApiResponse<ShowtimeResponse> cancelShowtime(
+            @PathVariable UUID id,
+            @Valid @RequestBody ShowtimeCancelRequest request) {
+        return ApiResponse.<ShowtimeResponse>builder()
+                .code(1000)
+                .message("Showtime cancelled successfully")
+                .result(showtimeService.cancelShowtimeWithPolicy(id, request))
                 .build();
     }
 }
