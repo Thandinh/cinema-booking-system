@@ -57,6 +57,7 @@ public class BookingMapper {
                 .customerName(customerName.isBlank() ? booking.getUser().getUsername() : customerName)
                 .customerEmail(booking.getUser().getEmail())
                 .showtimeId(booking.getShowtime().getId())
+                .showtimeStatus(booking.getShowtime().getStatus())
                 .movieTitle(booking.getShowtime().getMovie().getTitle())
                 .cinemaName(booking.getShowtime().getRoom().getCinema().getName())
                 .cinemaAddress(booking.getShowtime().getRoom().getCinema().getAddress())

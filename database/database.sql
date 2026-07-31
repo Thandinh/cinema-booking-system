@@ -440,6 +440,10 @@ CREATE INDEX idx_showtimes_status_start_time
     ON showtimes(status, start_time)
     WHERE is_deleted = false;
 
+CREATE INDEX idx_showtimes_status_end_time
+    ON showtimes(status, end_time)
+    WHERE is_deleted = false;
+
 CREATE INDEX idx_showtimes_movie_status_start_time
     ON showtimes(movie_id, status, start_time)
     WHERE is_deleted = false;

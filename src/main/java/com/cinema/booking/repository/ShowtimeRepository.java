@@ -5,6 +5,7 @@ import com.cinema.booking.enums.ShowtimeStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -16,6 +17,30 @@ import java.util.UUID;
 
 @Repository
 public interface ShowtimeRepository extends JpaRepository<Showtime, UUID> {
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE Showtime s
+            SET s.status = com.cinema.booking.enums.ShowtimeStatus.ENDED
+            WHERE s.isDeleted = false
+              AND s.status IN (
+                  com.cinema.booking.enums.ShowtimeStatus.UPCOMING,
+                  com.cinema.booking.enums.ShowtimeStatus.ONGOING
+              )
+              AND s.endTime <= :now
+            """)
+    int markFinishedShowtimesAsEnded(@Param("now") LocalDateTime now);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE Showtime s
+            SET s.status = com.cinema.booking.enums.ShowtimeStatus.ONGOING
+            WHERE s.isDeleted = false
+              AND s.status = com.cinema.booking.enums.ShowtimeStatus.UPCOMING
+              AND s.startTime <= :now
+              AND s.endTime > :now
+            """)
+    int markStartedShowtimesAsOngoing(@Param("now") LocalDateTime now);
 
     // Sử dụng JOIN FETCH để lấy kèm Movie và Room (và Cinema bên trong Room), triệt tiêu hoàn toàn N+1 Query
     @Query("""

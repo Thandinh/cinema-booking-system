@@ -87,6 +87,9 @@ class BookingWorkflowIntegrationTest extends PostgresIntegrationTest {
     ShowtimeService showtimeService;
 
     @Autowired
+    ShowtimeStatusSyncService showtimeStatusSyncService;
+
+    @Autowired
     TicketQrCodeService ticketQrCodeService;
 
     @Autowired
@@ -485,6 +488,51 @@ class BookingWorkflowIntegrationTest extends PostgresIntegrationTest {
                 eq(data.showtime().getId()),
                 argThat(ids -> ids.size() == selectedSeatIds.size() && ids.containsAll(selectedSeatIds)),
                 eq(SeatStatusType.AVAILABLE));
+    }
+
+    @Test
+    void synchronizeCurrentStatuses_shouldMoveShowtimesByCurrentTimeAndKeepCancelledUntouched() {
+        TestShowtimeData data = createShowtimeData();
+        LocalDateTime now = LocalDateTime.now();
+
+        Showtime ongoing = showtimeRepository.save(Showtime.builder()
+                .movie(data.movie())
+                .room(data.room())
+                .startTime(now.minusMinutes(10))
+                .endTime(now.plusMinutes(20))
+                .basePrice(BASE_PRICE)
+                .status(ShowtimeStatus.UPCOMING)
+                .isDeleted(false)
+                .build());
+        Showtime ended = showtimeRepository.save(Showtime.builder()
+                .movie(data.movie())
+                .room(data.room())
+                .startTime(now.minusHours(3))
+                .endTime(now.minusHours(1))
+                .basePrice(BASE_PRICE)
+                .status(ShowtimeStatus.UPCOMING)
+                .isDeleted(false)
+                .build());
+        Showtime cancelled = showtimeRepository.save(Showtime.builder()
+                .movie(data.movie())
+                .room(data.room())
+                .startTime(now.minusHours(2))
+                .endTime(now.minusHours(1))
+                .basePrice(BASE_PRICE)
+                .status(ShowtimeStatus.CANCELLED)
+                .isDeleted(false)
+                .build());
+        showtimeRepository.flush();
+
+        int updatedCount = showtimeStatusSyncService.synchronizeCurrentStatuses();
+
+        assertThat(updatedCount).isGreaterThanOrEqualTo(2);
+        assertThat(showtimeRepository.findById(ongoing.getId()).orElseThrow().getStatus())
+                .isEqualTo(ShowtimeStatus.ONGOING);
+        assertThat(showtimeRepository.findById(ended.getId()).orElseThrow().getStatus())
+                .isEqualTo(ShowtimeStatus.ENDED);
+        assertThat(showtimeRepository.findById(cancelled.getId()).orElseThrow().getStatus())
+                .isEqualTo(ShowtimeStatus.CANCELLED);
     }
 
     private void clearBusinessData() {

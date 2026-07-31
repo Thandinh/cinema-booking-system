@@ -1,6 +1,7 @@
 package com.cinema.booking.dto.response;
 
 import com.cinema.booking.enums.BookingStatus;
+import com.cinema.booking.enums.ShowtimeStatus;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
@@ -26,6 +27,7 @@ public class BookingResponse {
 
     // Showtime info
     UUID showtimeId;
+    ShowtimeStatus showtimeStatus;
     String movieTitle;
     String cinemaName;
     String cinemaAddress;

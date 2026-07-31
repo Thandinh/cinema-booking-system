@@ -32,6 +32,7 @@ import com.cinema.booking.service.EmailService;
 import com.cinema.booking.service.PaymentEventService;
 import com.cinema.booking.service.StaffCinemaScopeService;
 import com.cinema.booking.service.ShowtimeService;
+import com.cinema.booking.service.ShowtimeStatusSyncService;
 import com.cinema.booking.websocket.SeatStatusPublisher;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -73,6 +74,7 @@ public class ShowtimeServiceImpl implements ShowtimeService {
     PaymentEventService paymentEventService;
     EmailService emailService;
     SeatStatusPublisher seatStatusPublisher;
+    ShowtimeStatusSyncService showtimeStatusSyncService;
 
     @NonFinal
     @Value("${showtime.public-days-ahead:7}")
@@ -264,6 +266,7 @@ public class ShowtimeServiceImpl implements ShowtimeService {
     @Override
     @Transactional(readOnly = true)
     public Page<ShowtimeResponse> getAllShowtimes(Pageable pageable) {
+        showtimeStatusSyncService.synchronizeCurrentStatuses();
         if (staffCinemaScopeService.isStaffButNotAdmin()) {
             List<UUID> cinemaIds = staffCinemaScopeService.getCurrentStaffCinemaIds();
             if (cinemaIds.isEmpty()) {

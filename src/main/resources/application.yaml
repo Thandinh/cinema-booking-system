@@ -105,6 +105,7 @@ booking:
 showtime:
   public-days-ahead: ${SHOWTIME_PUBLIC_DAYS_AHEAD:7}
   booking-cutoff-minutes: ${SHOWTIME_BOOKING_CUTOFF_MINUTES:15}
+  status-sync-delay-ms: ${SHOWTIME_STATUS_SYNC_DELAY_MS:60000}
 
 oauth:
   google:
