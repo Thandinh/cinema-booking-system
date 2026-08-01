@@ -1,0 +1,72 @@
+package com.cinema.booking.repository;
+
+import com.cinema.booking.entity.User;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+@Repository
+public interface UserRepository extends JpaRepository<User, UUID> {
+
+    Optional<User> findByUsername(String username);
+
+    Optional<User> findByEmail(String email);
+
+    @Query("SELECT u FROM User u WHERE LOWER(u.email) = LOWER(:email)")
+    Optional<User> findByEmailIgnoreCase(@Param("email") String email);
+
+    @Query("SELECT CASE WHEN COUNT(u) > 0 THEN true ELSE false END FROM User u WHERE LOWER(u.email) = LOWER(:email)")
+    boolean existsByEmailIgnoreCase(@Param("email") String email);
+
+    Optional<User> findByEmailVerificationTokenHash(String emailVerificationTokenHash);
+
+    Optional<User> findByPasswordResetTokenHash(String passwordResetTokenHash);
+
+    boolean existsByUsername(String username);
+
+    boolean existsByEmail(String email);
+
+    /** Lấy danh sách user chưa bị xoá mềm, hỗ trợ phân trang */
+    @Query("SELECT u FROM User u WHERE u.isDeleted = false OR u.isDeleted IS NULL")
+    Page<User> findAllByIsDeletedFalse(Pageable pageable);
+
+    @Query(value = "SELECT u.id FROM User u WHERE u.isDeleted = false OR u.isDeleted IS NULL",
+           countQuery = "SELECT COUNT(u) FROM User u WHERE u.isDeleted = false OR u.isDeleted IS NULL")
+    Page<UUID> findActiveIds(Pageable pageable);
+
+    @Query("""
+            SELECT DISTINCT u FROM User u
+            LEFT JOIN FETCH u.roles r
+            LEFT JOIN FETCH r.permissions
+            WHERE u.id IN :ids
+            """)
+    List<User> findAllWithRolesByIdIn(@Param("ids") List<UUID> ids);
+
+    /** Tìm user chưa bị xoá mềm theo UUID */
+    @Query("SELECT u FROM User u WHERE u.id = :id AND (u.isDeleted = false OR u.isDeleted IS NULL)")
+    Optional<User> findActiveById(@Param("id") UUID id);
+
+    // ── Analytics ─────────────────────────────────────────────────────────────
+
+    /** Đếm user đăng ký trong ngày */
+    @Query("SELECT COUNT(u) FROM User u WHERE u.createdAt >= :startOfDay AND u.createdAt < :endOfDay AND (u.isDeleted = false OR u.isDeleted IS NULL)")
+    Long countNewUsersToday(@Param("startOfDay") LocalDateTime startOfDay,
+                            @Param("endOfDay")   LocalDateTime endOfDay);
+
+    /** Đếm user đăng ký trong tháng */
+    @Query("SELECT COUNT(u) FROM User u WHERE u.createdAt >= :startOfMonth AND u.createdAt < :endOfMonth AND (u.isDeleted = false OR u.isDeleted IS NULL)")
+    Long countNewUsersThisMonth(@Param("startOfMonth") LocalDateTime startOfMonth,
+                                @Param("endOfMonth")   LocalDateTime endOfMonth);
+
+    /** Tổng số user active */
+    @Query("SELECT COUNT(u) FROM User u WHERE (u.isDeleted = false OR u.isDeleted IS NULL)")
+    Long countActiveUsers();
+}

@@ -8,27 +8,154 @@ spring:
     password: ${DB_PASSWORD:123456}
     driver-class-name: org.postgresql.Driver
 
+  sql:
+    init:
+      mode: ${SQL_INIT_MODE:never}
+
+  cache:
+    type: caffeine
+    cache-names:
+      - movies
+      - cinemas
+      - cinema-map
+      - rooms-by-cinema
+      - seats-by-room
+      - promotions
+    caffeine:
+      spec: ${CACHE_CAFFEINE_SPEC:maximumSize=1000,expireAfterWrite=10m}
+
+  flyway:
+    enabled: ${FLYWAY_ENABLED:true}
+    locations: classpath:db/migration
+    baseline-on-migrate: ${FLYWAY_BASELINE_ON_MIGRATE:true}
+    baseline-version: ${FLYWAY_BASELINE_VERSION:1}
+    validate-on-migrate: true
+
   jpa:
     hibernate:
-      ddl-auto: none
-    show-sql: true
+      ddl-auto: validate
+    open-in-view: ${JPA_OPEN_IN_VIEW:false}
+    show-sql: ${HIBERNATE_SHOW_SQL:false}
     properties:
       hibernate:
-        format_sql: true
-        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: ${HIBERNATE_FORMAT_SQL:false}
+        generate_statistics: ${HIBERNATE_GENERATE_STATISTICS:false}
+        default_batch_fetch_size: ${HIBERNATE_DEFAULT_BATCH_FETCH_SIZE:50}
+        session:
+          events:
+            log:
+              LOG_QUERIES_SLOWER_THAN_MS: ${HIBERNATE_SLOW_QUERY_MS:0}
+        query:
+          fail_on_pagination_over_collection_fetch: true
 
   jackson:
     serialization:
       FAIL_ON_EMPTY_BEANS: false
 
+  # Cấu hình gửi Email (Sử dụng Mailtrap.io để test môi trường dev)
+  mail:
+    host: ${MAIL_HOST:sandbox.smtp.mailtrap.io}
+    port: ${MAIL_PORT:2525}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+vnpay:
+  tmnCode: ${VNP_TMN_CODE:YOUR_TMN_CODE}
+  hashSecret: ${VNP_HASH_SECRET:YOUR_HASH_SECRET}
+  url: ${VNP_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+  returnUrl: ${VNP_RETURN_URL:http://localhost:8080/api/v1/payments/vnpay-callback}
+  version: 2.1.0
+  command: pay
+
+momo:
+  enabled: ${MOMO_ENABLED:false}
+  endpoint: ${MOMO_ENDPOINT:https://test-payment.momo.vn/v2/gateway/api/create}
+  partner-code: ${MOMO_PARTNER_CODE:}
+  access-key: ${MOMO_ACCESS_KEY:}
+  secret-key: ${MOMO_SECRET_KEY:}
+  request-type: ${MOMO_REQUEST_TYPE:captureWallet}
+  redirect-url: ${MOMO_REDIRECT_URL:${APP_BACKEND_URL:http://localhost:8080}/api/v1/payments/momo-return}
+  ipn-url: ${MOMO_IPN_URL:${APP_BACKEND_URL:http://localhost:8080}/api/v1/payments/momo-ipn}
+  lang: ${MOMO_LANG:vi}
+
+sepay:
+  enabled: ${SEPAY_ENABLED:false}
+  bank-code: ${SEPAY_BANK_CODE:}
+  account-number: ${SEPAY_ACCOUNT_NUMBER:}
+  account-name: ${SEPAY_ACCOUNT_NAME:}
+  description-prefix: ${SEPAY_DESCRIPTION_PREFIX:CBK}
+  qr-base-url: ${SEPAY_QR_BASE_URL:https://vietqr.app/img}
+  webhook-api-key: ${SEPAY_WEBHOOK_API_KEY:}
+  webhook-hmac-secret: ${SEPAY_WEBHOOK_HMAC_SECRET:}
+
+booking:
+  seat-hold-minutes: ${BOOKING_SEAT_HOLD_MINUTES:${BOOKING_PENDING_TIMEOUT_MINUTES:5}}
+  pending-timeout-minutes: ${BOOKING_PENDING_TIMEOUT_MINUTES:5}
+  expired-hold-scan-delay-ms: ${BOOKING_EXPIRED_HOLD_SCAN_DELAY_MS:30000}
+  expired-hold-scan-limit: ${BOOKING_EXPIRED_HOLD_SCAN_LIMIT:500}
+  expired-booking-scan-delay-ms: ${BOOKING_EXPIRED_BOOKING_SCAN_DELAY_MS:30000}
+  expired-booking-scan-limit: ${BOOKING_EXPIRED_BOOKING_SCAN_LIMIT:200}
+
+showtime:
+  public-days-ahead: ${SHOWTIME_PUBLIC_DAYS_AHEAD:7}
+  booking-cutoff-minutes: ${SHOWTIME_BOOKING_CUTOFF_MINUTES:15}
+  status-sync-delay-ms: ${SHOWTIME_STATUS_SYNC_DELAY_MS:60000}
+
+oauth:
+  google:
+    client-id: ${GOOGLE_CLIENT_ID:}
+
+app:
+  frontend-url: ${APP_FRONTEND_URL:http://localhost:5173}
+  email-verification:
+    expires-minutes: ${EMAIL_VERIFICATION_EXPIRES_MINUTES:1440}
+  password-reset:
+    expires-minutes: ${PASSWORD_RESET_EXPIRES_MINUTES:30}
+
 server:
   port: ${SERVER_PORT:8080}
 
 jwt:
-  secret: ${JWT_SECRET:your-secret-key-123456}
-  expiration: ${JWT_EXPIRATION:86400000}
+  signer-key: ${JWT_SECRET:default-dev-secret-key-32-chars-minimum}
+  access-token-valid-duration: 3600
+  refresh-token-valid-duration: 604800
+
+ticket:
+  qr-secret: ${TICKET_QR_SECRET:${JWT_SECRET:default-dev-secret-key-32-chars-minimum}}
+  check-in-early-minutes: ${TICKET_CHECK_IN_EARLY_MINUTES:60}
+  check-in-late-minutes: ${TICKET_CHECK_IN_LATE_MINUTES:30}
+
+logging:
+  file:
+    name: logs/application.log
+  level:
+    org.hibernate.SQL: ${HIBERNATE_SQL_LOG_LEVEL:WARN}
+    org.hibernate.orm.jdbc.bind: ${HIBERNATE_BIND_LOG_LEVEL:WARN}
+
+---
+spring:
+  config:
+    activate:
+      on-profile: sql-profile
+  jpa:
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        generate_statistics: true
+        session:
+          events:
+            log:
+              LOG_QUERIES_SLOWER_THAN_MS: ${HIBERNATE_SLOW_QUERY_MS:50}
 
 logging:
   level:
-    org.hibernate.SQL: debug
-    org.hibernate.type.descriptor.sql.BasicBinder: trace
+    org.hibernate.SQL: DEBUG
+    org.hibernate.orm.jdbc.bind: TRACE
+    org.hibernate.stat: DEBUG

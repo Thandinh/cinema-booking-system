@@ -32,8 +32,7 @@ build/
 *.ipr
 out/
 gen/
-# Nếu bạn muốn giữ lại cấu hình run configurations (tùy chọn)
-# !.idea/runConfigurations/
+
 
 # --- [ Security & Environment ] ---
 .env
@@ -58,6 +57,7 @@ $RECYCLE.BIN/
 ._*
 
 # --- [ Virtual Machine & Logs ] ---
+logs/
 hs_err_pid*
 replay_pid*
 replay_pid*.log
@@ -67,3 +67,4 @@ replay_pid*.log
 bin/
 temp/
 tmp/
+~$*.docx
