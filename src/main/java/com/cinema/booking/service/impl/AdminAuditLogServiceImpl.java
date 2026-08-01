@@ -1,9 +1,11 @@
 package com.cinema.booking.service.impl;
 
+import com.cinema.booking.dto.request.AuditLogSearchRequest;
 import com.cinema.booking.dto.response.AdminAuditLogResponse;
 import com.cinema.booking.entity.AdminAuditLog;
 import com.cinema.booking.repository.AdminAuditLogRepository;
 import com.cinema.booking.service.AdminAuditLogService;
+import com.cinema.booking.util.DateRange;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.AccessLevel;
@@ -71,22 +73,26 @@ public class AdminAuditLogServiceImpl implements AdminAuditLogService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<AdminAuditLogResponse> getAuditLogs(
-            Pageable pageable,
-            String action,
-            String resource,
-            Boolean success,
-            String keyword) {
-        String keywordPattern = keyword == null || keyword.isBlank()
+    public Page<AdminAuditLogResponse> getAuditLogs(AuditLogSearchRequest request, Pageable pageable) {
+        AuditLogSearchRequest safeRequest = request == null ? new AuditLogSearchRequest() : request;
+        DateRange dateRange = DateRange.of(safeRequest.getFromDate(), safeRequest.getToDate());
+        String keywordPattern = safeRequest.getKeyword() == null || safeRequest.getKeyword().isBlank()
                 ? null
-                : "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
-        String normalizedAction = normalizeFilter(action);
-        String normalizedResource = normalizeFilter(resource);
+                : "%" + safeRequest.getKeyword().trim().toLowerCase(Locale.ROOT) + "%";
+        String normalizedAction = normalizeFilter(safeRequest.getAction());
+        String normalizedResource = normalizeFilter(safeRequest.getResource());
 
         return adminAuditLogRepository
-                .search(normalizedAction, normalizedResource, success, keywordPattern, pageable)
-                .map(this::toResponse);
-    }
+                .search(
+                        normalizedAction,
+                         normalizedResource,
+                         safeRequest.getSuccess(),
+                         keywordPattern,
+                        dateRange.fromSearchBound(),
+                        dateRange.toSearchBound(),
+                         pageable)
+                 .map(this::toResponse);
+     }
 
     private AdminAuditLogResponse toResponse(AdminAuditLog logEntry) {
         return AdminAuditLogResponse.builder()

@@ -1,6 +1,7 @@
 package com.cinema.booking.controller;
 
 import com.cinema.booking.dto.request.ApplyPromotionRequest;
+import com.cinema.booking.dto.request.BookingSearchRequest;
 import com.cinema.booking.dto.request.CreateBookingRequest;
 import com.cinema.booking.dto.request.HoldSeatRequest;
 import com.cinema.booking.dto.request.TicketCheckInRequest;
@@ -79,11 +80,11 @@ public class BookingController {
     @GetMapping
     @PreAuthorize("hasAuthority('BOOKING_VIEW_ALL')")
     public ApiResponse<Page<BookingResponse>> getAllBookings(
-            @RequestParam(required = false) BookingStatus status,
+            @ModelAttribute BookingSearchRequest request,
             @PageableDefault(size = 20, sort = "createdAt") Pageable pageable) {
         return ApiResponse.<Page<BookingResponse>>builder()
                 .code(1000)
-                .result(bookingService.getAllBookings(status, pageable))
+                .result(bookingService.getAllBookings(request, pageable))
                 .build();
     }
 

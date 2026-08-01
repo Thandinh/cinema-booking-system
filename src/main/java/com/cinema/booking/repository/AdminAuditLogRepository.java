@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.UUID;
+import java.time.LocalDateTime;
 
 @Repository
 public interface AdminAuditLogRepository extends JpaRepository<AdminAuditLog, UUID> {
@@ -19,6 +20,8 @@ public interface AdminAuditLogRepository extends JpaRepository<AdminAuditLog, UU
             WHERE (:action IS NULL OR l.action = :action)
               AND (:resource IS NULL OR l.resource = :resource)
               AND (:success IS NULL OR l.success = :success)
+              AND l.createdAt >= :fromTime
+              AND l.createdAt < :toTime
               AND (
                     :keywordPattern IS NULL
                     OR LOWER(l.actorUsername) LIKE :keywordPattern
@@ -32,5 +35,7 @@ public interface AdminAuditLogRepository extends JpaRepository<AdminAuditLog, UU
             @Param("resource") String resource,
             @Param("success") Boolean success,
             @Param("keywordPattern") String keywordPattern,
+            @Param("fromTime") LocalDateTime fromTime,
+            @Param("toTime") LocalDateTime toTime,
             Pageable pageable);
 }

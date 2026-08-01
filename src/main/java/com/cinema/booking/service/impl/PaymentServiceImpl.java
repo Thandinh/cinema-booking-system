@@ -3,6 +3,7 @@ package com.cinema.booking.service.impl;
 import com.cinema.booking.configuration.MomoConfig;
 import com.cinema.booking.configuration.SePayConfig;
 import com.cinema.booking.configuration.VNPayConfig;
+import com.cinema.booking.dto.request.PaymentSearchRequest;
 import com.cinema.booking.dto.response.PaymentReconciliationIssueResponse;
 import com.cinema.booking.dto.response.PaymentResponse;
 import com.cinema.booking.entity.Booking;
@@ -20,6 +21,7 @@ import com.cinema.booking.repository.PaymentRepository;
 import com.cinema.booking.repository.PaymentReconciliationIssueRow;
 import com.cinema.booking.service.PaymentEventService;
 import com.cinema.booking.service.PaymentService;
+import com.cinema.booking.util.DateRange;
 import com.cinema.booking.service.StaffCinemaScopeService;
 import com.cinema.booking.util.SecurityUtils;
 import com.cinema.booking.util.VNPayUtil;
@@ -216,23 +218,34 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<PaymentResponse> getAllPayments(
-            Pageable pageable,
-            PaymentStatus status,
-            PaymentMethod method,
-            String keyword) {
-        String keywordPattern = keyword == null || keyword.isBlank()
+    public Page<PaymentResponse> getAllPayments(PaymentSearchRequest request, Pageable pageable) {
+        PaymentSearchRequest safeRequest = request == null ? new PaymentSearchRequest() : request;
+        DateRange dateRange = DateRange.of(safeRequest.getFromDate(), safeRequest.getToDate());
+        String keywordPattern = safeRequest.getKeyword() == null || safeRequest.getKeyword().isBlank()
                 ? null
-                : "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
+                : "%" + safeRequest.getKeyword().trim().toLowerCase(Locale.ROOT) + "%";
         if (staffCinemaScopeService.isStaffButNotAdmin()) {
             List<UUID> cinemaIds = staffCinemaScopeService.getCurrentStaffCinemaIds();
             if (cinemaIds.isEmpty()) {
                 return Page.empty(pageable);
             }
-            return paymentRepository.findAllWithDetailsByCinemaIds(status, method, keywordPattern, cinemaIds, pageable)
-                    .map(paymentMapper::toPaymentResponse);
+            return paymentRepository.findAllWithDetailsByCinemaIds(
+                              safeRequest.getStatus(),
+                              safeRequest.getMethod(),
+                              keywordPattern,
+                            dateRange.fromSearchBound(),
+                            dateRange.toSearchBound(),
+                              cinemaIds,
+                              pageable)
+                      .map(paymentMapper::toPaymentResponse);
         }
-        return paymentRepository.findAllWithDetails(status, method, keywordPattern, pageable)
+        return paymentRepository.findAllWithDetails(
+                        safeRequest.getStatus(),
+                        safeRequest.getMethod(),
+                        keywordPattern,
+                        dateRange.fromSearchBound(),
+                        dateRange.toSearchBound(),
+                        pageable)
                 .map(paymentMapper::toPaymentResponse);
     }
 

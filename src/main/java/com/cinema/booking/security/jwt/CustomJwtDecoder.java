@@ -7,6 +7,7 @@ import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtException;
@@ -26,22 +27,35 @@ public class CustomJwtDecoder implements JwtDecoder {
     private final JwtProperties jwtProperties;
 
     final AuthenticationService authenticationService;
-    NimbusJwtDecoder nimbusJwtDecoder = null;
+    volatile NimbusJwtDecoder nimbusJwtDecoder;
 
     @Override
     public Jwt decode(String token) throws JwtException {
+        try {
+            ensureTokenIsActive(token);
+            return getNimbusJwtDecoder().decode(token);
+        } catch (BadJwtException exception) {
+            throw exception;
+        } catch (JwtException exception) {
+            throw new BadJwtException("Invalid token", exception);
+        }
+    }
 
-        // 1. Kiểm tra Introspect trước (Database check)
+    private void ensureTokenIsActive(String token) {
+        // Database-backed checks: token type, expiry, logout blacklist, and user state.
         var response = authenticationService.introspect(IntrospectRequest.builder().token(token).build());
-        if (!response.isValid()) throw new JwtException("Invalid token");
+        if (!response.isValid()) {
+            throw new BadJwtException("Invalid token");
+        }
+    }
 
-        // 2. Nếu OK, tiến hành decode
+    private synchronized NimbusJwtDecoder getNimbusJwtDecoder() {
         if (Objects.isNull(nimbusJwtDecoder)) {
             SecretKeySpec secretKeySpec = new SecretKeySpec(jwtProperties.getSignerKey().getBytes(), "HS512");
             nimbusJwtDecoder = NimbusJwtDecoder.withSecretKey(secretKeySpec)
                     .macAlgorithm(MacAlgorithm.HS512)
                     .build();
         }
-        return nimbusJwtDecoder.decode(token);
+        return nimbusJwtDecoder;
     }
 }

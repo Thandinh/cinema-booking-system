@@ -2,6 +2,7 @@ package com.cinema.booking.controller;
 
 import com.cinema.booking.dto.request.ShowtimeCreationRequest;
 import com.cinema.booking.dto.request.ShowtimeCancelRequest;
+import com.cinema.booking.dto.request.ShowtimeSearchRequest;
 import com.cinema.booking.dto.request.ShowtimeUpdateRequest;
 import com.cinema.booking.dto.response.ApiResponse;
 import com.cinema.booking.dto.response.SeatMapItemResponse;
@@ -60,10 +61,11 @@ public class ShowtimeController {
 
     @GetMapping
     public ApiResponse<Page<ShowtimeResponse>> getAllShowtimes(
+            @ModelAttribute ShowtimeSearchRequest request,
             @PageableDefault(size = 20, sort = "startTime") Pageable pageable) {
         return ApiResponse.<Page<ShowtimeResponse>>builder()
                 .code(1000)
-                .result(showtimeService.getAllShowtimes(pageable))
+                .result(showtimeService.getAllShowtimes(request, pageable))
                 .build();
     }
 

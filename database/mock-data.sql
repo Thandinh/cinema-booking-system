@@ -78,6 +78,9 @@ CREATE INDEX IF NOT EXISTS idx_bookings_pending_expires_id
     ON bookings(payment_expires_at, id)
     WHERE status = 'PENDING';
 
+CREATE INDEX IF NOT EXISTS idx_bookings_showtime_created_at
+    ON bookings(showtime_id, created_at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_showtimes_movie_status_start_time
     ON showtimes(movie_id, status, start_time)
     WHERE is_deleted = false;
@@ -92,6 +95,12 @@ CREATE INDEX IF NOT EXISTS idx_tickets_checked_in_by
 
 CREATE INDEX IF NOT EXISTS idx_payments_booking_status
     ON payments(booking_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_payments_created_at
+    ON payments(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_payments_status_method_created_at
+    ON payments(status, method, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS payment_events (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -118,6 +127,12 @@ CREATE INDEX IF NOT EXISTS idx_payment_events_booking_created_at
 CREATE INDEX IF NOT EXISTS idx_payment_events_transaction_no
     ON payment_events(transaction_no)
     WHERE transaction_no IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_payment_events_created_at
+    ON payment_events(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_payment_events_type_created_at
+    ON payment_events(event_type, created_at DESC);
 
 -- 1. DỌN DẸP DỮ LIỆU NGHIỆP VỤ CŨ
 -- Không truncate users/roles/permissions để tránh xoá dữ liệu do ApplicationInitConfig tạo.
@@ -175,6 +190,37 @@ CREATE INDEX IF NOT EXISTS idx_auth_audit_logs_event_created_at
 CREATE INDEX IF NOT EXISTS idx_auth_audit_logs_success_created_at
     ON auth_audit_logs(success, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS admin_audit_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    actor_id UUID,
+    actor_username VARCHAR(255),
+    http_method VARCHAR(20) NOT NULL,
+    action VARCHAR(80) NOT NULL,
+    resource VARCHAR(80) NOT NULL,
+    resource_id VARCHAR(100),
+    request_path VARCHAR(500) NOT NULL,
+    query_string VARCHAR(500),
+    ip_address VARCHAR(80),
+    user_agent VARCHAR(500),
+    status_code INT,
+    success BOOLEAN,
+    error_message VARCHAR(1000),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_created_at
+    ON admin_audit_logs(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_resource_created_at
+    ON admin_audit_logs(resource, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_action_created_at
+    ON admin_audit_logs(action, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_success_created_at
+    ON admin_audit_logs(success, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS staff_cinemas (
     staff_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     cinema_id UUID NOT NULL REFERENCES cinemas(id) ON DELETE CASCADE,
@@ -190,6 +236,7 @@ CREATE INDEX IF NOT EXISTS idx_staff_cinemas_cinema_id
 
 DELETE FROM refresh_tokens;
 DELETE FROM auth_audit_logs;
+DELETE FROM admin_audit_logs;
 
 TRUNCATE TABLE
     tickets,
@@ -221,37 +268,59 @@ END $$;
 
 -- Mật khẩu mặc định: 123456 (BCrypt)
 INSERT INTO users (
-    id, username, password, first_name, last_name, email,
-    created_at, updated_at, is_active, is_deleted
+    id, username, password, first_name, last_name, dob, phone, email,
+    avatar_url, email_verified, created_at, updated_at, is_active, is_deleted
 ) VALUES
-(uuid_generate_v4(), 'staff1', '$2a$10$IB6dDsPRTXg.d94FjmekPe7TWIi/xAbgIT3vozfkaZ9Dj0cOobzky', 'Nhân', 'Viên', 'staff@cinema.com', NOW(), NOW(), true, false),
-(uuid_generate_v4(), 'user1',  '$2a$10$IB6dDsPRTXg.d94FjmekPe7TWIi/xAbgIT3vozfkaZ9Dj0cOobzky', 'Khách', 'Hàng 1', 'user1@cinema.com', NOW(), NOW(), true, false),
-(uuid_generate_v4(), 'user2',  '$2a$10$IB6dDsPRTXg.d94FjmekPe7TWIi/xAbgIT3vozfkaZ9Dj0cOobzky', 'Khách', 'Hàng 2', 'user2@cinema.com', NOW(), NOW(), true, false)
+(uuid_generate_v4(), 'staff1', '$2a$10$IB6dDsPRTXg.d94FjmekPe7TWIi/xAbgIT3vozfkaZ9Dj0cOobzky', 'Nhân', 'Viên', '1995-03-12', '0901000001', 'staff@cinema.com', 'https://i.pravatar.cc/160?img=12', true, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'staff_hcm', '$2a$10$IB6dDsPRTXg.d94FjmekPe7TWIi/xAbgIT3vozfkaZ9Dj0cOobzky', 'Minh', 'Khang', '1994-08-21', '0901000002', 'staff.hcm@cinemabooking.vn', 'https://i.pravatar.cc/160?img=15', true, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'staff_hanoi', '$2a$10$IB6dDsPRTXg.d94FjmekPe7TWIi/xAbgIT3vozfkaZ9Dj0cOobzky', 'Thu', 'Trang', '1996-01-18', '0901000003', 'staff.hanoi@cinemabooking.vn', 'https://i.pravatar.cc/160?img=32', true, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'staff_danang', '$2a$10$IB6dDsPRTXg.d94FjmekPe7TWIi/xAbgIT3vozfkaZ9Dj0cOobzky', 'Hoàng', 'Nam', '1993-11-05', '0901000004', 'staff.danang@cinemabooking.vn', 'https://i.pravatar.cc/160?img=56', true, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'staff_hue', '$2a$10$IB6dDsPRTXg.d94FjmekPe7TWIi/xAbgIT3vozfkaZ9Dj0cOobzky', 'Bảo', 'Ngọc', '1997-06-26', '0901000005', 'staff.hue@cinemabooking.vn', 'https://i.pravatar.cc/160?img=47', true, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'staff_unassigned', '$2a$10$IB6dDsPRTXg.d94FjmekPe7TWIi/xAbgIT3vozfkaZ9Dj0cOobzky', 'Chưa', 'Phân Công', '1998-09-09', '0901000006', 'staff.unassigned@cinemabooking.vn', 'https://i.pravatar.cc/160?img=68', true, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'staff_blocked', '$2a$10$IB6dDsPRTXg.d94FjmekPe7TWIi/xAbgIT3vozfkaZ9Dj0cOobzky', 'Tạm', 'Khóa', '1992-12-02', '0901000007', 'staff.blocked@cinemabooking.vn', 'https://i.pravatar.cc/160?img=20', true, NOW(), NOW(), false, false),
+(uuid_generate_v4(), 'user1',  '$2a$10$IB6dDsPRTXg.d94FjmekPe7TWIi/xAbgIT3vozfkaZ9Dj0cOobzky', 'Khách', 'Hàng 1', '1999-04-10', '0912000001', 'user1@cinema.com', 'https://i.pravatar.cc/160?img=1', true, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'user2',  '$2a$10$IB6dDsPRTXg.d94FjmekPe7TWIi/xAbgIT3vozfkaZ9Dj0cOobzky', 'Khách', 'Hàng 2', '2000-07-14', '0912000002', 'user2@cinema.com', 'https://i.pravatar.cc/160?img=2', true, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'user3',  '$2a$10$IB6dDsPRTXg.d94FjmekPe7TWIi/xAbgIT3vozfkaZ9Dj0cOobzky', 'An', 'Nhiên', '1998-02-22', '0912000003', 'annhien@example.com', 'https://i.pravatar.cc/160?img=3', true, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'user4',  '$2a$10$IB6dDsPRTXg.d94FjmekPe7TWIi/xAbgIT3vozfkaZ9Dj0cOobzky', 'Quốc', 'Bảo', '1997-10-30', '0912000004', 'quocbao@example.com', 'https://i.pravatar.cc/160?img=4', true, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'user5',  '$2a$10$IB6dDsPRTXg.d94FjmekPe7TWIi/xAbgIT3vozfkaZ9Dj0cOobzky', 'Mai', 'Chi', '2001-05-19', '0912000005', 'maichi@example.com', 'https://i.pravatar.cc/160?img=5', true, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'user6',  '$2a$10$IB6dDsPRTXg.d94FjmekPe7TWIi/xAbgIT3vozfkaZ9Dj0cOobzky', 'Gia', 'Huy', '1996-12-24', '0912000006', 'giahuy@example.com', 'https://i.pravatar.cc/160?img=6', true, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'user7',  '$2a$10$IB6dDsPRTXg.d94FjmekPe7TWIi/xAbgIT3vozfkaZ9Dj0cOobzky', 'Thanh', 'Vy', '2002-01-08', '0912000007', 'thanhvy@example.com', 'https://i.pravatar.cc/160?img=7', true, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'user8',  '$2a$10$IB6dDsPRTXg.d94FjmekPe7TWIi/xAbgIT3vozfkaZ9Dj0cOobzky', 'Đức', 'Anh', '1995-08-03', '0912000008', 'ducanh@example.com', 'https://i.pravatar.cc/160?img=8', true, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'user_vip', '$2a$10$IB6dDsPRTXg.d94FjmekPe7TWIi/xAbgIT3vozfkaZ9Dj0cOobzky', 'Linh', 'Đan', '1994-11-16', '0912000009', 'vip.customer@example.com', 'https://i.pravatar.cc/160?img=9', true, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'user_pending', '$2a$10$IB6dDsPRTXg.d94FjmekPe7TWIi/xAbgIT3vozfkaZ9Dj0cOobzky', 'Chờ', 'Xác Thực', '2003-03-03', '0912000010', 'pending.verify@example.com', 'https://i.pravatar.cc/160?img=10', false, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'user_blocked', '$2a$10$IB6dDsPRTXg.d94FjmekPe7TWIi/xAbgIT3vozfkaZ9Dj0cOobzky', 'Người', 'Bị Khóa', '1991-09-12', '0912000011', 'blocked.user@example.com', 'https://i.pravatar.cc/160?img=11', true, NOW(), NOW(), false, false)
 ON CONFLICT (username) DO UPDATE SET
     password = EXCLUDED.password,
     first_name = EXCLUDED.first_name,
     last_name = EXCLUDED.last_name,
+    dob = EXCLUDED.dob,
+    phone = EXCLUDED.phone,
     email = EXCLUDED.email,
+    avatar_url = EXCLUDED.avatar_url,
+    email_verified = EXCLUDED.email_verified,
     updated_at = NOW(),
-    is_active = true,
-    is_deleted = false;
+    is_active = EXCLUDED.is_active,
+    is_deleted = EXCLUDED.is_deleted;
 
 DELETE FROM users_roles ur
 USING users u
 WHERE ur.user_id = u.id
-  AND u.username IN ('staff1', 'user1', 'user2');
+  AND u.username IN (
+      'staff1', 'staff_hcm', 'staff_hanoi', 'staff_danang', 'staff_hue', 'staff_unassigned', 'staff_blocked',
+      'user1', 'user2', 'user3', 'user4', 'user5', 'user6', 'user7', 'user8', 'user_vip', 'user_pending', 'user_blocked'
+  );
 
 INSERT INTO users_roles (user_id, role_id)
 SELECT u.id, r.id
 FROM users u
 JOIN roles r ON r.name = 'STAFF'
-WHERE u.username = 'staff1';
+WHERE u.username IN ('staff1', 'staff_hcm', 'staff_hanoi', 'staff_danang', 'staff_hue', 'staff_unassigned', 'staff_blocked');
 
 INSERT INTO users_roles (user_id, role_id)
 SELECT u.id, r.id
 FROM users u
 JOIN roles r ON r.name = 'USER'
-WHERE u.username IN ('user1', 'user2');
+WHERE u.username IN ('user1', 'user2', 'user3', 'user4', 'user5', 'user6', 'user7', 'user8', 'user_vip', 'user_pending', 'user_blocked');
 
 -- =========================================
 -- 3. MOVIES
@@ -278,7 +347,15 @@ INSERT INTO movies (
 (uuid_generate_v4(), 'Godzilla x Kong: Đế Chế Mới', 'Hai titan huyền thoại hợp lực trước mối đe dọa cổ đại trỗi dậy từ lòng đất.', 115, 'Hành động, Quái vật', '2024-03-29', 'https://image.tmdb.org/t/p/w500/1pdfLvkbY9ohJlCjQH2JGjjc9CW.jpg', 'NOW_SHOWING', 'Adam Wingard', 'Rebecca Hall, Brian Tyree Henry, Dan Stevens', 'Tiếng Anh', 'Phụ đề Việt', 'Mỹ', 'C13', 'https://youtube.com', 6.4, NOW(), NOW(), false),
 (uuid_generate_v4(), 'Kung Fu Panda 4', 'Po bước vào hành trình tìm người kế nhiệm và đối đầu một phản diện biến hóa khó lường.', 94, 'Hoạt hình, Phiêu lưu', '2024-03-08', 'https://image.tmdb.org/t/p/w500/wWba3TaojhK7NlGUJIHOvOBKak7.jpg', 'NOW_SHOWING', 'Mike Mitchell', 'Jack Black, Awkwafina, Viola Davis', 'Lồng tiếng Việt', 'Không', 'Mỹ', 'P', 'https://youtube.com', 6.3, NOW(), NOW(), false),
 (uuid_generate_v4(), 'Furiosa: Câu Chuyện Từ Max Điên', 'Furiosa trẻ tuổi chiến đấu để sống sót và tìm đường trở về vùng đất của mình.', 148, 'Hành động, Phiêu lưu', '2024-05-24', 'https://image.tmdb.org/t/p/w500/yrpPYKijwdMHyTGIOd1iK1h0Xno.jpg', 'NOW_SHOWING', 'George Miller', 'Anya Taylor-Joy, Chris Hemsworth, Tom Burke', 'Tiếng Anh', 'Phụ đề Việt', 'Mỹ', 'C16', 'https://youtube.com', 7.5, NOW(), NOW(), false),
-(uuid_generate_v4(), 'Thanh Gươm Diệt Quỷ: Đại Trụ Đặc Huấn', 'Tanjiro cùng các kiếm sĩ bước vào đợt đặc huấn khốc liệt trước trận chiến mới.', 104, 'Hoạt hình, Hành động', '2024-02-23', 'https://image.tmdb.org/t/p/w500/8p15sLZc7A1QHqk3F6W87LS2pY.jpg', 'NOW_SHOWING', 'Haruo Sotozaki', 'Natsuki Hanae, Akari Kito, Hiro Shimono', 'Tiếng Nhật', 'Phụ đề Việt', 'Nhật Bản', 'C13', 'https://youtube.com', 7.0, NOW(), NOW(), false);
+(uuid_generate_v4(), 'Thanh Gươm Diệt Quỷ: Đại Trụ Đặc Huấn', 'Tanjiro cùng các kiếm sĩ bước vào đợt đặc huấn khốc liệt trước trận chiến mới.', 104, 'Hoạt hình, Hành động', '2024-02-23', 'https://image.tmdb.org/t/p/w500/8p15sLZc7A1QHqk3F6W87LS2pY.jpg', 'NOW_SHOWING', 'Haruo Sotozaki', 'Natsuki Hanae, Akari Kito, Hiro Shimono', 'Tiếng Nhật', 'Phụ đề Việt', 'Nhật Bản', 'C13', 'https://youtube.com', 7.0, NOW(), NOW(), false),
+(uuid_generate_v4(), 'Oppenheimer', 'Chân dung nhà khoa học đứng giữa lựa chọn đạo đức và bước ngoặt lịch sử của thế giới.', 180, 'Tiểu sử, Chính kịch', '2023-07-21', 'https://image.tmdb.org/t/p/w500/ptpr0kGAckfQkJeJIt8st5dglvd.jpg', 'NOW_SHOWING', 'Christopher Nolan', 'Cillian Murphy, Emily Blunt, Robert Downey Jr.', 'Tiếng Anh', 'Phụ đề Việt', 'Mỹ', 'C16', 'https://youtube.com', 8.3, NOW(), NOW(), false),
+(uuid_generate_v4(), 'Top Gun: Maverick', 'Một phi công huyền thoại trở lại huấn luyện thế hệ mới cho nhiệm vụ gần như bất khả thi.', 131, 'Hành động, Chính kịch', '2022-05-27', 'https://image.tmdb.org/t/p/w500/62HCnUTziyWcpDaBO2i1DX17ljH.jpg', 'NOW_SHOWING', 'Joseph Kosinski', 'Tom Cruise, Miles Teller, Jennifer Connelly', 'Tiếng Anh', 'Phụ đề Việt', 'Mỹ', 'C13', 'https://youtube.com', 8.2, NOW(), NOW(), false),
+(uuid_generate_v4(), 'Avatar: Dòng Chảy Của Nước', 'Gia đình Sully tìm nơi trú ẩn mới giữa đại dương Pandora và những mối nguy cũ.', 192, 'Khoa học viễn tưởng, Phiêu lưu', '2022-12-16', 'https://image.tmdb.org/t/p/w500/t6HIqrRAclMCA60NsSmeqe9RmNV.jpg', 'NOW_SHOWING', 'James Cameron', 'Sam Worthington, Zoe Saldana, Sigourney Weaver', 'Tiếng Anh', 'Phụ đề Việt', 'Mỹ', 'C13', 'https://youtube.com', 7.6, NOW(), NOW(), false),
+(uuid_generate_v4(), 'Spider-Man: Across the Spider-Verse', 'Miles Morales bước qua đa vũ trụ và đối mặt với lựa chọn định nghĩa người hùng.', 140, 'Hoạt hình, Hành động', '2023-06-02', 'https://image.tmdb.org/t/p/w500/8Vt6mWEReuy4Of61Lnj5Xj704m8.jpg', 'NOW_SHOWING', 'Joaquim Dos Santos', 'Shameik Moore, Hailee Steinfeld, Oscar Isaac', 'Tiếng Anh', 'Phụ đề Việt', 'Mỹ', 'C13', 'https://youtube.com', 8.6, NOW(), NOW(), false),
+(uuid_generate_v4(), 'Mission: Impossible - Dead Reckoning', 'Ethan Hunt chạy đua với một hiểm họa công nghệ có thể xoay chuyển trật tự thế giới.', 164, 'Hành động, Điệp viên', '2023-07-12', 'https://image.tmdb.org/t/p/w500/NNxYkU70HPurnNCSiCjYAmacwm.jpg', 'NOW_SHOWING', 'Christopher McQuarrie', 'Tom Cruise, Hayley Atwell, Ving Rhames', 'Tiếng Anh', 'Phụ đề Việt', 'Mỹ', 'C13', 'https://youtube.com', 7.7, NOW(), NOW(), false),
+(uuid_generate_v4(), 'Elemental', 'Một câu chuyện tình cảm rực rỡ giữa hai cư dân ở thành phố của các nguyên tố.', 101, 'Hoạt hình, Gia đình', '2023-06-16', 'https://image.tmdb.org/t/p/w500/4Y1WNkd88JXmGfhtWR7dmDAo1T2.jpg', 'NOW_SHOWING', 'Peter Sohn', 'Leah Lewis, Mamoudou Athie, Ronnie del Carmen', 'Lồng tiếng Việt', 'Không', 'Mỹ', 'P', 'https://youtube.com', 7.0, NOW(), NOW(), false),
+(uuid_generate_v4(), 'Ký Sinh Trùng', 'Hai gia đình ở hai tầng lớp xã hội va vào nhau trong một bi kịch đen tối và sắc lạnh.', 132, 'Tâm lý, Giật gân', '2019-05-30', 'https://image.tmdb.org/t/p/w500/7IiTTgloJzvGI1TAYymCfbfl3vT.jpg', 'ENDED', 'Bong Joon Ho', 'Song Kang-ho, Lee Sun-kyun, Cho Yeo-jeong', 'Tiếng Hàn', 'Phụ đề Việt', 'Hàn Quốc', 'C16', 'https://youtube.com', 8.5, NOW(), NOW(), false),
+(uuid_generate_v4(), 'Ngày Xửa Ngày Xưa: Chuyến Tàu Ánh Sao', 'Một chuyến phiêu lưu gia đình giả tưởng đang được mở bán sớm cho mùa lễ hội.', 110, 'Gia đình, Phiêu lưu', (CURRENT_DATE + INTERVAL '35 days')::date, 'https://image.tmdb.org/t/p/w500/wWba3TaojhK7NlGUJIHOvOBKak7.jpg', 'COMING_SOON', 'Nguyễn Minh Anh', 'Dàn diễn viên trẻ CinemaBooking', 'Tiếng Việt', 'Không', 'Việt Nam', 'P', 'https://youtube.com', 7.0, NOW(), NOW(), false);
 
 -- =========================================
 -- 4. CINEMAS, ROOMS, SEATS
@@ -294,28 +371,53 @@ INSERT INTO cinemas (
 (uuid_generate_v4(), 'Lotte Cinema Huế', 'Tầng 4 Big C Huế, 181 Bà Triệu', 'Huế', 16.4637, 107.5949, NOW(), NOW(), true, false),
 (uuid_generate_v4(), 'CGV Vincom Đà Nẵng', 'Tầng 4 Vincom Plaza, 910A Ngô Quyền', 'Đà Nẵng', 16.0711, 108.2294, NOW(), NOW(), true, false),
 (uuid_generate_v4(), 'Galaxy Đà Nẵng', '478 Điện Biên Phủ, Quận Thanh Khê', 'Đà Nẵng', 16.0677, 108.1948, NOW(), NOW(), true, false),
-(uuid_generate_v4(), 'Lotte Cinema Đà Nẵng', 'Tầng 5 Lotte Mart, 6 Nại Nam', 'Đà Nẵng', 16.0392, 108.2265, NOW(), NOW(), true, false);
+(uuid_generate_v4(), 'Lotte Cinema Đà Nẵng', 'Tầng 5 Lotte Mart, 6 Nại Nam', 'Đà Nẵng', 16.0392, 108.2265, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'Galaxy Nguyễn Du', '116 Nguyễn Du, Quận 1', 'TP Hồ Chí Minh', 10.7758, 106.6910, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'CGV Aeon Mall Bình Tân', 'Tầng 3 Aeon Mall Bình Tân, Quận Bình Tân', 'TP Hồ Chí Minh', 10.7422, 106.6128, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'Beta Mỹ Đình', 'Tầng hầm B1 The Garden, Nam Từ Liêm', 'Hà Nội', 21.0156, 105.7798, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'CGV Tràng Tiền Plaza', 'Tầng 5 Tràng Tiền Plaza, Hoàn Kiếm', 'Hà Nội', 21.0245, 105.8515, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'Lotte Cinema Cần Thơ', 'Tầng 5 Sense City, Ninh Kiều', 'Cần Thơ', 10.0342, 105.7839, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'CGV Nha Trang Center', 'Tầng 3 Nha Trang Center, Trần Phú', 'Nha Trang', 12.2473, 109.1955, NOW(), NOW(), true, false);
 
--- Mỗi rạp 2 phòng. Tổng: 16 phòng.
+-- Phân công staff theo rạp để test scope nhân viên, lọc theo thành phố/rạp và staff chưa gán rạp.
+WITH assignments(username, cinema_name) AS (
+    VALUES
+        ('staff1', 'CGV Sư Vạn Hạnh'),
+        ('staff1', 'BHD Star Bitexco'),
+        ('staff_hcm', 'CGV Sư Vạn Hạnh'),
+        ('staff_hcm', 'Galaxy Nguyễn Du'),
+        ('staff_hcm', 'CGV Aeon Mall Bình Tân'),
+        ('staff_hanoi', 'Lotte Cinema Landmark'),
+        ('staff_hanoi', 'Beta Mỹ Đình'),
+        ('staff_hanoi', 'CGV Tràng Tiền Plaza'),
+        ('staff_danang', 'CGV Vincom Đà Nẵng'),
+        ('staff_danang', 'Galaxy Đà Nẵng'),
+        ('staff_danang', 'Lotte Cinema Đà Nẵng'),
+        ('staff_hue', 'Cinestar Huế'),
+        ('staff_hue', 'Lotte Cinema Huế'),
+        ('staff_blocked', 'Lotte Cinema Cần Thơ')
+)
 INSERT INTO staff_cinemas (staff_id, cinema_id, created_at)
 SELECT u.id, c.id, NOW()
-FROM users u
-JOIN cinemas c ON c.name = 'BHD Star Bitexco' OR c.name LIKE 'CGV S%'
-WHERE u.username = 'staff1';
+FROM assignments a
+JOIN users u ON u.username = a.username
+JOIN cinemas c ON c.name = a.cinema_name;
 
+-- Mỗi rạp 3 phòng. Tổng: 42 phòng với dữ liệu hiện tại.
 INSERT INTO rooms (id, cinema_id, name, created_at, updated_at, is_deleted)
 SELECT
     uuid_generate_v4(),
     c.id,
     CASE
         WHEN room_idx = 1 THEN 'Phòng 01 - Standard'
-        ELSE 'Phòng 02 - Premium'
+        WHEN room_idx = 2 THEN 'Phòng 02 - Premium'
+        ELSE 'Phòng 03 - IMAX'
     END,
     NOW(),
     NOW(),
     false
 FROM cinemas c
-CROSS JOIN generate_series(1, 2) AS room_idx;
+CROSS JOIN generate_series(1, 3) AS room_idx;
 
 -- Mỗi phòng 8 hàng x 12 ghế = 96 ghế.
 -- A-E: NORMAL, F-G: VIP, H: COUPLE.
@@ -358,12 +460,17 @@ INSERT INTO promotions (
 (uuid_generate_v4(), 'WELCOME10', 'Giảm 10% cho đơn đầu tiên', 'PERCENT', 10, 50000, 100000, NOW() - INTERVAL '7 days', NOW() + INTERVAL '60 days', 500, 0, true, false, NOW(), NOW()),
 (uuid_generate_v4(), 'CINEMA50K', 'Giảm trực tiếp 50.000đ cho đơn từ 200.000đ', 'FIXED', 50000, NULL, 200000, NOW() - INTERVAL '7 days', NOW() + INTERVAL '45 days', 300, 0, true, false, NOW(), NOW()),
 (uuid_generate_v4(), 'STUDENT20', 'Giảm 20% cho học sinh sinh viên', 'PERCENT', 20, 60000, 120000, NOW() - INTERVAL '3 days', NOW() + INTERVAL '30 days', 250, 0, true, false, NOW(), NOW()),
-(uuid_generate_v4(), 'WEEKDAY30K', 'Giảm 30.000đ cho suất chiếu ngày thường', 'FIXED', 30000, NULL, 150000, NOW() - INTERVAL '3 days', NOW() + INTERVAL '40 days', 400, 0, true, false, NOW(), NOW());
+(uuid_generate_v4(), 'WEEKDAY30K', 'Giảm 30.000đ cho suất chiếu ngày thường', 'FIXED', 30000, NULL, 150000, NOW() - INTERVAL '3 days', NOW() + INTERVAL '40 days', 400, 0, true, false, NOW(), NOW()),
+(uuid_generate_v4(), 'FAMILY25', 'Giảm 25% cho đơn gia đình từ 4 vé', 'PERCENT', 25, 100000, 300000, NOW() - INTERVAL '5 days', NOW() + INTERVAL '50 days', 150, 12, true, false, NOW(), NOW()),
+(uuid_generate_v4(), 'SEPAY15K', 'Giảm 15.000đ khi thanh toán bằng QR ngân hàng', 'FIXED', 15000, NULL, 100000, NOW() - INTERVAL '2 days', NOW() + INTERVAL '35 days', 600, 45, true, false, NOW(), NOW()),
+(uuid_generate_v4(), 'VIP15', 'Giảm 15% cho khách hàng thân thiết', 'PERCENT', 15, 80000, 180000, NOW() - INTERVAL '10 days', NOW() + INTERVAL '70 days', 200, 25, true, false, NOW(), NOW()),
+(uuid_generate_v4(), 'EXPIRED20', 'Mã đã hết hạn dùng để test trạng thái khuyến mãi', 'PERCENT', 20, 50000, 100000, NOW() - INTERVAL '70 days', NOW() - INTERVAL '5 days', 100, 18, false, false, NOW(), NOW()),
+(uuid_generate_v4(), 'SOLDOUT10', 'Mã đã dùng hết lượt dùng để test giới hạn usage', 'PERCENT', 10, 40000, 100000, NOW() - INTERVAL '7 days', NOW() + INTERVAL '30 days', 30, 30, true, false, NOW(), NOW());
 
 -- =========================================
 -- 6. SHOWTIMES
 -- =========================================
--- Sinh 4 khung giờ mỗi ngày trong 5 ngày tới cho tất cả phòng.
+-- Sinh 5 khung giờ mỗi ngày trong 7 ngày tới cho tất cả phòng.
 -- Movie được xoay vòng theo phòng/ngày/slot để mọi phim NOW_SHOWING đều có nhiều suất.
 WITH movie_pool AS (
     SELECT
@@ -386,14 +493,15 @@ room_pool AS (
       AND c.is_active = true
 ),
 days AS (
-    SELECT generate_series(1, 5) AS day_offset
+    SELECT generate_series(1, 7) AS day_offset
 ),
 time_slots AS (
     SELECT * FROM (VALUES
         (1, TIME '09:00:00', 70000::numeric),
-        (2, TIME '12:30:00', 80000::numeric),
-        (3, TIME '16:00:00', 90000::numeric),
-        (4, TIME '19:30:00', 110000::numeric)
+        (2, TIME '12:15:00', 80000::numeric),
+        (3, TIME '15:30:00', 90000::numeric),
+        (4, TIME '18:45:00', 110000::numeric),
+        (5, TIME '21:45:00', 120000::numeric)
     ) AS t(slot_no, start_at, base_price)
 )
 INSERT INTO showtimes (
@@ -856,6 +964,290 @@ inserted_case_payments AS (
 SELECT 'Quick test order cases seeded: PENDING_FUTURE, FAILED_FUTURE, EXPIRED_PAST, CANCELLED_PAST' AS demo_order_cases;
 
 -- =========================================
+-- 8C. DEMO SALES DATA: BOOKINGS + PAYMENTS + TICKETS + PAYMENT EVENTS
+-- =========================================
+-- Sinh 60 đơn SUCCESS để dashboard, quản lý thanh toán, đơn đặt vé, vé của tôi và top phim có dữ liệu đẹp.
+WITH constants AS (
+    SELECT
+        'SALEDEMOAAAAAAAAAAAA'::text AS sale_nonce,
+        'eM4ritLt9dfucTMfTTTX5afCVKnWD1OH6YTOrO6RnMyDIBkLk4al8oZUKTBnIKvwthu5TbEROewKIoYsktEAa3'::text AS demo_qr_secret
+),
+demo_users AS (
+    SELECT
+        id,
+        username,
+        row_number() OVER (ORDER BY username) AS user_no,
+        count(*) OVER () AS user_count
+    FROM users
+    WHERE username IN ('user1', 'user2', 'user3', 'user4', 'user5', 'user6', 'user7', 'user8', 'user_vip')
+      AND is_deleted = false
+      AND is_active = true
+),
+demo_staff AS (
+    SELECT id
+    FROM users
+    WHERE username = 'staff1'
+    LIMIT 1
+),
+ranked_showtimes AS (
+    SELECT
+        st.id AS showtime_id,
+        st.room_id,
+        st.base_price,
+        row_number() OVER (ORDER BY st.start_time, c.name, r.name, m.title) AS sale_no
+    FROM showtimes st
+    JOIN movies m ON m.id = st.movie_id
+    JOIN rooms r ON r.id = st.room_id
+    JOIN cinemas c ON c.id = r.cinema_id
+    WHERE st.is_deleted = false
+      AND st.status = 'UPCOMING'
+      AND st.start_time > NOW() + INTERVAL '1 day'
+      AND st.id <> '00000000-0000-0000-0000-000000000901'::uuid
+),
+sale_orders AS (
+    SELECT
+        rs.sale_no,
+        rs.showtime_id,
+        rs.room_id,
+        rs.base_price,
+        du.id AS user_id,
+        CASE
+            WHEN rs.sale_no % 4 = 0 THEN 'F'
+            WHEN rs.sale_no % 4 = 1 THEN 'C'
+            WHEN rs.sale_no % 4 = 2 THEN 'D'
+            ELSE 'E'
+        END AS row_label,
+        ARRAY[((rs.sale_no - 1) % 10) + 1, ((rs.sale_no - 1) % 10) + 2]::int[] AS seat_numbers,
+        CASE
+            WHEN rs.sale_no % 5 = 0 THEN 30000::numeric
+            WHEN rs.sale_no % 7 = 0 THEN 15000::numeric
+            ELSE 0::numeric
+        END AS discount_amount,
+        CASE
+            WHEN rs.sale_no % 3 = 0 THEN 'SEPAY'
+            WHEN rs.sale_no % 3 = 1 THEN 'VNPAY'
+            ELSE 'CASH'
+        END AS payment_method,
+        NOW() - ((rs.sale_no % 28) || ' days')::interval - ((rs.sale_no % 8) || ' hours')::interval AS created_at
+    FROM ranked_showtimes rs
+    JOIN demo_users du
+      ON du.user_no = (((rs.sale_no - 1) % du.user_count) + 1)
+    WHERE rs.sale_no <= 60
+),
+inserted_sale_bookings AS (
+    INSERT INTO bookings (
+        id, user_id, showtime_id, promotion_id, total_price,
+        discount_amount, status, secure_token, payment_expires_at, created_at, updated_at
+    )
+    SELECT
+        uuid_generate_v4(),
+        so.user_id,
+        so.showtime_id,
+        NULL,
+        GREATEST((so.base_price * 2) - so.discount_amount, 0),
+        so.discount_amount,
+        'SUCCESS',
+        'demo-sale-booking-' || lpad(so.sale_no::text, 3, '0'),
+        so.created_at + INTERVAL '10 minutes',
+        so.created_at,
+        so.created_at
+    FROM sale_orders so
+    RETURNING id, showtime_id, total_price, created_at, secure_token
+),
+selected_sale_seats AS (
+    SELECT
+        so.sale_no,
+        b.id AS booking_id,
+        so.showtime_id,
+        so.base_price,
+        s.id AS seat_id
+    FROM sale_orders so
+    JOIN inserted_sale_bookings b ON b.showtime_id = so.showtime_id
+    JOIN seats s ON s.room_id = so.room_id
+    WHERE s.row_label = so.row_label
+      AND s.seat_number = ANY(so.seat_numbers)
+),
+inserted_sale_booking_details AS (
+    INSERT INTO booking_details (
+        id, booking_id, seat_id, price_at_booking, created_at, updated_at
+    )
+    SELECT
+        uuid_generate_v4(),
+        s.booking_id,
+        s.seat_id,
+        s.base_price,
+        b.created_at,
+        b.created_at
+    FROM selected_sale_seats s
+    JOIN inserted_sale_bookings b ON b.id = s.booking_id
+    RETURNING id, booking_id
+),
+updated_sale_seat_status AS (
+    UPDATE seat_status ss
+    SET status = 'BOOKED',
+        hold_by = NULL,
+        hold_until = NULL,
+        updated_at = NOW()
+    FROM selected_sale_seats s
+    WHERE ss.showtime_id = s.showtime_id
+      AND ss.seat_id = s.seat_id
+    RETURNING ss.id
+),
+inserted_sale_payments AS (
+    INSERT INTO payments (
+        id, booking_id, amount, method, transaction_no,
+        status, provider_response, payment_time, created_at, updated_at
+    )
+    SELECT
+        uuid_generate_v4(),
+        b.id,
+        b.total_price,
+        so.payment_method,
+        'DEMO_SALE_' || lpad(so.sale_no::text, 3, '0'),
+        'SUCCESS',
+        jsonb_build_object(
+            'demo', true,
+            'source', 'mock-data',
+            'method', so.payment_method,
+            'secureToken', b.secure_token
+        ),
+        b.created_at + INTERVAL '2 minutes',
+        b.created_at + INTERVAL '2 minutes',
+        b.created_at + INTERVAL '2 minutes'
+    FROM inserted_sale_bookings b
+    JOIN sale_orders so ON so.showtime_id = b.showtime_id
+    RETURNING id, booking_id, method, transaction_no, status, created_at
+),
+ticket_payloads AS (
+    SELECT
+        bd.id AS booking_detail_id,
+        b.id AS booking_id,
+        so.sale_no,
+        'CBT1.' || replace(upper(bd.id::text), '-', '') || '.' || c.sale_nonce AS payload,
+        c.demo_qr_secret,
+        b.created_at
+    FROM inserted_sale_booking_details bd
+    JOIN inserted_sale_bookings b ON b.id = bd.booking_id
+    JOIN sale_orders so ON so.showtime_id = b.showtime_id
+    CROSS JOIN constants c
+),
+inserted_sale_tickets AS (
+    INSERT INTO tickets (
+        id, booking_detail_id, qr_code, status, check_in_time, checked_in_by, created_at, updated_at
+    )
+    SELECT
+        uuid_generate_v4(),
+        p.booking_detail_id,
+        p.payload || '.' || translate(
+            rtrim(encode(substring(hmac(p.payload, p.demo_qr_secret, 'sha256') from 1 for 24), 'base64'), '='),
+            '+/',
+            '-_'
+        ),
+        CASE WHEN p.sale_no % 6 = 0 THEN 'USED' ELSE 'ACTIVE' END,
+        CASE WHEN p.sale_no % 6 = 0 THEN NOW() - ((p.sale_no % 6) || ' hours')::interval ELSE NULL END,
+        CASE WHEN p.sale_no % 6 = 0 THEN ds.id ELSE NULL END,
+        p.created_at,
+        p.created_at
+    FROM ticket_payloads p
+    CROSS JOIN demo_staff ds
+    RETURNING id
+),
+inserted_sale_payment_events AS (
+    INSERT INTO payment_events (
+        id, payment_id, booking_id, method, transaction_no, event_type,
+        payment_status_before, payment_status_after, booking_status_before, booking_status_after,
+        success, message, payload, created_at, updated_at
+    )
+    SELECT
+        uuid_generate_v4(),
+        p.id,
+        p.booking_id,
+        p.method,
+        p.transaction_no,
+        'PAYMENT_CONFIRMED',
+        'PENDING',
+        p.status,
+        'PENDING',
+        'SUCCESS',
+        true,
+        'Demo payment confirmed for sales analytics',
+        jsonb_build_object('demo', true, 'transactionNo', p.transaction_no),
+        p.created_at,
+        p.created_at
+    FROM inserted_sale_payments p
+    RETURNING id
+)
+SELECT 'Demo sales seeded: 60 success bookings, 120 tickets, payment events and booked seats' AS demo_sales_data;
+
+-- =========================================
+-- 8D. DEMO AUDIT DATA
+-- =========================================
+INSERT INTO auth_audit_logs (
+    id, user_id, username, event_type, success, failure_reason,
+    ip_address, user_agent, created_at, updated_at
+)
+SELECT
+    uuid_generate_v4(),
+    u.id,
+    u.username,
+    seed.event_type,
+    seed.success,
+    seed.failure_reason,
+    seed.ip_address,
+    seed.user_agent,
+    seed.created_at,
+    seed.created_at
+FROM (
+    VALUES
+        ('user1', 'LOGIN_SUCCESS', true, NULL, '127.0.0.1', 'Chrome Dev', NOW() - INTERVAL '2 hours'),
+        ('user2', 'LOGIN_SUCCESS', true, NULL, '127.0.0.1', 'Chrome Dev', NOW() - INTERVAL '3 hours'),
+        ('staff1', 'LOGIN_SUCCESS', true, NULL, '127.0.0.1', 'Chrome Dev', NOW() - INTERVAL '4 hours'),
+        ('staff_hcm', 'LOGIN_SUCCESS', true, NULL, '127.0.0.1', 'Chrome Dev', NOW() - INTERVAL '5 hours'),
+        ('user_blocked', 'LOGIN_FAILED', false, 'Account is blocked', '127.0.0.1', 'Chrome Dev', NOW() - INTERVAL '6 hours'),
+        ('user_pending', 'LOGIN_FAILED', false, 'Email is not verified', '127.0.0.1', 'Chrome Dev', NOW() - INTERVAL '7 hours'),
+        ('user3', 'PASSWORD_RESET_REQUESTED', true, NULL, '127.0.0.1', 'Chrome Dev', NOW() - INTERVAL '1 day'),
+        ('user_vip', 'REFRESH_TOKEN_SUCCESS', true, NULL, '127.0.0.1', 'Chrome Dev', NOW() - INTERVAL '30 minutes')
+) AS seed(username, event_type, success, failure_reason, ip_address, user_agent, created_at)
+JOIN users u ON u.username = seed.username;
+
+INSERT INTO admin_audit_logs (
+    id, actor_id, actor_username, http_method, action, resource, resource_id,
+    request_path, query_string, ip_address, user_agent, status_code, success,
+    error_message, created_at, updated_at
+)
+SELECT
+    uuid_generate_v4(),
+    admin_user.id,
+    COALESCE(admin_user.username, 'admin'),
+    seed.http_method,
+    seed.action,
+    seed.resource,
+    seed.resource_id,
+    seed.request_path,
+    seed.query_string,
+    '127.0.0.1',
+    'Chrome Dev',
+    seed.status_code,
+    seed.success,
+    seed.error_message,
+    seed.created_at,
+    seed.created_at
+FROM (
+    VALUES
+        ('POST', 'CREATE', 'showtimes', NULL, '/api/v1/showtimes', NULL, 201, true, NULL, NOW() - INTERVAL '5 hours'),
+        ('PUT', 'UPDATE', 'users', 'staff_hcm', '/api/v1/users/staff_hcm', NULL, 200, true, NULL, NOW() - INTERVAL '4 hours'),
+        ('POST', 'ASSIGN_STAFF_CINEMA', 'users', 'staff_hanoi', '/api/v1/users/staff_hanoi', NULL, 200, true, NULL, NOW() - INTERVAL '3 hours'),
+        ('PATCH', 'BLOCK', 'users', 'user_blocked', '/api/v1/users/user_blocked/block', NULL, 200, true, NULL, NOW() - INTERVAL '2 hours'),
+        ('POST', 'CANCEL_SHOWTIME', 'showtimes', 'demo-cancelled-showtime', '/api/v1/showtimes/demo-cancelled-showtime/cancel', NULL, 409, false, 'Only upcoming or ongoing showtimes can be cancelled', NOW() - INTERVAL '1 hour')
+) AS seed(http_method, action, resource, resource_id, request_path, query_string, status_code, success, error_message, created_at)
+LEFT JOIN LATERAL (
+    SELECT id, username
+    FROM users
+    WHERE username = 'admin'
+    LIMIT 1
+) admin_user ON true;
+
+-- =========================================
 -- 9. KIỂM TRA DỮ LIỆU SAU KHI SEED
 -- =========================================
 DO $$
@@ -892,13 +1284,59 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'Mock data invalid: at least one showtime does not have a complete seat map.';
     END IF;
+
+    IF (
+        SELECT count(*)
+        FROM users
+        WHERE username IN (
+            'staff1', 'staff_hcm', 'staff_hanoi', 'staff_danang', 'staff_hue', 'staff_unassigned', 'staff_blocked',
+            'user1', 'user2', 'user3', 'user4', 'user5', 'user6', 'user7', 'user8', 'user_vip', 'user_pending', 'user_blocked'
+        )
+    ) < 18 THEN
+        RAISE EXCEPTION 'Mock data invalid: missing test users/staff accounts.';
+    END IF;
+
+    IF (SELECT count(*) FROM staff_cinemas) < 14 THEN
+        RAISE EXCEPTION 'Mock data invalid: staff cinema assignments were not seeded correctly.';
+    END IF;
+
+    IF (
+        SELECT count(*)
+        FROM bookings
+        WHERE secure_token LIKE 'demo-sale-booking-%'
+    ) <> 60 THEN
+        RAISE EXCEPTION 'Mock data invalid: demo sales bookings were not seeded correctly.';
+    END IF;
+
+    IF (
+        SELECT count(*)
+        FROM tickets t
+        JOIN booking_details bd ON bd.id = t.booking_detail_id
+        JOIN bookings b ON b.id = bd.booking_id
+        WHERE b.secure_token LIKE 'demo-sale-booking-%'
+    ) <> 120 THEN
+        RAISE EXCEPTION 'Mock data invalid: demo sales tickets were not seeded correctly.';
+    END IF;
 END $$;
 
 -- Tài khoản test:
 -- admin: tạo bởi ApplicationInitConfig, mật khẩu mặc định lấy từ app.admin.default-password hoặc admin123.
--- staff1 / user1 / user2: mật khẩu 123456.
+-- Tất cả tài khoản mock bên dưới có mật khẩu 123456.
+-- STAFF:
+-- staff1: phụ trách CGV Sư Vạn Hạnh, BHD Star Bitexco.
+-- staff_hcm: phụ trách cụm TP Hồ Chí Minh.
+-- staff_hanoi: phụ trách cụm Hà Nội.
+-- staff_danang: phụ trách cụm Đà Nẵng.
+-- staff_hue: phụ trách cụm Huế.
+-- staff_unassigned: chưa gán rạp, dùng để test filter "Chưa gán rạp".
+-- staff_blocked: tài khoản staff bị khóa, dùng để test block/unblock.
+-- USER:
+-- user1, user2, user3, user4, user5, user6, user7, user8, user_vip.
+-- user_pending: email_verified=false, dùng để test xác thực email.
+-- user_blocked: tài khoản user bị khóa, dùng để test đăng nhập/block.
 -- Kỳ vọng dữ liệu:
--- 17 phim NOW_SHOWING, 8 rạp, 16 phòng, 1536 ghế, 325 suất chiếu, 31200 dòng seat_status.
+-- 23 phim NOW_SHOWING, 2 phim không chiếu hiện tại, 14 rạp, 42 phòng, 4032 ghế.
+-- 1475 suất chiếu, 141600 dòng seat_status, 65 booking, 64 payment, 122 ticket.
 -- Vé test nhanh:
 -- user1 có booking SUCCESS tại CGV Sư Vạn Hạnh, Phòng 01 - Standard, ghế A1/A2, suất chiếu bắt đầu sau 30 phút.
 -- Lấy QR để staff check-in:
@@ -913,3 +1351,7 @@ END $$;
 -- FAILED: demo-failed-booking-token, suất sau 3 giờ, ghế C1/C2, có thể chọn lại ghế.
 -- EXPIRED: demo-expired-booking-token, suất đã qua, không hiện nút chọn lại ghế.
 -- CANCELLED: demo-cancelled-booking-token, suất đã qua, không hiện nút chọn lại ghế.
+-- Dữ liệu doanh thu:
+-- 60 booking SUCCESS tự sinh với secure_token demo-sale-booking-001 đến demo-sale-booking-060.
+-- Payment method được xoay vòng VNPAY / SEPAY / CASH để test bộ lọc thanh toán.
+-- Một phần ticket đã USED và có checked_in_by=staff1 để test lịch sử soát vé.

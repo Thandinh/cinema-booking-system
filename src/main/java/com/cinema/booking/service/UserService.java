@@ -5,11 +5,13 @@ import com.cinema.booking.dto.request.ForgotPasswordRequest;
 import com.cinema.booking.dto.request.ResetPasswordRequest;
 import com.cinema.booking.dto.request.UserCreationRequest;
 import com.cinema.booking.dto.request.UserUpdateRequest;
+import com.cinema.booking.dto.response.RoleResponse;
 import com.cinema.booking.dto.response.UserResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import java.util.UUID;
+import java.util.List;
 
 /**
  * Contract cho mọi thao tác quản lý User.
@@ -44,10 +46,17 @@ public interface UserService {
      */
     UserResponse createByAdmin(UserCreationRequest request);
 
+    List<RoleResponse> getAllRoles();
+
     // ─── Admin: quản lý users ────────────────────────────────────────────────
 
-    /** Danh sách tất cả user chưa bị xoá mềm, có phân trang. */
-    Page<UserResponse> getAllUsers(Pageable pageable);
+    /** Danh sách user chưa bị xoá mềm, hỗ trợ lọc theo role và tìm kiếm. */
+    Page<UserResponse> getAllUsers(String role,
+                                   String keyword,
+                                   String assignedCity,
+                                   UUID assignedCinemaId,
+                                   boolean unassignedStaff,
+                                   Pageable pageable);
 
     /** Lấy thông tin bất kỳ user theo ID (ADMIN / STAFF). */
     UserResponse getUserById(UUID id);
@@ -71,6 +80,8 @@ public interface UserService {
     UserResponse blockUser(UUID targetId, String currentUsername);
 
     UserResponse unblockUser(UUID targetId);
+
+    void requestPasswordResetByAdmin(UUID targetId);
 
     // ─── User: tự quản lý profile ─────────────────────────────────────────────
 

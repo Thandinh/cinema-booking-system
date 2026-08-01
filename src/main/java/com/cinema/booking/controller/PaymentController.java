@@ -1,5 +1,7 @@
 package com.cinema.booking.controller;
 
+import com.cinema.booking.dto.request.PaymentEventSearchRequest;
+import com.cinema.booking.dto.request.PaymentSearchRequest;
 import com.cinema.booking.dto.response.ApiResponse;
 import com.cinema.booking.dto.response.PaymentEventResponse;
 import com.cinema.booking.dto.response.PaymentReconciliationIssueResponse;
@@ -65,28 +67,22 @@ public class PaymentController {
     @GetMapping
     @PreAuthorize("hasAuthority('PAYMENT_VIEW_ALL')")
     public ApiResponse<Page<PaymentResponse>> getAllPayments(
-            @RequestParam(required = false) PaymentStatus status,
-            @RequestParam(required = false) PaymentMethod method,
-            @RequestParam(required = false) String keyword,
+            @ModelAttribute PaymentSearchRequest request,
             @PageableDefault(size = 20, sort = "createdAt") Pageable pageable) {
         return ApiResponse.<Page<PaymentResponse>>builder()
                 .code(1000)
-                .result(paymentService.getAllPayments(pageable, status, method, keyword))
+                .result(paymentService.getAllPayments(request, pageable))
                 .build();
     }
 
     @GetMapping("/events")
     @PreAuthorize("hasAuthority('PAYMENT_VIEW_ALL')")
     public ApiResponse<Page<PaymentEventResponse>> getPaymentEvents(
-            @RequestParam(required = false) UUID bookingId,
-            @RequestParam(required = false) UUID paymentId,
-            @RequestParam(required = false) PaymentEventType eventType,
-            @RequestParam(required = false) Boolean success,
-            @RequestParam(required = false) String keyword,
+            @ModelAttribute PaymentEventSearchRequest request,
             @PageableDefault(size = 20, sort = "createdAt") Pageable pageable) {
         return ApiResponse.<Page<PaymentEventResponse>>builder()
                 .code(1000)
-                .result(paymentEventService.search(bookingId, paymentId, eventType, success, keyword, pageable))
+                .result(paymentEventService.search(request, pageable))
                 .build();
     }
 

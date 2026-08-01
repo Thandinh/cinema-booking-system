@@ -1,9 +1,11 @@
 package com.cinema.booking.security.service;
 
+import com.cinema.booking.dto.request.AuditLogSearchRequest;
 import com.cinema.booking.dto.response.AuthAuditLogResponse;
 import com.cinema.booking.entity.AuthAuditLog;
 import com.cinema.booking.entity.User;
 import com.cinema.booking.repository.AuthAuditLogRepository;
+import com.cinema.booking.util.DateRange;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -52,17 +54,26 @@ public class AuthAuditService {
     }
 
     @Transactional(readOnly = true)
-    public Page<AuthAuditLogResponse> search(String eventType, Boolean success, String keyword, Pageable pageable) {
-        String normalizedEventType = eventType == null || eventType.isBlank()
+    public Page<AuthAuditLogResponse> search(AuditLogSearchRequest request, Pageable pageable) {
+        AuditLogSearchRequest safeRequest = request == null ? new AuditLogSearchRequest() : request;
+        DateRange dateRange = DateRange.of(safeRequest.getFromDate(), safeRequest.getToDate());
+        String normalizedEventType = safeRequest.getEventType() == null || safeRequest.getEventType().isBlank()
                 ? null
-                : eventType.trim().toUpperCase(Locale.ROOT);
-        String keywordPattern = keyword == null || keyword.isBlank()
+                : safeRequest.getEventType().trim().toUpperCase(Locale.ROOT);
+        String keywordPattern = safeRequest.getKeyword() == null || safeRequest.getKeyword().isBlank()
                 ? null
-                : "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
+                : "%" + safeRequest.getKeyword().trim().toLowerCase(Locale.ROOT) + "%";
 
-        return authAuditLogRepository.search(normalizedEventType, success, keywordPattern, pageable)
-                .map(this::toResponse);
-    }
+        return authAuditLogRepository
+                .search(
+                         normalizedEventType,
+                         safeRequest.getSuccess(),
+                         keywordPattern,
+                        dateRange.fromSearchBound(),
+                        dateRange.toSearchBound(),
+                         pageable)
+                 .map(this::toResponse);
+     }
 
     private AuthAuditLogResponse toResponse(AuthAuditLog logEntry) {
         return AuthAuditLogResponse.builder()

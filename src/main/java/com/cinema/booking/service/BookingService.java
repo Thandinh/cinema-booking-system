@@ -1,6 +1,7 @@
 package com.cinema.booking.service;
 
 import com.cinema.booking.dto.request.CreateBookingRequest;
+import com.cinema.booking.dto.request.BookingSearchRequest;
 import com.cinema.booking.dto.request.HoldSeatRequest;
 import com.cinema.booking.dto.response.BookingResponse;
 import com.cinema.booking.dto.response.HoldSeatResponse;
@@ -35,7 +36,7 @@ public interface BookingService {
 
     Page<BookingResponse> getMyBookings(BookingStatus status, Pageable pageable);
 
-    Page<BookingResponse> getAllBookings(BookingStatus status, Pageable pageable);
+    Page<BookingResponse> getAllBookings(BookingSearchRequest request, Pageable pageable);
 
     BookingResponse getBookingById(UUID id);
 

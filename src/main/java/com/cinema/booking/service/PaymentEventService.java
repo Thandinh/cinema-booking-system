@@ -1,5 +1,6 @@
 package com.cinema.booking.service;
 
+import com.cinema.booking.dto.request.PaymentEventSearchRequest;
 import com.cinema.booking.dto.response.PaymentEventResponse;
 import com.cinema.booking.entity.Booking;
 import com.cinema.booking.entity.Payment;
@@ -38,11 +39,5 @@ public interface PaymentEventService {
             String message,
             Map<String, Object> payload);
 
-    Page<PaymentEventResponse> search(
-            UUID bookingId,
-            UUID paymentId,
-            PaymentEventType eventType,
-            Boolean success,
-            String keyword,
-            Pageable pageable);
+    Page<PaymentEventResponse> search(PaymentEventSearchRequest request, Pageable pageable);
 }

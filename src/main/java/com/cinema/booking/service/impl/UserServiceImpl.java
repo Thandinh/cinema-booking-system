@@ -6,6 +6,7 @@ import com.cinema.booking.dto.request.ResetPasswordRequest;
 import com.cinema.booking.dto.request.UserCreationRequest;
 import com.cinema.booking.dto.request.UserUpdateRequest;
 import com.cinema.booking.dto.response.CinemaResponse;
+import com.cinema.booking.dto.response.RoleResponse;
 import com.cinema.booking.dto.response.UserResponse;
 import com.cinema.booking.entity.Cinema;
 import com.cinema.booking.entity.Role;
@@ -212,6 +213,19 @@ public class UserServiceImpl implements UserService {
         return toUserResponseWithAssignedCinemas(saved);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<RoleResponse> getAllRoles() {
+        return roleRepository.findAll().stream()
+                .sorted((left, right) -> left.getName().compareToIgnoreCase(right.getName()))
+                .map(role -> RoleResponse.builder()
+                        .id(role.getId())
+                        .name(role.getName())
+                        .description(role.getDescription())
+                        .build())
+                .toList();
+    }
+
     // =========================================================================
     // ADMIN – QUẢN LÝ USERS
     // =========================================================================
@@ -222,8 +236,31 @@ public class UserServiceImpl implements UserService {
      */
     @Override
     @Transactional(readOnly = true)
-    public Page<UserResponse> getAllUsers(Pageable pageable) {
-        Page<UUID> userIdPage = userRepository.findActiveIds(pageable);
+    public Page<UserResponse> getAllUsers(String role,
+                                          String keyword,
+                                          String assignedCity,
+                                          UUID assignedCinemaId,
+                                          boolean unassignedStaff,
+                                          Pageable pageable) {
+        String normalizedRole = normalizeRoleFilter(role);
+        String normalizedAssignedCity = normalizeAssignedCity(assignedCity);
+        if (assignedCinemaId != null && unassignedStaff) {
+            throw new AppException(ErrorCode.PARAMETER_INVALID);
+        }
+        if (assignedCinemaId != null || normalizedAssignedCity != null || unassignedStaff) {
+            if (normalizedRole != null && !RoleName.STAFF.name().equals(normalizedRole)) {
+                throw new AppException(ErrorCode.PARAMETER_INVALID);
+            }
+            normalizedRole = RoleName.STAFF.name();
+        }
+        String keywordPattern = normalizeKeywordPattern(keyword);
+        Page<UUID> userIdPage = userRepository.findActiveIdsByRoleKeywordAndStaffCinema(
+                normalizedRole,
+                keywordPattern,
+                normalizedAssignedCity,
+                assignedCinemaId,
+                unassignedStaff,
+                pageable);
         if (userIdPage.isEmpty()) {
             return new PageImpl<>(List.of(), pageable, userIdPage.getTotalElements());
         }
@@ -242,6 +279,31 @@ public class UserServiceImpl implements UserService {
                 .toList();
 
         return new PageImpl<>(content, pageable, userIdPage.getTotalElements());
+    }
+
+    private String normalizeRoleFilter(String role) {
+        if (role == null || role.isBlank()) {
+            return null;
+        }
+        String normalized = role.trim().toUpperCase(Locale.ROOT);
+        if (!Set.of("ADMIN", "STAFF", "USER").contains(normalized)) {
+            throw new AppException(ErrorCode.PARAMETER_INVALID);
+        }
+        return normalized;
+    }
+
+    private String normalizeKeywordPattern(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return null;
+        }
+        return "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
+    }
+
+    private String normalizeAssignedCity(String assignedCity) {
+        if (assignedCity == null || assignedCity.isBlank()) {
+            return null;
+        }
+        return assignedCity.trim().toLowerCase(Locale.ROOT);
     }
 
     /**
@@ -287,6 +349,10 @@ public class UserServiceImpl implements UserService {
         // Cập nhật roles nếu admin cung cấp danh sách mới
         if (request.getRoleIds() != null && !request.getRoleIds().isEmpty()) {
             Set<Role> newRoles = resolveRoles(request.getRoleIds());
+            if (user.getUsername().equals(getCurrentUsername())
+                    && newRoles.stream().noneMatch(role -> RoleName.ADMIN.name().equals(role.getName()))) {
+                throw new AppException(ErrorCode.CANNOT_CHANGE_OWN_ADMIN_ROLE);
+            }
             user.setRoles(newRoles);
         }
 
@@ -306,6 +372,9 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public void deleteUser(UUID id) {
         User user = findActiveUserById(id);
+        if (user.getUsername().equals(getCurrentUsername())) {
+            throw new AppException(ErrorCode.CANNOT_DELETE_SELF);
+        }
         user.setIsDeleted(true);
         userRepository.save(user);
         log.info("Soft-deleted user id={}", id);
@@ -341,6 +410,22 @@ public class UserServiceImpl implements UserService {
         User saved = userRepository.save(target);
         log.info("Unblocked user: {}", target.getUsername());
         return userMapper.toUserResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public void requestPasswordResetByAdmin(UUID targetId) {
+        User target = findActiveUserById(targetId);
+        String email = normalizeEmail(target.getEmail());
+        if (email == null || email.isBlank()) {
+            throw new AppException(ErrorCode.EMAIL_REQUIRED);
+        }
+
+        long expiresMinutes = getPasswordResetExpiresMinutes();
+        String rawResetToken = createPasswordResetTokenFor(target, expiresMinutes);
+        userRepository.save(target);
+        emailService.sendPasswordResetEmail(email, target.getUsername(), rawResetToken, expiresMinutes);
+        log.info("Admin requested password reset email for user id={}", targetId);
     }
 
     // =========================================================================

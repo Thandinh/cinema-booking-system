@@ -1,6 +1,7 @@
 package com.cinema.booking.controller;
 
 import com.cinema.booking.dto.request.HoldSeatRequest;
+import com.cinema.booking.dto.request.BookingSearchRequest;
 import com.cinema.booking.dto.request.TicketCheckInRequest;
 import com.cinema.booking.dto.response.BookingResponse;
 import com.cinema.booking.dto.response.HoldSeatResponse;
@@ -137,7 +138,7 @@ class BookingPaymentSecurityIntegrationTest extends PostgresIntegrationTest {
                 .status(BookingStatus.SUCCESS)
                 .movieTitle("Test Movie")
                 .build()));
-        when(bookingService.getAllBookings(eq(null), any())).thenReturn(response);
+        when(bookingService.getAllBookings(any(BookingSearchRequest.class), any())).thenReturn(response);
 
         mockMvc.perform(get("/api/v1/bookings")
                         .with(jwtWithAuthorities("BOOKING_VIEW_OWN")))
@@ -149,7 +150,7 @@ class BookingPaymentSecurityIntegrationTest extends PostgresIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content[0].status").value("SUCCESS"));
 
-        verify(bookingService).getAllBookings(eq(null), any());
+        verify(bookingService).getAllBookings(any(BookingSearchRequest.class), any());
     }
 
     @Test

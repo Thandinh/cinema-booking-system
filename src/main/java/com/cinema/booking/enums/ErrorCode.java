@@ -19,6 +19,8 @@ public enum ErrorCode {
     UNAUTHORIZED           (1007, "You do not have permission",           HttpStatus.FORBIDDEN),
     USER_NOT_ACTIVE        (1008, "User account is inactive or blocked",  HttpStatus.FORBIDDEN),
     CANNOT_BLOCK_SELF      (1009, "Cannot block your own account",        HttpStatus.BAD_REQUEST),
+    CANNOT_DELETE_SELF     (1040, "Cannot delete your own account",       HttpStatus.BAD_REQUEST),
+    CANNOT_CHANGE_OWN_ADMIN_ROLE(1041, "Cannot remove ADMIN role from your own account", HttpStatus.BAD_REQUEST),
 
     // ── Validation keys — matched by GlobalExceptionHandler via Enum.valueOf() ─
     USERNAME_INVALID       (1010, "Username must be between {min} and 50 characters", HttpStatus.BAD_REQUEST),
@@ -51,6 +53,7 @@ public enum ErrorCode {
     METHOD_NOT_ALLOWED     (1037, "HTTP method is not allowed for this endpoint",     HttpStatus.METHOD_NOT_ALLOWED),
     MEDIA_TYPE_NOT_SUPPORTED(1038, "Content type is not supported",                   HttpStatus.UNSUPPORTED_MEDIA_TYPE),
     CONCURRENT_UPDATE_CONFLICT(1039, "The resource was updated by another request. Please reload and try again", HttpStatus.CONFLICT),
+    DATE_RANGE_INVALID     (1042, "From date must be before or equal to to date",     HttpStatus.BAD_REQUEST),
 
     // ── Movie ────────────────────────────────────────────────────────────────
     MOVIE_NOT_FOUND        (2001, "Movie not found",                      HttpStatus.NOT_FOUND),

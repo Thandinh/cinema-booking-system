@@ -1,6 +1,7 @@
 package com.cinema.booking.service.impl;
 
 import com.cinema.booking.dto.request.CreateBookingRequest;
+import com.cinema.booking.dto.request.BookingSearchRequest;
 import com.cinema.booking.dto.request.HoldSeatRequest;
 import com.cinema.booking.dto.response.BookingResponse;
 import com.cinema.booking.dto.response.HoldSeatResponse;
@@ -19,6 +20,7 @@ import com.cinema.booking.service.PaymentEventService;
 import com.cinema.booking.service.StaffCinemaScopeService;
 import com.cinema.booking.service.TicketQrCodeService;
 import com.cinema.booking.util.SecurityUtils;
+import com.cinema.booking.util.DateRange;
 import com.cinema.booking.websocket.SeatStatusPublisher;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -40,6 +42,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -515,15 +518,30 @@ public class BookingServiceImpl implements BookingService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<BookingResponse> getAllBookings(BookingStatus status, Pageable pageable) {
+    public Page<BookingResponse> getAllBookings(BookingSearchRequest request, Pageable pageable) {
+        BookingSearchRequest safeRequest = request == null ? new BookingSearchRequest() : request;
+        DateRange dateRange = DateRange.of(safeRequest.getFromDate(), safeRequest.getToDate());
+        String keywordPattern = normalizeKeywordPattern(safeRequest.getKeyword());
+
         if (staffCinemaScopeService.isStaffButNotAdmin()) {
             List<UUID> cinemaIds = staffCinemaScopeService.getCurrentStaffCinemaIds();
             if (cinemaIds.isEmpty()) {
                 return Page.empty(pageable);
             }
-            return mapBookingPage(bookingRepository.findIdsByStatusAndCinemaIds(status, cinemaIds, pageable));
+            return mapBookingPage(bookingRepository.findIdsForAdminSearchByCinemaIds(
+                    safeRequest.getStatus(),
+                    keywordPattern,
+                    dateRange.fromSearchBound(),
+                    dateRange.toSearchBound(),
+                    cinemaIds,
+                    pageable));
         }
-        return mapBookingPage(bookingRepository.findIdsByStatus(status, pageable));
+        return mapBookingPage(bookingRepository.findIdsForAdminSearch(
+                safeRequest.getStatus(),
+                keywordPattern,
+                dateRange.fromSearchBound(),
+                dateRange.toSearchBound(),
+                pageable));
     }
 
     private Page<BookingResponse> mapBookingPage(Page<UUID> bookingIdPage) {
@@ -724,6 +742,12 @@ public class BookingServiceImpl implements BookingService {
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private String normalizeKeywordPattern(String keyword) {
+        return keyword == null || keyword.isBlank()
+                ? null
+                : "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
     }
 
     private void expirePendingPaymentsAfterPriceChange(Booking booking, String message) {

@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.UUID;
+import java.time.LocalDateTime;
 
 public interface PaymentEventRepository extends JpaRepository<PaymentEvent, UUID> {
 
@@ -19,6 +20,8 @@ public interface PaymentEventRepository extends JpaRepository<PaymentEvent, UUID
               AND (:paymentId IS NULL OR e.paymentId = :paymentId)
               AND (:eventType IS NULL OR e.eventType = :eventType)
               AND (:success IS NULL OR e.success = :success)
+              AND e.createdAt >= :fromTime
+              AND e.createdAt < :toTime
               AND (
                     :keyword IS NULL
                     OR LOWER(e.transactionNo) LIKE :keyword
@@ -33,5 +36,7 @@ public interface PaymentEventRepository extends JpaRepository<PaymentEvent, UUID
             @Param("eventType") PaymentEventType eventType,
             @Param("success") Boolean success,
             @Param("keyword") String keyword,
+            @Param("fromTime") LocalDateTime fromTime,
+            @Param("toTime") LocalDateTime toTime,
             Pageable pageable);
 }

@@ -2,6 +2,7 @@ package com.cinema.booking.service.impl;
 
 import com.cinema.booking.dto.request.ShowtimeCreationRequest;
 import com.cinema.booking.dto.request.ShowtimeCancelRequest;
+import com.cinema.booking.dto.request.ShowtimeSearchRequest;
 import com.cinema.booking.dto.request.ShowtimeUpdateRequest;
 import com.cinema.booking.dto.response.ShowtimeResponse;
 import com.cinema.booking.entity.Booking;
@@ -33,6 +34,7 @@ import com.cinema.booking.service.PaymentEventService;
 import com.cinema.booking.service.StaffCinemaScopeService;
 import com.cinema.booking.service.ShowtimeService;
 import com.cinema.booking.service.ShowtimeStatusSyncService;
+import com.cinema.booking.specification.ShowtimeSpecifications;
 import com.cinema.booking.websocket.SeatStatusPublisher;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -51,6 +53,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -265,17 +268,37 @@ public class ShowtimeServiceImpl implements ShowtimeService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<ShowtimeResponse> getAllShowtimes(Pageable pageable) {
+    public Page<ShowtimeResponse> getAllShowtimes(ShowtimeSearchRequest request, Pageable pageable) {
         showtimeStatusSyncService.synchronizeCurrentStatuses();
+        ShowtimeSearchRequest safeRequest = request != null ? request : new ShowtimeSearchRequest();
+        LocalDateTime fromTime = safeRequest.getFromDate() != null ? safeRequest.getFromDate().atStartOfDay() : null;
+        LocalDateTime toTime = safeRequest.getToDate() != null ? safeRequest.getToDate().plusDays(1).atStartOfDay() : null;
+        String city = blankToNull(safeRequest.getCity());
+        String keyword = normalizeKeyword(safeRequest.getKeyword());
+        List<UUID> scopedCinemaIds = null;
+
+        if (fromTime != null && toTime != null && !toTime.isAfter(fromTime)) {
+            return Page.empty(pageable);
+        }
+
         if (staffCinemaScopeService.isStaffButNotAdmin()) {
-            List<UUID> cinemaIds = staffCinemaScopeService.getCurrentStaffCinemaIds();
-            if (cinemaIds.isEmpty()) {
+            scopedCinemaIds = staffCinemaScopeService.getCurrentStaffCinemaIds();
+            if (scopedCinemaIds.isEmpty()) {
                 return Page.empty(pageable);
             }
-            return showtimeRepository.findAllActiveByCinemaIds(cinemaIds, pageable)
-                    .map(showtimeMapper::toShowtimeResponse);
         }
-        return showtimeRepository.findAllActive(pageable)
+
+        return showtimeRepository.findAll(
+                        ShowtimeSpecifications.searchActive(
+                                fromTime,
+                                toTime,
+                                city,
+                                safeRequest.getCinemaId(),
+                                safeRequest.getRoomId(),
+                                safeRequest.getStatus(),
+                                keyword,
+                                scopedCinemaIds),
+                        pageable)
                 .map(showtimeMapper::toShowtimeResponse);
     }
 
@@ -316,6 +339,18 @@ public class ShowtimeServiceImpl implements ShowtimeService {
         return showtimeRepository.findOpenForCheckIn(cinemaId, earliestStartTime, latestStartTime).stream()
                 .map(showtimeMapper::toShowtimeResponse)
                 .toList();
+    }
+
+    private String blankToNull(String value) {
+        if (value == null || value.trim().isBlank()) {
+            return null;
+        }
+        return value.trim();
+    }
+
+    private String normalizeKeyword(String value) {
+        String trimmed = blankToNull(value);
+        return trimmed == null ? null : trimmed.toLowerCase(Locale.ROOT);
     }
 
     private void recordRefundRequested(Payment payment, Booking booking, String reason, Showtime showtime) {

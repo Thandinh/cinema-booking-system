@@ -47,6 +47,8 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             LEFT JOIN FETCH r.cinema c
             WHERE (:status IS NULL OR p.status = :status)
               AND (:method IS NULL OR p.method = :method)
+              AND p.createdAt >= :fromTime
+              AND p.createdAt < :toTime
               AND (
                     :keywordPattern IS NULL
                     OR LOWER(p.transactionNo) LIKE :keywordPattern
@@ -65,6 +67,8 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             LEFT JOIN st.movie m
             WHERE (:status IS NULL OR p.status = :status)
               AND (:method IS NULL OR p.method = :method)
+              AND p.createdAt >= :fromTime
+              AND p.createdAt < :toTime
               AND (
                     :keywordPattern IS NULL
                     OR LOWER(p.transactionNo) LIKE :keywordPattern
@@ -78,6 +82,8 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             @Param("status") PaymentStatus status,
             @Param("method") com.cinema.booking.enums.PaymentMethod method,
             @Param("keywordPattern") String keywordPattern,
+            @Param("fromTime") LocalDateTime fromTime,
+            @Param("toTime") LocalDateTime toTime,
             Pageable pageable);
 
     @Query(value = """
@@ -92,6 +98,8 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             WHERE (:status IS NULL OR p.status = :status)
               AND (:method IS NULL OR p.method = :method)
               AND c.id IN :cinemaIds
+              AND p.createdAt >= :fromTime
+              AND p.createdAt < :toTime
               AND (
                     :keywordPattern IS NULL
                     OR LOWER(p.transactionNo) LIKE :keywordPattern
@@ -113,6 +121,8 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             WHERE (:status IS NULL OR p.status = :status)
               AND (:method IS NULL OR p.method = :method)
               AND c.id IN :cinemaIds
+              AND p.createdAt >= :fromTime
+              AND p.createdAt < :toTime
               AND (
                     :keywordPattern IS NULL
                     OR LOWER(p.transactionNo) LIKE :keywordPattern
@@ -126,6 +136,8 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             @Param("status") PaymentStatus status,
             @Param("method") com.cinema.booking.enums.PaymentMethod method,
             @Param("keywordPattern") String keywordPattern,
+            @Param("fromTime") LocalDateTime fromTime,
+            @Param("toTime") LocalDateTime toTime,
             @Param("cinemaIds") List<UUID> cinemaIds,
             Pageable pageable);
 

@@ -482,6 +482,9 @@ CREATE INDEX idx_bookings_status_created_at
 CREATE INDEX idx_bookings_showtime_id
     ON bookings(showtime_id);
 
+CREATE INDEX idx_bookings_showtime_created_at
+    ON bookings(showtime_id, created_at DESC);
+
 CREATE INDEX idx_bookings_success_showtime_id
     ON bookings(showtime_id, id)
     WHERE status = 'SUCCESS';
@@ -512,6 +515,12 @@ CREATE INDEX idx_payments_pending_reuse
 
 CREATE INDEX idx_payments_status_payment_time
     ON payments(status, payment_time DESC);
+
+CREATE INDEX idx_payments_created_at
+    ON payments(created_at DESC);
+
+CREATE INDEX idx_payments_status_method_created_at
+    ON payments(status, method, created_at DESC);
 
 CREATE UNIQUE INDEX uq_payments_transaction_no
     ON payments(transaction_no)
@@ -554,6 +563,9 @@ CREATE INDEX idx_admin_audit_logs_created_at
 
 CREATE INDEX idx_admin_audit_logs_resource_created_at
     ON admin_audit_logs(resource, created_at DESC);
+
+CREATE INDEX idx_admin_audit_logs_action_created_at
+    ON admin_audit_logs(action, created_at DESC);
 
 CREATE INDEX idx_admin_audit_logs_actor_created_at
     ON admin_audit_logs(actor_id, created_at DESC)

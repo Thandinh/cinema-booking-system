@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.UUID;
+import java.time.LocalDateTime;
 
 @Repository
 public interface AuthAuditLogRepository extends JpaRepository<AuthAuditLog, UUID> {
@@ -18,6 +19,8 @@ public interface AuthAuditLogRepository extends JpaRepository<AuthAuditLog, UUID
             from AuthAuditLog log
             where (:eventType is null or log.eventType = :eventType)
               and (:success is null or log.success = :success)
+              and log.createdAt >= :fromTime
+              and log.createdAt < :toTime
               and (
                     :keyword is null
                     or lower(log.username) like :keyword
@@ -31,5 +34,7 @@ public interface AuthAuditLogRepository extends JpaRepository<AuthAuditLog, UUID
             @Param("eventType") String eventType,
             @Param("success") Boolean success,
             @Param("keyword") String keyword,
+            @Param("fromTime") LocalDateTime fromTime,
+            @Param("toTime") LocalDateTime toTime,
             Pageable pageable);
 }

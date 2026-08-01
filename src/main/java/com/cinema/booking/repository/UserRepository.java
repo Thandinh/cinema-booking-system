@@ -42,6 +42,125 @@ public interface UserRepository extends JpaRepository<User, UUID> {
            countQuery = "SELECT COUNT(u) FROM User u WHERE u.isDeleted = false OR u.isDeleted IS NULL")
     Page<UUID> findActiveIds(Pageable pageable);
 
+    @Query(value = """
+            SELECT u.id
+            FROM User u
+            WHERE (u.isDeleted = false OR u.isDeleted IS NULL)
+              AND (
+                    :roleName IS NULL
+                    OR EXISTS (
+                        SELECT r.id
+                        FROM u.roles r
+                        WHERE r.name = :roleName
+                    )
+                  )
+              AND (
+                    :assignedCity IS NULL
+                    OR EXISTS (
+                        SELECT scCity.id
+                        FROM StaffCinema scCity
+                        JOIN scCity.cinema cCity
+                        WHERE scCity.staff = u
+                          AND LOWER(cCity.city) = :assignedCity
+                          AND cCity.isDeleted = false
+                          AND cCity.isActive = true
+                    )
+                  )
+              AND (
+                    :assignedCinemaId IS NULL
+                    OR EXISTS (
+                        SELECT sc.id
+                        FROM StaffCinema sc
+                        JOIN sc.cinema c
+                        WHERE sc.staff = u
+                          AND c.id = :assignedCinemaId
+                          AND c.isDeleted = false
+                          AND c.isActive = true
+                    )
+                  )
+              AND (
+                    :unassignedStaff = false
+                    OR NOT EXISTS (
+                        SELECT sc2.id
+                        FROM StaffCinema sc2
+                        JOIN sc2.cinema c2
+                        WHERE sc2.staff = u
+                          AND c2.isDeleted = false
+                          AND c2.isActive = true
+                    )
+                  )
+              AND (
+                    :keywordPattern IS NULL
+                    OR LOWER(u.username) LIKE :keywordPattern
+                    OR (u.email IS NOT NULL AND LOWER(u.email) LIKE :keywordPattern)
+                    OR (u.firstName IS NOT NULL AND LOWER(u.firstName) LIKE :keywordPattern)
+                    OR (u.lastName IS NOT NULL AND LOWER(u.lastName) LIKE :keywordPattern)
+                    OR (u.phone IS NOT NULL AND LOWER(u.phone) LIKE :keywordPattern)
+                  )
+            """,
+           countQuery = """
+            SELECT COUNT(u.id)
+            FROM User u
+            WHERE (u.isDeleted = false OR u.isDeleted IS NULL)
+              AND (
+                    :roleName IS NULL
+                    OR EXISTS (
+                        SELECT r.id
+                        FROM u.roles r
+                        WHERE r.name = :roleName
+                    )
+                  )
+              AND (
+                    :assignedCity IS NULL
+                    OR EXISTS (
+                        SELECT scCity.id
+                        FROM StaffCinema scCity
+                        JOIN scCity.cinema cCity
+                        WHERE scCity.staff = u
+                          AND LOWER(cCity.city) = :assignedCity
+                          AND cCity.isDeleted = false
+                          AND cCity.isActive = true
+                    )
+                  )
+              AND (
+                    :assignedCinemaId IS NULL
+                    OR EXISTS (
+                        SELECT sc.id
+                        FROM StaffCinema sc
+                        JOIN sc.cinema c
+                        WHERE sc.staff = u
+                          AND c.id = :assignedCinemaId
+                          AND c.isDeleted = false
+                          AND c.isActive = true
+                    )
+                  )
+              AND (
+                    :unassignedStaff = false
+                    OR NOT EXISTS (
+                        SELECT sc2.id
+                        FROM StaffCinema sc2
+                        JOIN sc2.cinema c2
+                        WHERE sc2.staff = u
+                          AND c2.isDeleted = false
+                          AND c2.isActive = true
+                    )
+                  )
+              AND (
+                    :keywordPattern IS NULL
+                    OR LOWER(u.username) LIKE :keywordPattern
+                    OR (u.email IS NOT NULL AND LOWER(u.email) LIKE :keywordPattern)
+                    OR (u.firstName IS NOT NULL AND LOWER(u.firstName) LIKE :keywordPattern)
+                    OR (u.lastName IS NOT NULL AND LOWER(u.lastName) LIKE :keywordPattern)
+                    OR (u.phone IS NOT NULL AND LOWER(u.phone) LIKE :keywordPattern)
+                  )
+            """)
+    Page<UUID> findActiveIdsByRoleKeywordAndStaffCinema(@Param("roleName") String roleName,
+                                                        @Param("keywordPattern") String keywordPattern,
+                                                        @Param("assignedCity") String assignedCity,
+                                                        @Param("assignedCinemaId") UUID assignedCinemaId,
+                                                        @Param("unassignedStaff") boolean unassignedStaff,
+                                                        Pageable pageable);
+
     @Query("""
             SELECT DISTINCT u FROM User u
             LEFT JOIN FETCH u.roles r

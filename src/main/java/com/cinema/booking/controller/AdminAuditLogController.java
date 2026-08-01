@@ -1,5 +1,6 @@
 package com.cinema.booking.controller;
 
+import com.cinema.booking.dto.request.AuditLogSearchRequest;
 import com.cinema.booking.dto.response.AdminAuditLogResponse;
 import com.cinema.booking.dto.response.ApiResponse;
 import com.cinema.booking.service.AdminAuditLogService;
@@ -11,8 +12,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -26,14 +27,11 @@ public class AdminAuditLogController {
     @GetMapping
     @PreAuthorize("hasAuthority('AUDIT_VIEW')")
     public ApiResponse<Page<AdminAuditLogResponse>> getAuditLogs(
-            @RequestParam(required = false) String action,
-            @RequestParam(required = false) String resource,
-            @RequestParam(required = false) Boolean success,
-            @RequestParam(required = false) String keyword,
+            @ModelAttribute AuditLogSearchRequest request,
             @PageableDefault(size = 20, sort = "createdAt") Pageable pageable) {
         return ApiResponse.<Page<AdminAuditLogResponse>>builder()
                 .code(1000)
-                .result(adminAuditLogService.getAuditLogs(pageable, action, resource, success, keyword))
+                .result(adminAuditLogService.getAuditLogs(request, pageable))
                 .build();
     }
 }

@@ -1,5 +1,6 @@
 package com.cinema.booking.service;
 
+import com.cinema.booking.dto.request.PaymentSearchRequest;
 import com.cinema.booking.dto.response.PaymentReconciliationIssueResponse;
 import com.cinema.booking.dto.response.PaymentResponse;
 import com.cinema.booking.enums.PaymentMethod;
@@ -25,7 +26,7 @@ public interface PaymentService {
     Page<PaymentResponse> getMyPayments(Pageable pageable);
 
     /** Lấy toàn bộ giao dịch cho ADMIN/STAFF (PAYMENT_VIEW_ALL) */
-    Page<PaymentResponse> getAllPayments(Pageable pageable, PaymentStatus status, PaymentMethod method, String keyword);
+    Page<PaymentResponse> getAllPayments(PaymentSearchRequest request, Pageable pageable);
 
     List<PaymentReconciliationIssueResponse> getReconciliationIssues(int limit);
 

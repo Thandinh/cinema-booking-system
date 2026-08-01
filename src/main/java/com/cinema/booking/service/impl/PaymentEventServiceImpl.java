@@ -1,5 +1,6 @@
 package com.cinema.booking.service.impl;
 
+import com.cinema.booking.dto.request.PaymentEventSearchRequest;
 import com.cinema.booking.dto.response.PaymentEventResponse;
 import com.cinema.booking.entity.Booking;
 import com.cinema.booking.entity.Payment;
@@ -7,6 +8,7 @@ import com.cinema.booking.entity.PaymentEvent;
 import com.cinema.booking.enums.*;
 import com.cinema.booking.repository.PaymentEventRepository;
 import com.cinema.booking.service.PaymentEventService;
+import com.cinema.booking.util.DateRange;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -90,20 +92,24 @@ public class PaymentEventServiceImpl implements PaymentEventService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<PaymentEventResponse> search(
-            UUID bookingId,
-            UUID paymentId,
-            PaymentEventType eventType,
-            Boolean success,
-            String keyword,
-            Pageable pageable) {
-        String keywordPattern = keyword == null || keyword.isBlank()
+    public Page<PaymentEventResponse> search(PaymentEventSearchRequest request, Pageable pageable) {
+        PaymentEventSearchRequest safeRequest = request == null ? new PaymentEventSearchRequest() : request;
+        DateRange dateRange = DateRange.of(safeRequest.getFromDate(), safeRequest.getToDate());
+        String keywordPattern = safeRequest.getKeyword() == null || safeRequest.getKeyword().isBlank()
                 ? null
-                : "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
+                : "%" + safeRequest.getKeyword().trim().toLowerCase(Locale.ROOT) + "%";
         return paymentEventRepository
-                .search(bookingId, paymentId, eventType, success, keywordPattern, pageable)
-                .map(this::toResponse);
-    }
+                .search(
+                        safeRequest.getBookingId(),
+                        safeRequest.getPaymentId(),
+                         safeRequest.getEventType(),
+                         safeRequest.getSuccess(),
+                         keywordPattern,
+                        dateRange.fromSearchBound(),
+                        dateRange.toSearchBound(),
+                         pageable)
+                 .map(this::toResponse);
+     }
 
     private PaymentEventResponse toResponse(PaymentEvent event) {
         return PaymentEventResponse.builder()

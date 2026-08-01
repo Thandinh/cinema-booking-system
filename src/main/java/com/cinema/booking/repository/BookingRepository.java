@@ -44,6 +44,58 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     Page<UUID> findIdsByStatus(@Param("status") BookingStatus status, Pageable pageable);
 
     @Query(value = """
+            SELECT b.id
+            FROM Booking b
+            JOIN b.user u
+            JOIN b.showtime st
+            JOIN st.movie m
+            JOIN st.room r
+            JOIN r.cinema c
+            WHERE (:status IS NULL OR b.status = :status)
+              AND b.createdAt >= :fromTime
+              AND b.createdAt < :toTime
+              AND (
+                    :keywordPattern IS NULL
+                    OR LOWER(CAST(b.id AS string)) LIKE :keywordPattern
+                    OR LOWER(u.username) LIKE :keywordPattern
+                    OR LOWER(u.email) LIKE :keywordPattern
+                    OR LOWER(u.firstName) LIKE :keywordPattern
+                    OR LOWER(u.lastName) LIKE :keywordPattern
+                    OR LOWER(m.title) LIKE :keywordPattern
+                    OR LOWER(c.name) LIKE :keywordPattern
+                    OR LOWER(r.name) LIKE :keywordPattern
+              )
+            """,
+           countQuery = """
+            SELECT COUNT(b)
+            FROM Booking b
+            JOIN b.user u
+            JOIN b.showtime st
+            JOIN st.movie m
+            JOIN st.room r
+            JOIN r.cinema c
+            WHERE (:status IS NULL OR b.status = :status)
+              AND b.createdAt >= :fromTime
+              AND b.createdAt < :toTime
+              AND (
+                    :keywordPattern IS NULL
+                    OR LOWER(CAST(b.id AS string)) LIKE :keywordPattern
+                    OR LOWER(u.username) LIKE :keywordPattern
+                    OR LOWER(u.email) LIKE :keywordPattern
+                    OR LOWER(u.firstName) LIKE :keywordPattern
+                    OR LOWER(u.lastName) LIKE :keywordPattern
+                    OR LOWER(m.title) LIKE :keywordPattern
+                    OR LOWER(c.name) LIKE :keywordPattern
+                    OR LOWER(r.name) LIKE :keywordPattern
+              )
+            """)
+    Page<UUID> findIdsForAdminSearch(@Param("status") BookingStatus status,
+                                     @Param("keywordPattern") String keywordPattern,
+                                     @Param("fromTime") LocalDateTime fromTime,
+                                     @Param("toTime") LocalDateTime toTime,
+                                     Pageable pageable);
+
+    @Query(value = """
             SELECT b.id FROM Booking b
             WHERE (:status IS NULL OR b.status = :status)
               AND b.showtime.room.cinema.id IN :cinemaIds
@@ -56,6 +108,61 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     Page<UUID> findIdsByStatusAndCinemaIds(@Param("status") BookingStatus status,
                                            @Param("cinemaIds") List<UUID> cinemaIds,
                                            Pageable pageable);
+
+    @Query(value = """
+            SELECT b.id
+            FROM Booking b
+            JOIN b.user u
+            JOIN b.showtime st
+            JOIN st.movie m
+            JOIN st.room r
+            JOIN r.cinema c
+            WHERE (:status IS NULL OR b.status = :status)
+              AND c.id IN :cinemaIds
+              AND b.createdAt >= :fromTime
+              AND b.createdAt < :toTime
+              AND (
+                    :keywordPattern IS NULL
+                    OR LOWER(CAST(b.id AS string)) LIKE :keywordPattern
+                    OR LOWER(u.username) LIKE :keywordPattern
+                    OR LOWER(u.email) LIKE :keywordPattern
+                    OR LOWER(u.firstName) LIKE :keywordPattern
+                    OR LOWER(u.lastName) LIKE :keywordPattern
+                    OR LOWER(m.title) LIKE :keywordPattern
+                    OR LOWER(c.name) LIKE :keywordPattern
+                    OR LOWER(r.name) LIKE :keywordPattern
+              )
+            """,
+           countQuery = """
+            SELECT COUNT(b)
+            FROM Booking b
+            JOIN b.user u
+            JOIN b.showtime st
+            JOIN st.movie m
+            JOIN st.room r
+            JOIN r.cinema c
+            WHERE (:status IS NULL OR b.status = :status)
+              AND c.id IN :cinemaIds
+              AND b.createdAt >= :fromTime
+              AND b.createdAt < :toTime
+              AND (
+                    :keywordPattern IS NULL
+                    OR LOWER(CAST(b.id AS string)) LIKE :keywordPattern
+                    OR LOWER(u.username) LIKE :keywordPattern
+                    OR LOWER(u.email) LIKE :keywordPattern
+                    OR LOWER(u.firstName) LIKE :keywordPattern
+                    OR LOWER(u.lastName) LIKE :keywordPattern
+                    OR LOWER(m.title) LIKE :keywordPattern
+                    OR LOWER(c.name) LIKE :keywordPattern
+                    OR LOWER(r.name) LIKE :keywordPattern
+              )
+            """)
+    Page<UUID> findIdsForAdminSearchByCinemaIds(@Param("status") BookingStatus status,
+                                                @Param("keywordPattern") String keywordPattern,
+                                                @Param("fromTime") LocalDateTime fromTime,
+                                                @Param("toTime") LocalDateTime toTime,
+                                                @Param("cinemaIds") List<UUID> cinemaIds,
+                                                Pageable pageable);
 
     @Query("""
             SELECT DISTINCT b FROM Booking b

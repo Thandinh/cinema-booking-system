@@ -8,6 +8,7 @@ import com.cinema.booking.dto.request.ResetPasswordRequest;
 import com.cinema.booking.dto.request.UserCreationRequest;
 import com.cinema.booking.dto.request.UserUpdateRequest;
 import com.cinema.booking.dto.response.ApiResponse;
+import com.cinema.booking.dto.response.RoleResponse;
 import com.cinema.booking.dto.response.UserResponse;
 import com.cinema.booking.service.UserService;
 import jakarta.validation.Valid;
@@ -24,6 +25,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
+import java.util.List;
 
 /**
  * REST Controller quản lý User.
@@ -136,11 +138,25 @@ public class UserController {
     @GetMapping
     @PreAuthorize("hasAuthority('USER_VIEW')")
     public ApiResponse<Page<UserResponse>> getAllUsers(
+            @RequestParam(required = false) String role,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String assignedCity,
+            @RequestParam(required = false) UUID assignedCinemaId,
+            @RequestParam(defaultValue = "false") boolean unassignedStaff,
             @PageableDefault(size = 20, sort = "createdAt") Pageable pageable) {
-        Page<UserResponse> page = userService.getAllUsers(pageable);
+        Page<UserResponse> page = userService.getAllUsers(role, keyword, assignedCity, assignedCinemaId, unassignedStaff, pageable);
         return ApiResponse.<Page<UserResponse>>builder()
                 .code(1000)
                 .result(page)
+                .build();
+    }
+
+    @GetMapping("/roles")
+    @PreAuthorize("hasAuthority('USER_VIEW')")
+    public ApiResponse<List<RoleResponse>> getAllRoles() {
+        return ApiResponse.<List<RoleResponse>>builder()
+                .code(1000)
+                .result(userService.getAllRoles())
                 .build();
     }
 
@@ -216,6 +232,16 @@ public class UserController {
                 .code(1000)
                 .message("User unblocked successfully")
                 .result(userService.unblockUser(id))
+                .build();
+    }
+
+    @PostMapping("/{id}/password-reset")
+    @PreAuthorize("hasAuthority('USER_UPDATE')")
+    public ApiResponse<Void> requestPasswordResetByAdmin(@PathVariable UUID id) {
+        userService.requestPasswordResetByAdmin(id);
+        return ApiResponse.<Void>builder()
+                .code(1000)
+                .message("Password reset email sent successfully")
                 .build();
     }
 
