@@ -430,6 +430,10 @@ Backend:
 |---|---|
 | `BOOKING_SEAT_HOLD_MINUTES` | Thoi gian giu ghe tren seat map |
 | `BOOKING_PENDING_TIMEOUT_MINUTES` | Thoi gian booking cho thanh toan |
+| `BOOKING_HOLD_RATE_LIMIT_ENABLED` | Bat/tat gioi han tan suat giu ghe |
+| `BOOKING_HOLD_RATE_LIMIT_USER_MAX_REQUESTS` | So request giu ghe toi da tren moi user trong mot cua so |
+| `BOOKING_HOLD_RATE_LIMIT_IP_MAX_REQUESTS` | So request giu ghe toi da tren moi IP trong mot cua so |
+| `BOOKING_HOLD_RATE_LIMIT_WINDOW_SECONDS` | Do dai cua so rate limit giu ghe |
 | `BOOKING_EXPIRED_HOLD_SCAN_DELAY_MS` | Chu ky quet ghe HOLD het han |
 | `BOOKING_EXPIRED_BOOKING_SCAN_DELAY_MS` | Chu ky quet booking PENDING het han |
 | `SHOWTIME_PUBLIC_DAYS_AHEAD` | So ngay lich chieu public |

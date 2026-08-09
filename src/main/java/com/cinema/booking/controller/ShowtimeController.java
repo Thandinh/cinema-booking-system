@@ -5,11 +5,16 @@ import com.cinema.booking.dto.request.ShowtimeCancelRequest;
 import com.cinema.booking.dto.request.ShowtimeSearchRequest;
 import com.cinema.booking.dto.request.ShowtimeUpdateRequest;
 import com.cinema.booking.dto.response.ApiResponse;
+import com.cinema.booking.dto.response.HomeShowtimeFeedResponse;
 import com.cinema.booking.dto.response.SeatMapItemResponse;
 import com.cinema.booking.dto.response.ShowtimeResponse;
 import com.cinema.booking.service.BookingService;
 import com.cinema.booking.service.ShowtimeService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -17,9 +22,12 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -27,10 +35,25 @@ import java.util.UUID;
 @RequestMapping("/api/v1/showtimes")
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
+@Validated
 public class ShowtimeController {
 
     ShowtimeService showtimeService;
     BookingService bookingService;
+
+    @GetMapping("/home")
+    public ApiResponse<HomeShowtimeFeedResponse> getHomeShowtimes(
+            @RequestParam @NotBlank @Size(max = 100) String city,
+            @RequestParam UUID cinemaId,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(defaultValue = "6") @Min(1) @Max(10) int movieLimit,
+            @RequestParam(defaultValue = "4") @Min(1) @Max(8) int showtimeLimit) {
+        return ApiResponse.<HomeShowtimeFeedResponse>builder()
+                .code(1000)
+                .result(showtimeService.getHomeShowtimes(city, cinemaId, date, movieLimit, showtimeLimit))
+                .build();
+    }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)

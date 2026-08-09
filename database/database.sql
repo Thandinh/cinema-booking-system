@@ -535,6 +535,12 @@ CREATE INDEX idx_payments_pending_reuse
     ON payments(booking_id, method, status, created_at DESC)
     WHERE status = 'PENDING';
 
+CREATE UNIQUE INDEX uq_payments_pending_booking_method
+    ON payments(booking_id, method)
+    WHERE status = 'PENDING'
+      AND booking_id IS NOT NULL
+      AND method IS NOT NULL;
+
 CREATE INDEX idx_payments_status_payment_time
     ON payments(status, payment_time DESC);
 

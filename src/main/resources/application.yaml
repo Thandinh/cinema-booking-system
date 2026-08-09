@@ -97,6 +97,11 @@ sepay:
 booking:
   seat-hold-minutes: ${BOOKING_SEAT_HOLD_MINUTES:${BOOKING_PENDING_TIMEOUT_MINUTES:5}}
   pending-timeout-minutes: ${BOOKING_PENDING_TIMEOUT_MINUTES:5}
+  hold-rate-limit:
+    enabled: ${BOOKING_HOLD_RATE_LIMIT_ENABLED:true}
+    user-max-requests: ${BOOKING_HOLD_RATE_LIMIT_USER_MAX_REQUESTS:12}
+    ip-max-requests: ${BOOKING_HOLD_RATE_LIMIT_IP_MAX_REQUESTS:60}
+    window-seconds: ${BOOKING_HOLD_RATE_LIMIT_WINDOW_SECONDS:60}
   expired-hold-scan-delay-ms: ${BOOKING_EXPIRED_HOLD_SCAN_DELAY_MS:30000}
   expired-hold-scan-limit: ${BOOKING_EXPIRED_HOLD_SCAN_LIMIT:500}
   expired-booking-scan-delay-ms: ${BOOKING_EXPIRED_BOOKING_SCAN_DELAY_MS:30000}

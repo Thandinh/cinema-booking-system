@@ -102,6 +102,12 @@ CREATE INDEX IF NOT EXISTS idx_payments_created_at
 CREATE INDEX IF NOT EXISTS idx_payments_status_method_created_at
     ON payments(status, method, created_at DESC);
 
+CREATE UNIQUE INDEX IF NOT EXISTS uq_payments_pending_booking_method
+    ON payments(booking_id, method)
+    WHERE status = 'PENDING'
+      AND booking_id IS NOT NULL
+      AND method IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS payment_events (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     payment_id UUID,
@@ -439,7 +445,15 @@ INSERT INTO cinemas (
 (uuid_generate_v4(), 'Beta Mỹ Đình', 'Tầng hầm B1 The Garden, Nam Từ Liêm', 'Hà Nội', 21.0156, 105.7798, NOW(), NOW(), true, false),
 (uuid_generate_v4(), 'CGV Tràng Tiền Plaza', 'Tầng 5 Tràng Tiền Plaza, Hoàn Kiếm', 'Hà Nội', 21.0245, 105.8515, NOW(), NOW(), true, false),
 (uuid_generate_v4(), 'Lotte Cinema Cần Thơ', 'Tầng 5 Sense City, Ninh Kiều', 'Cần Thơ', 10.0342, 105.7839, NOW(), NOW(), true, false),
-(uuid_generate_v4(), 'CGV Nha Trang Center', 'Tầng 3 Nha Trang Center, Trần Phú', 'Nha Trang', 12.2473, 109.1955, NOW(), NOW(), true, false);
+(uuid_generate_v4(), 'CGV Nha Trang Center', 'Tầng 3 Nha Trang Center, Trần Phú', 'Nha Trang', 12.2473, 109.1955, NOW(), NOW(), true, false),
+-- Cụm Quảng Nam quanh tọa độ 15.593163, 108.534505 để test nút "Gần tôi".
+-- Có rạp trong 10km và ngoài 10km để kiểm tra sort/badge khoảng cách.
+(uuid_generate_v4(), 'CinemaBooking Tam Kỳ Center', '02 Phan Bội Châu, TP Tam Kỳ', 'Quảng Nam', 15.5737, 108.4740, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'Galaxy Tam Kỳ Square', '175 Phan Châu Trinh, TP Tam Kỳ', 'Quảng Nam', 15.5689, 108.4838, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'Beta Tam Phú', 'Khu đô thị Tam Phú, TP Tam Kỳ', 'Quảng Nam', 15.5896, 108.5074, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'Cinestar Tam Thăng', 'Đường Võ Chí Công, xã Tam Thăng', 'Quảng Nam', 15.5485, 108.5529, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'Mega GS An Hà', 'Khu đô thị An Hà, TP Tam Kỳ', 'Quảng Nam', 15.6209, 108.5103, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'Lotte Cinema Chu Lai', 'Khu kinh tế mở Chu Lai, Núi Thành', 'Quảng Nam', 15.4309, 108.7061, NOW(), NOW(), true, false);
 
 -- Phân công staff theo rạp để test scope nhân viên, lọc theo thành phố/rạp và staff chưa gán rạp.
 WITH assignments(username, cinema_name) AS (
@@ -455,6 +469,12 @@ WITH assignments(username, cinema_name) AS (
         ('staff_danang', 'CGV Vincom Đà Nẵng'),
         ('staff_danang', 'Galaxy Đà Nẵng'),
         ('staff_danang', 'Lotte Cinema Đà Nẵng'),
+        ('staff_danang', 'CinemaBooking Tam Kỳ Center'),
+        ('staff_danang', 'Galaxy Tam Kỳ Square'),
+        ('staff_danang', 'Beta Tam Phú'),
+        ('staff_danang', 'Cinestar Tam Thăng'),
+        ('staff_danang', 'Mega GS An Hà'),
+        ('staff_danang', 'Lotte Cinema Chu Lai'),
         ('staff_hue', 'Cinestar Huế'),
         ('staff_hue', 'Lotte Cinema Huế'),
         ('staff_blocked', 'Lotte Cinema Cần Thơ')
@@ -465,7 +485,7 @@ FROM assignments a
 JOIN users u ON u.username = a.username
 JOIN cinemas c ON c.name = a.cinema_name;
 
--- Mỗi rạp 3 phòng. Tổng: 42 phòng với dữ liệu hiện tại.
+-- Mỗi rạp 3 phòng. Tổng: 60 phòng với dữ liệu hiện tại.
 INSERT INTO rooms (id, cinema_id, name, created_at, updated_at, is_deleted)
 SELECT
     uuid_generate_v4(),
@@ -1400,8 +1420,31 @@ BEGIN
         RAISE EXCEPTION 'Mock data invalid: missing test users/staff accounts.';
     END IF;
 
-    IF (SELECT count(*) FROM staff_cinemas) < 14 THEN
+    IF (SELECT count(*) FROM staff_cinemas) < 20 THEN
         RAISE EXCEPTION 'Mock data invalid: staff cinema assignments were not seeded correctly.';
+    END IF;
+
+    IF (
+        SELECT count(*)
+        FROM cinemas c
+        WHERE c.city = 'Quảng Nam'
+          AND c.is_deleted = false
+          AND (
+              6371 * 2 * atan2(
+                  sqrt(
+                      power(sin(radians(c.latitude - 15.593163) / 2), 2) +
+                      cos(radians(15.593163)) * cos(radians(c.latitude)) *
+                      power(sin(radians(c.longitude - 108.534505) / 2), 2)
+                  ),
+                  sqrt(1 - (
+                      power(sin(radians(c.latitude - 15.593163) / 2), 2) +
+                      cos(radians(15.593163)) * cos(radians(c.latitude)) *
+                      power(sin(radians(c.longitude - 108.534505) / 2), 2)
+                  ))
+              )
+          ) <= 10
+    ) < 5 THEN
+        RAISE EXCEPTION 'Mock data invalid: nearby Quang Nam cinemas for geolocation testing were not seeded correctly.';
     END IF;
 
     IF (
@@ -1443,7 +1486,7 @@ END $$;
 -- staff1: phụ trách CGV Sư Vạn Hạnh, BHD Star Bitexco.
 -- staff_hcm: phụ trách cụm TP Hồ Chí Minh.
 -- staff_hanoi: phụ trách cụm Hà Nội.
--- staff_danang: phụ trách cụm Đà Nẵng.
+-- staff_danang: phụ trách cụm Đà Nẵng và Quảng Nam để test scope rạp gần bạn.
 -- staff_hue: phụ trách cụm Huế.
 -- staff_unassigned: chưa gán rạp, dùng để test filter "Chưa gán rạp".
 -- staff_blocked: tài khoản staff bị khóa, dùng để test block/unblock.
@@ -1452,8 +1495,12 @@ END $$;
 -- user_pending: email_verified=false, dùng để test xác thực email.
 -- user_blocked: tài khoản user bị khóa, dùng để test đăng nhập/block.
 -- Kỳ vọng dữ liệu:
--- 23 phim NOW_SHOWING, 2 phim không chiếu hiện tại, 14 rạp, 42 phòng, 4032 ghế.
--- 1476 suất chiếu, 141696 dòng seat_status, 66 booking, 65 payment, 122 ticket, 1 refund pending.
+-- 23 phim NOW_SHOWING, 2 phim không chiếu hiện tại, 20 rạp, 60 phòng, 5760 ghế.
+-- 2106 suất chiếu, 202176 dòng seat_status, 66 booking, 65 payment, 122 ticket, 1 refund pending.
+-- Test nút "Gần tôi" trên tab Rạp chiếu:
+-- Dùng vị trí 15.593163, 108.534505 sẽ thấy cụm rạp Quảng Nam được sắp xếp gần nhất.
+-- Trong 10km có CinemaBooking Tam Kỳ Center, Galaxy Tam Kỳ Square, Beta Tam Phú, Cinestar Tam Thăng, Mega GS An Hà.
+-- Lotte Cinema Chu Lai nằm xa hơn để test badge khoảng cách ngoài bán kính gần.
 -- Vé test nhanh:
 -- user1 có booking SUCCESS tại CGV Sư Vạn Hạnh, Phòng 01 - Standard, ghế A1/A2, suất chiếu bắt đầu sau 30 phút.
 -- Lấy QR để staff check-in:

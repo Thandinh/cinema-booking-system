@@ -50,6 +50,22 @@ public class GlobalExceptionHandler {
         return buildResponse(exception.getErrorCode(), request);
     }
 
+    @ExceptionHandler(RateLimitExceededException.class)
+    ResponseEntity<ApiResponse<Map<String, Object>>> handlingRateLimitExceeded(
+            RateLimitExceededException exception,
+            HttpServletRequest request) {
+        long retryAfterSeconds = exception.getRetryAfterSeconds();
+        return ResponseEntity.status(exception.getErrorCode().getStatusCode())
+                .header("Retry-After", String.valueOf(retryAfterSeconds))
+                .body(ApiResponse.<Map<String, Object>>builder()
+                        .code(exception.getErrorCode().getCode())
+                        .message(exception.getErrorCode().getMessage())
+                        .result(Map.of("retryAfterSeconds", retryAfterSeconds))
+                        .timestamp(now())
+                        .path(request.getRequestURI())
+                        .build());
+    }
+
     @ExceptionHandler(AccessDeniedException.class)
     ResponseEntity<ApiResponse<Void>> handlingAccessDeniedException(
             AccessDeniedException exception,

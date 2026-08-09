@@ -2,6 +2,7 @@ package com.cinema.booking.service;
 
 import com.cinema.booking.dto.request.PaymentEventSearchRequest;
 import com.cinema.booking.dto.response.PaymentEventResponse;
+import com.cinema.booking.dto.response.PaymentMonitoringSummaryResponse;
 import com.cinema.booking.entity.Booking;
 import com.cinema.booking.entity.Payment;
 import com.cinema.booking.enums.*;
@@ -40,4 +41,6 @@ public interface PaymentEventService {
             Map<String, Object> payload);
 
     Page<PaymentEventResponse> search(PaymentEventSearchRequest request, Pageable pageable);
+
+    PaymentMonitoringSummaryResponse getMonitoringSummary(int hours);
 }

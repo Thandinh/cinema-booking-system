@@ -4,6 +4,9 @@ import com.cinema.booking.dto.request.ShowtimeCreationRequest;
 import com.cinema.booking.dto.request.ShowtimeCancelRequest;
 import com.cinema.booking.dto.request.ShowtimeSearchRequest;
 import com.cinema.booking.dto.request.ShowtimeUpdateRequest;
+import com.cinema.booking.dto.response.HomeMovieShowtimesResponse;
+import com.cinema.booking.dto.response.HomeShowtimeFeedResponse;
+import com.cinema.booking.dto.response.HomeShowtimeItemResponse;
 import com.cinema.booking.dto.response.ShowtimeResponse;
 import com.cinema.booking.entity.Booking;
 import com.cinema.booking.entity.Movie;
@@ -22,6 +25,7 @@ import com.cinema.booking.enums.TicketStatus;
 import com.cinema.booking.exception.AppException;
 import com.cinema.booking.mapper.ShowtimeMapper;
 import com.cinema.booking.repository.BookingRepository;
+import com.cinema.booking.repository.HomeShowtimeProjection;
 import com.cinema.booking.repository.MovieRepository;
 import com.cinema.booking.repository.PaymentRepository;
 import com.cinema.booking.repository.RoomRepository;
@@ -57,6 +61,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.IntStream;
 import java.util.stream.Collectors;
 
 @Service
@@ -309,6 +314,97 @@ public class ShowtimeServiceImpl implements ShowtimeService {
 
     @Override
     @Transactional(readOnly = true)
+    public HomeShowtimeFeedResponse getHomeShowtimes(
+            String city,
+            UUID cinemaId,
+            LocalDate requestedDate,
+            int movieLimit,
+            int showtimeLimit) {
+        String normalizedCity = blankToNull(city);
+        int safeDaysAhead = Math.max(1, publicDaysAhead);
+        int safeMovieLimit = Math.max(1, Math.min(movieLimit, 10));
+        int safeShowtimeLimit = Math.max(1, Math.min(showtimeLimit, 8));
+        LocalDate today = LocalDate.now();
+        LocalDate lastDateExclusive = today.plusDays(safeDaysAhead);
+        LocalDateTime bookingFromTime = LocalDateTime.now().plusMinutes(Math.max(0, bookingCutoffMinutes));
+        LocalDateTime publicWindowEnd = lastDateExclusive.atStartOfDay();
+        List<LocalDate> availableDates = IntStream.range(0, safeDaysAhead)
+                .mapToObj(today::plusDays)
+                .toList();
+
+        if (normalizedCity == null || cinemaId == null) {
+            return buildHomeShowtimeFeed("", requestedDate != null ? requestedDate : today, availableDates, List.of());
+        }
+
+        LocalDate selectedDate = requestedDate;
+        if (selectedDate == null) {
+            LocalDateTime firstBookableStart = showtimeRepository.findFirstBookableStartByCinema(
+                    normalizedCity,
+                    cinemaId,
+                    bookingFromTime,
+                    publicWindowEnd);
+            selectedDate = firstBookableStart != null ? firstBookableStart.toLocalDate() : today;
+        }
+
+        if (selectedDate.isBefore(today) || !selectedDate.isBefore(lastDateExclusive)) {
+            return buildHomeShowtimeFeed(normalizedCity, selectedDate, availableDates, List.of());
+        }
+
+        LocalDateTime selectedDayStart = selectedDate.atStartOfDay();
+        LocalDateTime fromTime = selectedDayStart.isAfter(bookingFromTime)
+                ? selectedDayStart
+                : bookingFromTime;
+        LocalDateTime toTime = selectedDate.plusDays(1).atStartOfDay();
+        if (!toTime.isAfter(fromTime)) {
+            return buildHomeShowtimeFeed(normalizedCity, selectedDate, availableDates, List.of());
+        }
+
+        List<HomeShowtimeProjection> rows = showtimeRepository.findHomeShowtimeFeed(
+                normalizedCity,
+                cinemaId,
+                fromTime,
+                toTime,
+                safeMovieLimit,
+                safeShowtimeLimit);
+
+        Map<UUID, List<HomeShowtimeProjection>> rowsByMovie = rows.stream()
+                .collect(Collectors.groupingBy(
+                        HomeShowtimeProjection::getMovieId,
+                        LinkedHashMap::new,
+                        Collectors.toList()));
+
+        List<HomeMovieShowtimesResponse> movies = rowsByMovie.values().stream()
+                .map(movieRows -> {
+                    HomeShowtimeProjection first = movieRows.getFirst();
+                    List<HomeShowtimeItemResponse> showtimes = movieRows.stream()
+                            .map(row -> HomeShowtimeItemResponse.builder()
+                                    .id(row.getShowtimeId())
+                                    .cinemaId(row.getCinemaId())
+                                    .cinemaName(row.getCinemaName())
+                                    .roomId(row.getRoomId())
+                                    .roomName(row.getRoomName())
+                                    .startTime(row.getStartTime())
+                                    .endTime(row.getEndTime())
+                                    .basePrice(row.getBasePrice())
+                                    .build())
+                            .toList();
+
+                    return HomeMovieShowtimesResponse.builder()
+                            .movieId(first.getMovieId())
+                            .movieTitle(first.getMovieTitle())
+                            .posterUrl(first.getPosterUrl())
+                            .ageRating(first.getAgeRating())
+                            .duration(first.getMovieDuration())
+                            .showtimes(showtimes)
+                            .build();
+                })
+                .toList();
+
+        return buildHomeShowtimeFeed(normalizedCity, selectedDate, availableDates, movies);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public ShowtimeResponse getShowtimeById(UUID id) {
         return showtimeRepository.findActiveById(id)
                 .map(showtimeMapper::toShowtimeResponse)
@@ -344,6 +440,19 @@ public class ShowtimeServiceImpl implements ShowtimeService {
         return showtimeRepository.findOpenForCheckIn(cinemaId, earliestStartTime, latestStartTime).stream()
                 .map(showtimeMapper::toShowtimeResponse)
                 .toList();
+    }
+
+    private HomeShowtimeFeedResponse buildHomeShowtimeFeed(
+            String city,
+            LocalDate selectedDate,
+            List<LocalDate> availableDates,
+            List<HomeMovieShowtimesResponse> movies) {
+        return HomeShowtimeFeedResponse.builder()
+                .city(city)
+                .selectedDate(selectedDate)
+                .availableDates(availableDates)
+                .movies(movies)
+                .build();
     }
 
     private String blankToNull(String value) {

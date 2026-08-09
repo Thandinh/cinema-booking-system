@@ -295,6 +295,7 @@ Luong giu ghe:
 ```text
 User chon ghe tren SeatSelectionPage
   -> POST /api/v1/bookings/hold
+  -> Rate limit kiem tra tan suat theo user va IP
   -> Backend kiem tra ghe AVAILABLE
   -> Update seat_status = HOLD
   -> Gan hold_by = userId
@@ -323,6 +324,10 @@ HoldExpireScheduler chay dinh ky
 Bien moi truong lien quan:
 
 - `BOOKING_SEAT_HOLD_MINUTES`
+- `BOOKING_HOLD_RATE_LIMIT_ENABLED`
+- `BOOKING_HOLD_RATE_LIMIT_USER_MAX_REQUESTS`
+- `BOOKING_HOLD_RATE_LIMIT_IP_MAX_REQUESTS`
+- `BOOKING_HOLD_RATE_LIMIT_WINDOW_SECONDS`
 - `BOOKING_EXPIRED_HOLD_SCAN_DELAY_MS`
 - `BOOKING_EXPIRED_BOOKING_SCAN_DELAY_MS`
 

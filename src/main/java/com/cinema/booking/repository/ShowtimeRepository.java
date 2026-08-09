@@ -25,6 +25,101 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, UUID>, JpaSp
     @EntityGraph(attributePaths = {"movie", "room", "room.cinema"})
     Page<Showtime> findAll(Specification<Showtime> specification, Pageable pageable);
 
+    @Query(value = """
+            WITH eligible AS (
+                SELECT
+                    st.id AS "showtimeId",
+                    m.id AS "movieId",
+                    m.title AS "movieTitle",
+                    m.poster_url AS "posterUrl",
+                    m.age_rating AS "ageRating",
+                    m.duration AS "movieDuration",
+                    c.id AS "cinemaId",
+                    c.name AS "cinemaName",
+                    r.id AS "roomId",
+                    r.name AS "roomName",
+                    st.start_time AS "startTime",
+                    st.end_time AS "endTime",
+                    st.base_price AS "basePrice",
+                    ROW_NUMBER() OVER (
+                        PARTITION BY m.id
+                        ORDER BY st.start_time, c.name, r.name, st.id
+                    ) AS showtime_rank,
+                    MIN(st.start_time) OVER (PARTITION BY m.id) AS movie_first_start
+                FROM showtimes st
+                JOIN movies m ON m.id = st.movie_id
+                JOIN rooms r ON r.id = st.room_id
+                JOIN cinemas c ON c.id = r.cinema_id
+                WHERE st.is_deleted = false
+                  AND m.is_deleted = false
+                  AND m.status = 'NOW_SHOWING'
+                  AND r.is_deleted = false
+                  AND c.is_deleted = false
+                  AND c.is_active = true
+                  AND c.city = :city
+                  AND c.id = :cinemaId
+                  AND st.status = 'UPCOMING'
+                  AND st.start_time >= :fromTime
+                  AND st.start_time < :toTime
+            ), ranked AS (
+                SELECT
+                    eligible.*,
+                    DENSE_RANK() OVER (
+                        ORDER BY movie_first_start, "movieTitle", "movieId"
+                    ) AS movie_rank
+                FROM eligible
+            )
+            SELECT
+                "showtimeId",
+                "movieId",
+                "movieTitle",
+                "posterUrl",
+                "ageRating",
+                "movieDuration",
+                "cinemaId",
+                "cinemaName",
+                "roomId",
+                "roomName",
+                "startTime",
+                "endTime",
+                "basePrice"
+            FROM ranked
+            WHERE movie_rank <= :movieLimit
+              AND showtime_rank <= :showtimeLimit
+            ORDER BY movie_rank, "startTime", "cinemaName", "roomName"
+            """, nativeQuery = true)
+    List<HomeShowtimeProjection> findHomeShowtimeFeed(
+            @Param("city") String city,
+            @Param("cinemaId") UUID cinemaId,
+            @Param("fromTime") LocalDateTime fromTime,
+            @Param("toTime") LocalDateTime toTime,
+            @Param("movieLimit") int movieLimit,
+            @Param("showtimeLimit") int showtimeLimit);
+
+    @Query(value = """
+            SELECT MIN(st.start_time)
+            FROM showtimes st
+            JOIN movies m ON m.id = st.movie_id
+            JOIN rooms r ON r.id = st.room_id
+            JOIN cinemas c ON c.id = r.cinema_id
+            WHERE st.is_deleted = false
+              AND m.is_deleted = false
+              AND m.status = 'NOW_SHOWING'
+              AND r.is_deleted = false
+              AND c.is_deleted = false
+              AND c.is_active = true
+              AND c.city = :city
+              AND c.id = :cinemaId
+              AND st.status = 'UPCOMING'
+              AND st.start_time >= :fromTime
+              AND st.start_time < :toTime
+            """, nativeQuery = true)
+    LocalDateTime findFirstBookableStartByCinema(
+            @Param("city") String city,
+            @Param("cinemaId") UUID cinemaId,
+            @Param("fromTime") LocalDateTime fromTime,
+            @Param("toTime") LocalDateTime toTime);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             UPDATE Showtime s

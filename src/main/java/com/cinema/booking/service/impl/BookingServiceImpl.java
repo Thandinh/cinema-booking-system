@@ -274,7 +274,7 @@ public class BookingServiceImpl implements BookingService {
     @Transactional
     @CacheEvict(cacheNames = CacheConfig.PROMOTIONS, allEntries = true)
     public BookingResponse handlePaymentSuccess(String secureToken) {
-        Booking booking = bookingRepository.findBySecureToken(secureToken)
+        Booking booking = bookingRepository.findLockedBySecureToken(secureToken)
                 .orElseThrow(() -> new AppException(ErrorCode.BOOKING_NOT_FOUND));
 
         if (booking.getStatus() != BookingStatus.PENDING) {
@@ -298,6 +298,9 @@ public class BookingServiceImpl implements BookingService {
 
         // Sinh QR Ticket cho từng ghế
         for (BookingDetail detail : booking.getBookingDetails()) {
+            if (detail.getTicket() != null) {
+                continue;
+            }
             String qrCode = ticketQrCodeService.generate(detail.getId());
             Ticket ticket = Ticket.builder()
                     .bookingDetail(detail)
@@ -335,7 +338,7 @@ public class BookingServiceImpl implements BookingService {
     @Override
     @Transactional
     public BookingResponse handlePaymentFailure(String secureToken) {
-        Booking booking = bookingRepository.findBySecureToken(secureToken)
+        Booking booking = bookingRepository.findLockedBySecureToken(secureToken)
                 .orElseThrow(() -> new AppException(ErrorCode.BOOKING_NOT_FOUND));
 
         if (booking.getStatus() != BookingStatus.PENDING) {
@@ -373,7 +376,7 @@ public class BookingServiceImpl implements BookingService {
     public BookingResponse cancelBooking(UUID bookingId) {
         UUID userId = SecurityUtils.getCurrentUserId();
 
-        Booking booking = bookingRepository.findWithDetailsById(bookingId)
+        Booking booking = bookingRepository.findLockedWithDetailsById(bookingId)
                 .orElseThrow(() -> new AppException(ErrorCode.BOOKING_NOT_FOUND));
 
         // User thường chỉ được hủy booking của mình
@@ -447,7 +450,7 @@ public class BookingServiceImpl implements BookingService {
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public BookingResponse expirePendingBooking(UUID bookingId) {
-        Booking booking = bookingRepository.findWithDetailsById(bookingId)
+        Booking booking = bookingRepository.findLockedWithDetailsById(bookingId)
                 .orElseThrow(() -> new AppException(ErrorCode.BOOKING_NOT_FOUND));
 
         if (booking.getStatus() != BookingStatus.PENDING) {
@@ -723,7 +726,7 @@ public class BookingServiceImpl implements BookingService {
 
     private Booking findOwnedPendingBookingForPromotion(UUID bookingId) {
         UUID userId = SecurityUtils.getCurrentUserId();
-        Booking booking = bookingRepository.findWithDetailsById(bookingId)
+        Booking booking = bookingRepository.findLockedWithDetailsById(bookingId)
                 .orElseThrow(() -> new AppException(ErrorCode.BOOKING_NOT_FOUND));
 
         if (!booking.getUser().getId().equals(userId)) {

@@ -74,7 +74,7 @@ public class PaymentServiceImpl implements PaymentService {
     public String initiatePayment(UUID bookingId, PaymentMethod method, BigDecimal amount, HttpServletRequest request) {
         UUID userId = SecurityUtils.getCurrentUserId();
 
-        Booking booking = bookingRepository.findById(bookingId)
+        Booking booking = bookingRepository.findLockedForPaymentInitiation(bookingId)
                 .orElseThrow(() -> new AppException(ErrorCode.BOOKING_NOT_FOUND));
 
         if (!booking.getUser().getId().equals(userId)) {

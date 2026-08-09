@@ -10,6 +10,7 @@ import com.cinema.booking.enums.BookingStatus;
 import com.cinema.booking.enums.ErrorCode;
 import com.cinema.booking.exception.AppException;
 import com.cinema.booking.service.BookingService;
+import com.cinema.booking.security.service.SeatHoldRateLimitService;
 import jakarta.validation.Valid;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +32,7 @@ import java.util.UUID;
 public class BookingController {
 
     BookingService bookingService;
+    SeatHoldRateLimitService seatHoldRateLimitService;
 
     // ── SEAT MAP ─────────────────────────────────────────────────────────────
     @GetMapping("/showtimes/{showtimeId}/seats")
@@ -44,7 +46,10 @@ public class BookingController {
     // ── HOLD SEATS ───────────────────────────────────────────────────────────
     @PostMapping("/hold")
     @PreAuthorize("hasAuthority('BOOKING_CREATE')")
-    public ApiResponse<HoldSeatResponse> holdSeats(@Valid @RequestBody HoldSeatRequest request) {
+    public ApiResponse<HoldSeatResponse> holdSeats(
+            @Valid @RequestBody HoldSeatRequest request,
+            jakarta.servlet.http.HttpServletRequest servletRequest) {
+        seatHoldRateLimitService.check(servletRequest);
         return ApiResponse.<HoldSeatResponse>builder()
                 .code(1000)
                 .message("Seats held successfully")

@@ -119,12 +119,13 @@ public enum ErrorCode {
     PROMOTION_CODE_REQUIRED    (6026, "Promotion code is required",         HttpStatus.BAD_REQUEST),
 
     // ── Seat Availability ────────────────────────────────────────────────
-    SEAT_NOT_AVAILABLE         (4020, "One or more seats are not available",   HttpStatus.CONFLICT),
+    SEAT_NOT_AVAILABLE         (4020, "Ghế vừa được người khác giữ hoặc đã được đặt. Vui lòng chọn ghế khác.", HttpStatus.CONFLICT),
     SEAT_NOT_HELD              (4021, "Seat is not in HOLD status",            HttpStatus.CONFLICT),
     SEAT_HELD_BY_ANOTHER       (4022, "Seat is held by another user",          HttpStatus.CONFLICT),
     SEAT_HOLD_EXPIRED          (4023, "Seat hold has expired, please reselect",HttpStatus.CONFLICT),
     SEAT_IDS_REQUIRED          (4024, "At least one seat must be selected",    HttpStatus.BAD_REQUEST),
     SEAT_IDS_SIZE_INVALID      (4025, "Maximum 10 seats per booking",          HttpStatus.BAD_REQUEST),
+    SEAT_HOLD_RATE_LIMITED     (4026, "Bạn thao tác giữ ghế quá nhanh. Vui lòng đợi một chút rồi thử lại.", HttpStatus.TOO_MANY_REQUESTS),
     SHOWTIME_NOT_BOOKABLE      (5020, "Showtime is not open for booking",      HttpStatus.BAD_REQUEST),
     SHOWTIME_ID_REQUIRED       (5021, "Showtime ID is required",               HttpStatus.BAD_REQUEST),
 

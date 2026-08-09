@@ -8,6 +8,7 @@ import com.cinema.booking.dto.request.RefundSearchRequest;
 import com.cinema.booking.dto.response.ApiResponse;
 import com.cinema.booking.dto.response.PaymentEventResponse;
 import com.cinema.booking.dto.response.PaymentReconciliationIssueResponse;
+import com.cinema.booking.dto.response.PaymentMonitoringSummaryResponse;
 import com.cinema.booking.dto.response.PaymentResponse;
 import com.cinema.booking.dto.response.RefundResponse;
 import com.cinema.booking.enums.PaymentEventType;
@@ -90,6 +91,16 @@ public class PaymentController {
         return ApiResponse.<Page<PaymentEventResponse>>builder()
                 .code(1000)
                 .result(paymentEventService.search(request, pageable))
+                .build();
+    }
+
+    @GetMapping("/events/monitoring-summary")
+    @PreAuthorize("hasAuthority('PAYMENT_VIEW_ALL')")
+    public ApiResponse<PaymentMonitoringSummaryResponse> getPaymentMonitoringSummary(
+            @RequestParam(defaultValue = "24") int hours) {
+        return ApiResponse.<PaymentMonitoringSummaryResponse>builder()
+                .code(1000)
+                .result(paymentEventService.getMonitoringSummary(hours))
                 .build();
     }
 

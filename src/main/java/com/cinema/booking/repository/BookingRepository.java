@@ -2,9 +2,11 @@ package com.cinema.booking.repository;
 
 import com.cinema.booking.entity.Booking;
 import com.cinema.booking.enums.BookingStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -23,6 +25,26 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
            "LEFT JOIN FETCH b.bookingDetails bd LEFT JOIN FETCH bd.seat " +
            "WHERE b.secureToken = :secureToken")
     Optional<Booking> findBySecureToken(@Param("secureToken") String secureToken);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT b FROM Booking b JOIN FETCH b.user WHERE b.id = :id")
+    Optional<Booking> findLockedForPaymentInitiation(@Param("id") UUID id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT DISTINCT b FROM Booking b
+            JOIN FETCH b.user
+            JOIN FETCH b.showtime s
+            JOIN FETCH s.movie
+            JOIN FETCH s.room r
+            JOIN FETCH r.cinema
+            LEFT JOIN FETCH b.promotion
+            LEFT JOIN FETCH b.bookingDetails bd
+            LEFT JOIN FETCH bd.seat
+            LEFT JOIN FETCH bd.ticket
+            WHERE b.secureToken = :secureToken
+            """)
+    Optional<Booking> findLockedBySecureToken(@Param("secureToken") String secureToken);
 
     // Tách countQuery riêng để tránh Spring load toàn bộ data vào memory khi phân trang
     @Query(value = "SELECT b FROM Booking b JOIN FETCH b.user JOIN FETCH b.showtime s JOIN FETCH s.movie JOIN FETCH s.room r JOIN FETCH r.cinema WHERE b.user.id = :userId",
@@ -204,6 +226,22 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             WHERE b.id = :id
             """)
     Optional<Booking> findWithDetailsById(@Param("id") UUID id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT DISTINCT b FROM Booking b
+            JOIN FETCH b.user
+            JOIN FETCH b.showtime s
+            JOIN FETCH s.movie
+            JOIN FETCH s.room r
+            JOIN FETCH r.cinema
+            LEFT JOIN FETCH b.promotion
+            LEFT JOIN FETCH b.bookingDetails bd
+            LEFT JOIN FETCH bd.seat
+            LEFT JOIN FETCH bd.ticket
+            WHERE b.id = :id
+            """)
+    Optional<Booking> findLockedWithDetailsById(@Param("id") UUID id);
 
     @Query(value = """
             SELECT b.id
