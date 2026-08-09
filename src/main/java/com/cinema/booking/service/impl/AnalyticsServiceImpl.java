@@ -96,7 +96,15 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         Long failedBookings   = countBookings(BookingStatus.FAILED, scopedCinemaIds);
         Long cancelledBookings= countBookings(BookingStatus.CANCELLED, scopedCinemaIds);
         Long expiredBookings  = countBookings(BookingStatus.EXPIRED, scopedCinemaIds);
-        Long totalBookings    = pendingBookings + successBookings + failedBookings + cancelledBookings + expiredBookings;
+        Long refundPendingBookings = countBookings(BookingStatus.REFUND_PENDING, scopedCinemaIds);
+        Long refundedBookings = countBookings(BookingStatus.REFUNDED, scopedCinemaIds);
+        Long totalBookings = pendingBookings
+                + successBookings
+                + failedBookings
+                + cancelledBookings
+                + expiredBookings
+                + refundPendingBookings
+                + refundedBookings;
 
         // Users
         Long totalUsers       = scopedCinemaIds == null

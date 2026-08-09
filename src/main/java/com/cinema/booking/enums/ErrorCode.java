@@ -16,7 +16,7 @@ public enum ErrorCode {
     ROLE_NOT_FOUND         (1004, "Role not found",                       HttpStatus.NOT_FOUND),
     USER_NOT_FOUND         (1005, "User not found",                       HttpStatus.NOT_FOUND),
     UNAUTHENTICATED        (1006, "Unauthenticated",                      HttpStatus.UNAUTHORIZED),
-    UNAUTHORIZED           (1007, "You do not have permission",           HttpStatus.FORBIDDEN),
+    UNAUTHORIZED           (1007, "Bạn không có quyền thực hiện thao tác này", HttpStatus.FORBIDDEN),
     USER_NOT_ACTIVE        (1008, "User account is inactive or blocked",  HttpStatus.FORBIDDEN),
     CANNOT_BLOCK_SELF      (1009, "Cannot block your own account",        HttpStatus.BAD_REQUEST),
     CANNOT_DELETE_SELF     (1040, "Cannot delete your own account",       HttpStatus.BAD_REQUEST),
@@ -157,6 +157,9 @@ public enum ErrorCode {
     PAYMENT_METHOD_UNAVAILABLE (9003, "Payment method is not available",       HttpStatus.BAD_REQUEST),
     PAYMENT_INVALID_CALLBACK   (9004, "Payment callback signature is invalid", HttpStatus.BAD_REQUEST),
     PAYMENT_PROVIDER_ERROR     (9005, "Payment provider returned an error",    HttpStatus.BAD_GATEWAY),
+    REFUND_NOT_FOUND           (9010, "Refund request not found",              HttpStatus.NOT_FOUND),
+    REFUND_ALREADY_FINALIZED   (9011, "Refund request has already been finalized", HttpStatus.CONFLICT),
+    REFUND_FAILURE_REASON_REQUIRED(9012, "Refund failure reason is required",  HttpStatus.BAD_REQUEST),
     ;
 
     ErrorCode(int code, String message, HttpStatusCode statusCode) {

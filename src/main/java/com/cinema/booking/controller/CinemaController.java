@@ -42,10 +42,12 @@ public class CinemaController {
     @GetMapping
     public ApiResponse<Page<CinemaResponse>> getAllCinemas(
             @PageableDefault(size = 20, sort = "createdAt") Pageable pageable,
-            @RequestParam(defaultValue = "false") boolean onlyActive) {
+            @RequestParam(defaultValue = "false") boolean onlyActive,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String city) {
         return ApiResponse.<Page<CinemaResponse>>builder()
                 .code(1000)
-                .result(cinemaService.getAllCinemas(pageable, onlyActive))
+                .result(cinemaService.getAllCinemas(pageable, onlyActive, keyword, city))
                 .build();
     }
 

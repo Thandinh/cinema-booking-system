@@ -30,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -139,12 +140,15 @@ public class CinemaServiceImpl implements CinemaService {
     @Transactional(readOnly = true)
     @Cacheable(
             cacheNames = CacheConfig.CINEMAS,
-            key = "'list:' + #onlyActive + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort"
+            key = "'list:' + #onlyActive + ':' + (#keyword == null ? '' : #keyword.trim().toLowerCase()) + ':' + (#city == null ? '' : #city.trim()) + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort"
     )
-    public Page<CinemaResponse> getAllCinemas(Pageable pageable, boolean onlyActive) {
-        Page<Cinema> page = onlyActive
-                ? cinemaRepository.findAllByIsActiveTrueAndIsDeletedFalse(pageable)
-                : cinemaRepository.findAllByIsDeletedFalse(pageable);
+    public Page<CinemaResponse> getAllCinemas(Pageable pageable, boolean onlyActive, String keyword, String city) {
+        String keywordPattern = keyword == null || keyword.isBlank()
+                ? null
+                : "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
+        String cityFilter = city == null || city.isBlank() ? null : city.trim();
+
+        Page<Cinema> page = cinemaRepository.search(onlyActive, cityFilter, keywordPattern, pageable);
         return page.map(c -> cinemaMapper.toCinemaResponse(c, false));
     }
 

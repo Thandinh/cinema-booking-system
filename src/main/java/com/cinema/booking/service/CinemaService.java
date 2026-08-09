@@ -15,7 +15,7 @@ public interface CinemaService {
     CinemaResponse updateCinema(UUID id, CinemaUpdateRequest request);
     void deleteCinema(UUID id);
     CinemaResponse getCinemaById(UUID id);
-    Page<CinemaResponse> getAllCinemas(Pageable pageable, boolean onlyActive);
+    Page<CinemaResponse> getAllCinemas(Pageable pageable, boolean onlyActive, String keyword, String city);
 
     /**
      * Trả về danh sách tất cả rạp có tọa độ — dùng để render Leaflet markers.

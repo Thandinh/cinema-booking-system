@@ -51,14 +51,14 @@ ALTER TABLE bookings
 
 ALTER TABLE bookings
     ADD CONSTRAINT chk_booking_status
-    CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'CANCELLED', 'EXPIRED'));
+    CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'CANCELLED', 'EXPIRED', 'REFUND_PENDING', 'REFUNDED'));
 
 ALTER TABLE payments
     DROP CONSTRAINT IF EXISTS chk_payment_status;
 
 ALTER TABLE payments
     ADD CONSTRAINT chk_payment_status
-    CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'EXPIRED'));
+    CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'EXPIRED', 'REFUND_PENDING', 'REFUNDED', 'REFUND_FAILED'));
 
 ALTER TABLE payments
     DROP CONSTRAINT IF EXISTS chk_payment_method;
@@ -127,6 +127,67 @@ CREATE INDEX IF NOT EXISTS idx_payment_events_booking_created_at
 CREATE INDEX IF NOT EXISTS idx_payment_events_transaction_no
     ON payment_events(transaction_no)
     WHERE transaction_no IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS refunds (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    booking_id UUID NOT NULL REFERENCES bookings(id),
+    payment_id UUID NOT NULL REFERENCES payments(id),
+    amount DECIMAL(10,2) NOT NULL CHECK (amount > 0),
+    method VARCHAR(50) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    reason VARCHAR(500),
+    provider_refund_id VARCHAR(255),
+    failure_reason VARCHAR(1000),
+    provider_response JSONB,
+    requested_at TIMESTAMP,
+    processed_at TIMESTAMP,
+    requested_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE refunds
+    DROP CONSTRAINT IF EXISTS chk_refund_method;
+
+ALTER TABLE refunds
+    ADD CONSTRAINT chk_refund_method
+    CHECK (method IN ('VNPAY', 'MOMO', 'SEPAY', 'CREDIT_CARD', 'CASH'));
+
+ALTER TABLE refunds
+    DROP CONSTRAINT IF EXISTS chk_refund_status;
+
+ALTER TABLE refunds
+    ADD CONSTRAINT chk_refund_status
+    CHECK (status IN ('PENDING', 'PROCESSING', 'SUCCESS', 'FAILED', 'CANCELLED'));
+
+CREATE INDEX IF NOT EXISTS idx_refunds_booking_created_at
+    ON refunds(booking_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_refunds_status_created_at
+    ON refunds(status, created_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_refunds_payment_active
+    ON refunds(payment_id)
+    WHERE status IN ('PENDING', 'PROCESSING', 'SUCCESS');
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM pg_proc
+        WHERE proname = 'update_modified_column'
+    )
+    AND NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_refunds_modtime'
+    ) THEN
+        CREATE TRIGGER update_refunds_modtime
+        BEFORE UPDATE ON refunds
+        FOR EACH ROW
+        EXECUTE PROCEDURE update_modified_column();
+    END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_payment_events_created_at
     ON payment_events(created_at DESC);
@@ -240,6 +301,7 @@ DELETE FROM admin_audit_logs;
 
 TRUNCATE TABLE
     tickets,
+    refunds,
     payment_events,
     payments,
     booking_details,
@@ -732,6 +794,7 @@ FROM inserted_tickets;
 -- 2) FAILED_FUTURE: thanh toán thất bại, suất còn tương lai -> hiện nút Chọn lại ghế.
 -- 3) EXPIRED_PAST: đơn hết hạn, suất đã qua -> hiện nhãn Suất chiếu đã qua.
 -- 4) CANCELLED_PAST: đơn đã hủy, suất đã qua -> hiện nhãn Suất chiếu đã qua.
+-- 5) REFUND_PENDING: suất bị rạp hủy sau khi thanh toán -> hiện Đang xử lý hoàn tiền.
 WITH demo_user AS (
     SELECT id
     FROM users
@@ -753,7 +816,8 @@ demo_movies AS (
         'Dune: Part Two',
         'Inside Out 2',
         'Twisters',
-        'Mai'
+        'Mai',
+        'Furiosa: Câu Chuyện Từ Max Điên'
     )
 ),
 cases AS (
@@ -826,6 +890,23 @@ cases AS (
             'demo-cancelled-booking-token',
             NOW() - INTERVAL '4 hours',
             75000::numeric
+        ),
+        (
+            'REFUND_PENDING',
+            '00000000-0000-0000-0000-000000000951'::uuid,
+            '00000000-0000-0000-0000-000000000952'::uuid,
+            '00000000-0000-0000-0000-000000000953'::uuid,
+            'Furiosa: Câu Chuyện Từ Max Điên',
+            'F',
+            ARRAY[1, 2]::int[],
+            NOW() + INTERVAL '6 hours',
+            NOW() + INTERVAL '8 hours',
+            'CANCELLED',
+            'REFUND_PENDING',
+            'REFUND_PENDING',
+            'demo-refund-pending-booking-token',
+            NOW() - INTERVAL '1 hour',
+            120000::numeric
         )
     ) AS t(
         case_key, showtime_id, booking_id, payment_id, movie_title,
@@ -959,9 +1040,32 @@ inserted_case_payments AS (
     FROM cases c
     WHERE c.payment_id IS NOT NULL
       AND c.payment_status IS NOT NULL
+    RETURNING id, booking_id, amount, method
+),
+inserted_case_refunds AS (
+    INSERT INTO refunds (
+        id, booking_id, payment_id, amount, method, status, reason,
+        requested_at, created_at, updated_at
+    )
+    SELECT
+        uuid_generate_v4(),
+        p.booking_id,
+        p.id,
+        p.amount,
+        p.method,
+        'PENDING',
+        'Suất chiếu bị rạp hủy, hệ thống đang xử lý hoàn tiền.',
+        NOW(),
+        NOW(),
+        NOW()
+    FROM inserted_case_payments p
+    JOIN cases c ON c.booking_id = p.booking_id
+    WHERE c.case_key = 'REFUND_PENDING'
     RETURNING id
 )
-SELECT 'Quick test order cases seeded: PENDING_FUTURE, FAILED_FUTURE, EXPIRED_PAST, CANCELLED_PAST' AS demo_order_cases;
+SELECT
+    'Quick test order cases seeded: PENDING_FUTURE, FAILED_FUTURE, EXPIRED_PAST, CANCELLED_PAST, REFUND_PENDING' AS demo_order_cases,
+    (SELECT count(*) FROM inserted_case_refunds) AS demo_refund_requests;
 
 -- =========================================
 -- 8C. DEMO SALES DATA: BOOKINGS + PAYMENTS + TICKETS + PAYMENT EVENTS
@@ -1164,7 +1268,7 @@ inserted_sale_payment_events AS (
         p.booking_id,
         p.method,
         p.transaction_no,
-        'PAYMENT_CONFIRMED',
+        'PAYMENT_SUCCESS',
         'PENDING',
         p.status,
         'PENDING',
@@ -1317,6 +1421,19 @@ BEGIN
     ) <> 120 THEN
         RAISE EXCEPTION 'Mock data invalid: demo sales tickets were not seeded correctly.';
     END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM refunds r
+        JOIN bookings b ON b.id = r.booking_id
+        JOIN payments p ON p.id = r.payment_id
+        WHERE b.secure_token = 'demo-refund-pending-booking-token'
+          AND b.status = 'REFUND_PENDING'
+          AND p.status = 'REFUND_PENDING'
+          AND r.status = 'PENDING'
+    ) THEN
+        RAISE EXCEPTION 'Mock data invalid: refund pending case was not seeded correctly.';
+    END IF;
 END $$;
 
 -- Tài khoản test:
@@ -1336,7 +1453,7 @@ END $$;
 -- user_blocked: tài khoản user bị khóa, dùng để test đăng nhập/block.
 -- Kỳ vọng dữ liệu:
 -- 23 phim NOW_SHOWING, 2 phim không chiếu hiện tại, 14 rạp, 42 phòng, 4032 ghế.
--- 1475 suất chiếu, 141600 dòng seat_status, 65 booking, 64 payment, 122 ticket.
+-- 1476 suất chiếu, 141696 dòng seat_status, 66 booking, 65 payment, 122 ticket, 1 refund pending.
 -- Vé test nhanh:
 -- user1 có booking SUCCESS tại CGV Sư Vạn Hạnh, Phòng 01 - Standard, ghế A1/A2, suất chiếu bắt đầu sau 30 phút.
 -- Lấy QR để staff check-in:
@@ -1351,6 +1468,7 @@ END $$;
 -- FAILED: demo-failed-booking-token, suất sau 3 giờ, ghế C1/C2, có thể chọn lại ghế.
 -- EXPIRED: demo-expired-booking-token, suất đã qua, không hiện nút chọn lại ghế.
 -- CANCELLED: demo-cancelled-booking-token, suất đã qua, không hiện nút chọn lại ghế.
+-- REFUND_PENDING: demo-refund-pending-booking-token, suất bị rạp hủy, hiện Đang xử lý hoàn tiền.
 -- Dữ liệu doanh thu:
 -- 60 booking SUCCESS tự sinh với secure_token demo-sale-booking-001 đến demo-sale-booking-060.
 -- Payment method được xoay vòng VNPAY / SEPAY / CASH để test bộ lọc thanh toán.

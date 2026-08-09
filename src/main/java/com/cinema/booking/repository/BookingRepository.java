@@ -52,6 +52,8 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             JOIN st.room r
             JOIN r.cinema c
             WHERE (:status IS NULL OR b.status = :status)
+              AND (:cinemaId IS NULL OR c.id = :cinemaId)
+              AND (:city IS NULL OR c.city = :city)
               AND b.createdAt >= :fromTime
               AND b.createdAt < :toTime
               AND (
@@ -75,6 +77,8 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             JOIN st.room r
             JOIN r.cinema c
             WHERE (:status IS NULL OR b.status = :status)
+              AND (:cinemaId IS NULL OR c.id = :cinemaId)
+              AND (:city IS NULL OR c.city = :city)
               AND b.createdAt >= :fromTime
               AND b.createdAt < :toTime
               AND (
@@ -91,6 +95,8 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             """)
     Page<UUID> findIdsForAdminSearch(@Param("status") BookingStatus status,
                                      @Param("keywordPattern") String keywordPattern,
+                                     @Param("cinemaId") UUID cinemaId,
+                                     @Param("city") String city,
                                      @Param("fromTime") LocalDateTime fromTime,
                                      @Param("toTime") LocalDateTime toTime,
                                      Pageable pageable);
@@ -119,6 +125,8 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             JOIN r.cinema c
             WHERE (:status IS NULL OR b.status = :status)
               AND c.id IN :cinemaIds
+              AND (:cinemaId IS NULL OR c.id = :cinemaId)
+              AND (:city IS NULL OR c.city = :city)
               AND b.createdAt >= :fromTime
               AND b.createdAt < :toTime
               AND (
@@ -143,6 +151,8 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             JOIN r.cinema c
             WHERE (:status IS NULL OR b.status = :status)
               AND c.id IN :cinemaIds
+              AND (:cinemaId IS NULL OR c.id = :cinemaId)
+              AND (:city IS NULL OR c.city = :city)
               AND b.createdAt >= :fromTime
               AND b.createdAt < :toTime
               AND (
@@ -159,6 +169,8 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             """)
     Page<UUID> findIdsForAdminSearchByCinemaIds(@Param("status") BookingStatus status,
                                                 @Param("keywordPattern") String keywordPattern,
+                                                @Param("cinemaId") UUID cinemaId,
+                                                @Param("city") String city,
                                                 @Param("fromTime") LocalDateTime fromTime,
                                                 @Param("toTime") LocalDateTime toTime,
                                                 @Param("cinemaIds") List<UUID> cinemaIds,

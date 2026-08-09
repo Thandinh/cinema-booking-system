@@ -31,6 +31,7 @@ import com.cinema.booking.repository.ShowtimeRepository;
 import com.cinema.booking.repository.TicketRepository;
 import com.cinema.booking.service.EmailService;
 import com.cinema.booking.service.PaymentEventService;
+import com.cinema.booking.service.RefundService;
 import com.cinema.booking.service.StaffCinemaScopeService;
 import com.cinema.booking.service.ShowtimeService;
 import com.cinema.booking.service.ShowtimeStatusSyncService;
@@ -75,6 +76,7 @@ public class ShowtimeServiceImpl implements ShowtimeService {
     PaymentRepository paymentRepository;
     TicketRepository ticketRepository;
     PaymentEventService paymentEventService;
+    RefundService refundService;
     EmailService emailService;
     SeatStatusPublisher seatStatusPublisher;
     ShowtimeStatusSyncService showtimeStatusSyncService;
@@ -228,7 +230,9 @@ public class ShowtimeServiceImpl implements ShowtimeService {
 
         for (Booking booking : affectedBookings) {
             BookingStatus beforeStatus = booking.getStatus();
-            booking.setStatus(BookingStatus.CANCELLED);
+            booking.setStatus(beforeStatus == BookingStatus.SUCCESS
+                    ? BookingStatus.REFUND_PENDING
+                    : BookingStatus.CANCELLED);
 
             List<UUID> seatIds = booking.getBookingDetails().stream()
                     .map(detail -> detail.getSeat().getId())
@@ -255,6 +259,7 @@ public class ShowtimeServiceImpl implements ShowtimeService {
             payment.setStatus(PaymentStatus.FAILED);
             recordPendingPaymentCancelled(payment, reason, showtime);
         });
+        paymentRepository.saveAll(successPayments);
         paymentRepository.saveAll(pendingPayments);
         bookingRepository.saveAll(affectedBookings);
 
@@ -354,16 +359,20 @@ public class ShowtimeServiceImpl implements ShowtimeService {
     }
 
     private void recordRefundRequested(Payment payment, Booking booking, String reason, Showtime showtime) {
+        PaymentStatus beforePaymentStatus = payment.getStatus();
+        payment.setStatus(PaymentStatus.REFUND_PENDING);
+        refundService.requestRefund(payment, booking, reason);
+
         paymentEventService.record(
                 payment,
                 booking,
                 PaymentEventType.REFUND_REQUESTED,
-                payment.getStatus(),
-                payment.getStatus(),
+                beforePaymentStatus,
+                PaymentStatus.REFUND_PENDING,
                 BookingStatus.SUCCESS,
-                BookingStatus.CANCELLED,
+                BookingStatus.REFUND_PENDING,
                 true,
-                "Showtime cancelled. Manual refund is required.",
+                "Showtime cancelled. Refund request was created.",
                 cancellationPayload(reason, showtime));
     }
 

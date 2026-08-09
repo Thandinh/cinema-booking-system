@@ -1,0 +1,102 @@
+@startuml
+title Activity Diagram - Huy suat chieu va xu ly hoan tien
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor #E3F2FD
+    BorderColor #1976D2
+    FontColor #0F172A
+    DiamondBackgroundColor #FFF9C4
+    DiamondBorderColor #F59E0B
+    StartColor #263238
+    EndColor #263238
+}
+skinparam note {
+    BackgroundColor #FFFBEB
+    BorderColor #F59E0B
+    FontColor #713F12
+}
+
+|Admin / Staff|
+start
+:Chon suat chieu can huy;
+:Nhap ly do huy suat;
+
+|Backend API|
+:ShowtimeServiceImpl.cancelShowtimeWithPolicy(id, request);
+:Tim showtime dang hoat dong;
+:Kiem tra RBAC va staff scope;
+
+if (Nguoi dung co quyen huy suat?) then (Co)
+else (Khong)
+    :Tra loi 403 / khong co quyen;
+    |Frontend|
+    :Hien thi loi khong co quyen;
+    stop
+endif
+
+|Backend API|
+if (Showtime la UPCOMING hoac ONGOING?) then (Co)
+else (Khong)
+    :Tra loi SHOWTIME_NOT_CANCELLABLE;
+    |Frontend|
+    :Hien thi loi khong the huy;
+    stop
+endif
+
+if (Da co ve USED?) then (Co)
+    :Tra loi SHOWTIME_HAS_USED_TICKETS;
+    |Frontend|
+    :Bao khong the huy vi da co ve check-in;
+    stop
+else (Chua)
+endif
+
+|Database|
+:Lay booking PENDING va SUCCESS cua suat chieu;
+:Lay payment SUCCESS va PENDING lien quan;
+
+|Backend API|
+fork
+    :Xu ly booking PENDING;
+    |Database|
+    :booking.status = CANCELLED;
+    :payment PENDING -> FAILED;
+    :seat_status -> AVAILABLE;
+    :Ghi PaymentEvent PAYMENT_FAILED;
+fork again
+    :Xu ly booking SUCCESS;
+    |Database|
+    :booking.status = CANCELLED;
+    :ticket ACTIVE -> CANCELLED;
+    :seat_status -> AVAILABLE;
+    :Ghi PaymentEvent REFUND_REQUESTED;
+    note right
+    He thong hien tai khong luu
+    mot trang thai booking rieng cho hoan tien.
+
+    Yeu cau hoan tien duoc the hien bang
+    PaymentEventType.REFUND_REQUESTED
+    va thong bao/audit cho admin xu ly.
+    end note
+end fork
+
+|Database|
+:showtime.status = CANCELLED;
+:Luu thay doi trong transaction;
+
+|WebSocket|
+:Publish SeatStatusEvent AVAILABLE;
+
+|Mail Service|
+:Gui email thong bao huy suat\ncho khach co booking SUCCESS;
+
+|Frontend|
+:Cap nhat danh sach suat chieu;
+:Trang Ve cua toi hien thi Don da huy;
+:An nut Chon lai ghe neu suat da bi huy;
+:Hien thi ghi chu Dang xu ly hoan tien\nneu booking da thanh toan thanh cong;
+stop
+
+@enduml

@@ -11,6 +11,7 @@
 DROP TABLE IF EXISTS admin_audit_logs CASCADE;
 DROP TABLE IF EXISTS auth_audit_logs CASCADE;
 DROP TABLE IF EXISTS tickets CASCADE;
+DROP TABLE IF EXISTS refunds CASCADE;
 DROP TABLE IF EXISTS payment_events CASCADE;
 DROP TABLE IF EXISTS payments CASCADE;
 DROP TABLE IF EXISTS booking_details CASCADE;
@@ -236,7 +237,7 @@ CREATE TABLE bookings (
     payment_expires_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT chk_booking_status CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'CANCELLED', 'EXPIRED'))
+    CONSTRAINT chk_booking_status CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'CANCELLED', 'EXPIRED', 'REFUND_PENDING', 'REFUNDED'))
 );
 
 CREATE TABLE booking_details (
@@ -260,7 +261,7 @@ CREATE TABLE payments (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT chk_payment_method CHECK (method IS NULL OR method IN ('VNPAY', 'MOMO', 'SEPAY', 'CREDIT_CARD', 'CASH')),
-    CONSTRAINT chk_payment_status CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'EXPIRED'))
+    CONSTRAINT chk_payment_status CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'EXPIRED', 'REFUND_PENDING', 'REFUNDED', 'REFUND_FAILED'))
 );
 
 CREATE TABLE payment_events (
@@ -279,6 +280,26 @@ CREATE TABLE payment_events (
     payload JSONB,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE refunds (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    booking_id UUID NOT NULL REFERENCES bookings(id),
+    payment_id UUID NOT NULL REFERENCES payments(id),
+    amount DECIMAL(10,2) NOT NULL CHECK (amount > 0),
+    method VARCHAR(50) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    reason VARCHAR(500),
+    provider_refund_id VARCHAR(255),
+    failure_reason VARCHAR(1000),
+    provider_response JSONB,
+    requested_at TIMESTAMP,
+    processed_at TIMESTAMP,
+    requested_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_refund_method CHECK (method IN ('VNPAY', 'MOMO', 'SEPAY', 'CREDIT_CARD', 'CASH')),
+    CONSTRAINT chk_refund_status CHECK (status IN ('PENDING', 'PROCESSING', 'SUCCESS', 'FAILED', 'CANCELLED'))
 );
 
 CREATE TABLE tickets (
@@ -363,6 +384,7 @@ CREATE TRIGGER update_bookings_modtime BEFORE UPDATE ON bookings FOR EACH ROW EX
 CREATE TRIGGER update_booking_details_modtime BEFORE UPDATE ON booking_details FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 CREATE TRIGGER update_payments_modtime BEFORE UPDATE ON payments FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 CREATE TRIGGER update_payment_events_modtime BEFORE UPDATE ON payment_events FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+CREATE TRIGGER update_refunds_modtime BEFORE UPDATE ON refunds FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 CREATE TRIGGER update_tickets_modtime BEFORE UPDATE ON tickets FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 CREATE TRIGGER update_admin_audit_logs_modtime BEFORE UPDATE ON admin_audit_logs FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 CREATE TRIGGER update_auth_audit_logs_modtime BEFORE UPDATE ON auth_audit_logs FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
@@ -547,6 +569,16 @@ CREATE INDEX idx_payment_events_type_created_at
 CREATE INDEX idx_payment_events_success_created_at
     ON payment_events(success, created_at DESC)
     WHERE success IS NOT NULL;
+
+CREATE INDEX idx_refunds_booking_created_at
+    ON refunds(booking_id, created_at DESC);
+
+CREATE INDEX idx_refunds_status_created_at
+    ON refunds(status, created_at DESC);
+
+CREATE UNIQUE INDEX uq_refunds_payment_active
+    ON refunds(payment_id)
+    WHERE status IN ('PENDING', 'PROCESSING', 'SUCCESS');
 
 CREATE UNIQUE INDEX uq_tickets_booking_detail_id
     ON tickets(booking_detail_id);

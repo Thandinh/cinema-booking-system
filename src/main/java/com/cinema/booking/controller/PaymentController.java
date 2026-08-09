@@ -2,15 +2,21 @@ package com.cinema.booking.controller;
 
 import com.cinema.booking.dto.request.PaymentEventSearchRequest;
 import com.cinema.booking.dto.request.PaymentSearchRequest;
+import com.cinema.booking.dto.request.RefundCompleteRequest;
+import com.cinema.booking.dto.request.RefundFailRequest;
+import com.cinema.booking.dto.request.RefundSearchRequest;
 import com.cinema.booking.dto.response.ApiResponse;
 import com.cinema.booking.dto.response.PaymentEventResponse;
 import com.cinema.booking.dto.response.PaymentReconciliationIssueResponse;
 import com.cinema.booking.dto.response.PaymentResponse;
+import com.cinema.booking.dto.response.RefundResponse;
 import com.cinema.booking.enums.PaymentEventType;
 import com.cinema.booking.enums.PaymentMethod;
 import com.cinema.booking.enums.PaymentStatus;
 import com.cinema.booking.service.PaymentEventService;
 import com.cinema.booking.service.PaymentService;
+import com.cinema.booking.service.RefundService;
+import jakarta.validation.Valid;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -35,6 +41,7 @@ public class PaymentController {
 
     PaymentService paymentService;
     PaymentEventService paymentEventService;
+    RefundService refundService;
 
     @Value("${app.frontend-url:http://localhost:5173}")
     @NonFinal
@@ -93,6 +100,41 @@ public class PaymentController {
         return ApiResponse.<List<PaymentReconciliationIssueResponse>>builder()
                 .code(1000)
                 .result(paymentService.getReconciliationIssues(limit))
+                .build();
+    }
+
+    @GetMapping("/refunds")
+    @PreAuthorize("hasAuthority('PAYMENT_VIEW_ALL')")
+    public ApiResponse<Page<RefundResponse>> getRefunds(
+            @ModelAttribute RefundSearchRequest request,
+            @PageableDefault(size = 20, sort = "createdAt") Pageable pageable) {
+        return ApiResponse.<Page<RefundResponse>>builder()
+                .code(1000)
+                .result(refundService.search(request, pageable))
+                .build();
+    }
+
+    @PostMapping("/refunds/{refundId}/complete")
+    @PreAuthorize("hasAuthority('PAYMENT_REFUND')")
+    public ApiResponse<RefundResponse> completeRefund(
+            @PathVariable UUID refundId,
+            @RequestBody(required = false) @Valid RefundCompleteRequest request) {
+        return ApiResponse.<RefundResponse>builder()
+                .code(1000)
+                .message("Refund completed")
+                .result(refundService.markRefunded(refundId, request))
+                .build();
+    }
+
+    @PostMapping("/refunds/{refundId}/fail")
+    @PreAuthorize("hasAuthority('PAYMENT_REFUND')")
+    public ApiResponse<RefundResponse> failRefund(
+            @PathVariable UUID refundId,
+            @RequestBody @Valid RefundFailRequest request) {
+        return ApiResponse.<RefundResponse>builder()
+                .code(1000)
+                .message("Refund failed")
+                .result(refundService.markRefundFailed(refundId, request))
                 .build();
     }
 

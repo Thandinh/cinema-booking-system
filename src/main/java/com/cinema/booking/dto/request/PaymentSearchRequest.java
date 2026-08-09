@@ -7,6 +7,7 @@ import lombok.experimental.FieldDefaults;
 import org.springframework.format.annotation.DateTimeFormat;
 
 import java.time.LocalDate;
+import java.util.UUID;
 
 @Data
 @NoArgsConstructor
@@ -18,6 +19,8 @@ public class PaymentSearchRequest {
     PaymentStatus status;
     PaymentMethod method;
     String keyword;
+    String city;
+    UUID cinemaId;
 
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
     LocalDate fromDate;

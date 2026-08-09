@@ -1,0 +1,65 @@
+@startuml
+title State Diagram - Booking, Payment, SeatStatus, Ticket
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam state {
+    BackgroundColor #F8FAFC
+    BorderColor #475569
+    FontColor #0F172A
+    StartColor #263238
+    EndColor #263238
+}
+skinparam note {
+    BackgroundColor #FFFBEB
+    BorderColor #F59E0B
+}
+
+state "BookingStatus" as BookingStatus {
+    [*] --> PENDING : Tao booking cho ghe dang HOLD
+    PENDING --> SUCCESS : Thanh toan thanh cong
+    PENDING --> FAILED : Thanh toan that bai
+    PENDING --> CANCELLED : User huy / Admin huy suat
+    PENDING --> EXPIRED : Qua thoi gian giu ve
+    SUCCESS --> CANCELLED : Admin/Staff huy suat\nchua co ve USED
+    FAILED --> [*]
+    CANCELLED --> [*]
+    EXPIRED --> [*]
+    SUCCESS --> [*]
+}
+
+state "PaymentStatus" as PaymentStatus {
+    [*] --> PENDING : Tao giao dich
+    PENDING --> SUCCESS : VNPay callback / SePay webhook hop le
+    PENDING --> FAILED : Cong thanh toan bao loi\nhoac booking bi huy
+    PENDING --> EXPIRED : Het han thanh toan
+    SUCCESS --> SUCCESS : Idempotent callback/webhook
+    FAILED --> [*]
+    EXPIRED --> [*]
+    SUCCESS --> [*]
+}
+
+state "SeatStatusType" as SeatStatusType {
+    [*] --> AVAILABLE
+    AVAILABLE --> HOLD : User giu ghe
+    HOLD --> BOOKED : Thanh toan thanh cong
+    HOLD --> AVAILABLE : User huy / thanh toan that bai / het han
+    BOOKED --> AVAILABLE : Admin/Staff huy suat\nva ve chua USED
+}
+
+state "TicketStatus" as TicketStatus {
+    [*] --> ACTIVE : Tao ve sau thanh toan thanh cong
+    ACTIVE --> USED : Staff check-in hop le
+    ACTIVE --> CANCELLED : Huy suat / huy ve theo chinh sach
+    USED --> [*]
+    CANCELLED --> [*]
+}
+
+note bottom
+Khong co state booking/payment rieng cho "dang cho hoan tien"
+trong enum/schema hien tai.
+Hoan tien duoc ghi nhan bang PaymentEventType.REFUND_REQUESTED,
+audit log va thong bao cho khach hang/admin xu ly.
+end note
+
+@enduml

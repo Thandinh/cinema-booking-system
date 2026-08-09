@@ -2,9 +2,11 @@ package com.cinema.booking.service;
 
 import com.cinema.booking.dto.request.CreateBookingRequest;
 import com.cinema.booking.dto.request.HoldSeatRequest;
+import com.cinema.booking.dto.request.RefundCompleteRequest;
 import com.cinema.booking.dto.request.ShowtimeCancelRequest;
 import com.cinema.booking.dto.response.BookingResponse;
 import com.cinema.booking.dto.response.HoldSeatResponse;
+import com.cinema.booking.dto.response.RefundResponse;
 import com.cinema.booking.dto.response.TicketResponse;
 import com.cinema.booking.entity.Cinema;
 import com.cinema.booking.entity.Payment;
@@ -24,6 +26,7 @@ import com.cinema.booking.enums.MovieStatus;
 import com.cinema.booking.enums.PaymentMethod;
 import com.cinema.booking.enums.PaymentEventType;
 import com.cinema.booking.enums.PaymentStatus;
+import com.cinema.booking.enums.RefundStatus;
 import com.cinema.booking.enums.SeatStatusType;
 import com.cinema.booking.enums.SeatType;
 import com.cinema.booking.enums.ShowtimeStatus;
@@ -35,6 +38,7 @@ import com.cinema.booking.repository.MovieRepository;
 import com.cinema.booking.repository.PaymentRepository;
 import com.cinema.booking.repository.PaymentEventRepository;
 import com.cinema.booking.repository.PromotionRepository;
+import com.cinema.booking.repository.RefundRepository;
 import com.cinema.booking.repository.RoomRepository;
 import com.cinema.booking.repository.SeatRepository;
 import com.cinema.booking.repository.SeatStatusRepository;
@@ -90,6 +94,9 @@ class BookingWorkflowIntegrationTest extends PostgresIntegrationTest {
     ShowtimeStatusSyncService showtimeStatusSyncService;
 
     @Autowired
+    RefundService refundService;
+
+    @Autowired
     TicketQrCodeService ticketQrCodeService;
 
     @Autowired
@@ -121,6 +128,9 @@ class BookingWorkflowIntegrationTest extends PostgresIntegrationTest {
 
     @Autowired
     PaymentEventRepository paymentEventRepository;
+
+    @Autowired
+    RefundRepository refundRepository;
 
     @Autowired
     PromotionRepository promotionRepository;
@@ -467,9 +477,17 @@ class BookingWorkflowIntegrationTest extends PostgresIntegrationTest {
         assertThat(showtimeRepository.findById(data.showtime().getId()).orElseThrow().getStatus())
                 .isEqualTo(ShowtimeStatus.CANCELLED);
         assertThat(bookingRepository.findById(paidBooking.getId()).orElseThrow().getStatus())
-                .isEqualTo(BookingStatus.CANCELLED);
+                .isEqualTo(BookingStatus.REFUND_PENDING);
         assertThat(paymentRepository.findById(payment.getId()).orElseThrow().getStatus())
-                .isEqualTo(PaymentStatus.SUCCESS);
+                .isEqualTo(PaymentStatus.REFUND_PENDING);
+        assertThat(refundRepository.findAll())
+                .singleElement()
+                .satisfies(refund -> {
+                    assertThat(refund.getBooking().getId()).isEqualTo(paidBooking.getId());
+                    assertThat(refund.getPayment().getId()).isEqualTo(payment.getId());
+                    assertThat(refund.getAmount()).isEqualByComparingTo(paidBooking.getTotalPrice());
+                    assertThat(refund.getStatus()).isEqualTo(RefundStatus.PENDING);
+                });
         assertThat(ticketRepository.findAll())
                 .allSatisfy(ticket -> assertThat(ticket.getStatus()).isEqualTo(TicketStatus.CANCELLED));
         assertThat(seatStatusRepository.findAllByShowtimeId(data.showtime().getId()))
@@ -478,6 +496,26 @@ class BookingWorkflowIntegrationTest extends PostgresIntegrationTest {
         assertThat(paymentEventRepository.findAll())
                 .anySatisfy(event -> {
                     assertThat(event.getEventType()).isEqualTo(PaymentEventType.REFUND_REQUESTED);
+                    assertThat(event.getBookingId()).isEqualTo(paidBooking.getId());
+                    assertThat(event.getPaymentId()).isEqualTo(payment.getId());
+                });
+
+        authenticateAs(staff, "ROLE_ADMIN", "PAYMENT_REFUND");
+        RefundResponse completedRefund = refundService.markRefunded(
+                refundRepository.findAll().getFirst().getId(),
+                RefundCompleteRequest.builder()
+                        .providerRefundId("MANUAL_REFUND_001")
+                        .note("Refunded by bank transfer")
+                        .build());
+
+        assertThat(completedRefund.getStatus()).isEqualTo(RefundStatus.SUCCESS);
+        assertThat(bookingRepository.findById(paidBooking.getId()).orElseThrow().getStatus())
+                .isEqualTo(BookingStatus.REFUNDED);
+        assertThat(paymentRepository.findById(payment.getId()).orElseThrow().getStatus())
+                .isEqualTo(PaymentStatus.REFUNDED);
+        assertThat(paymentEventRepository.findAll())
+                .anySatisfy(event -> {
+                    assertThat(event.getEventType()).isEqualTo(PaymentEventType.REFUND_COMPLETED);
                     assertThat(event.getBookingId()).isEqualTo(paidBooking.getId());
                     assertThat(event.getPaymentId()).isEqualTo(payment.getId());
                 });
@@ -537,6 +575,7 @@ class BookingWorkflowIntegrationTest extends PostgresIntegrationTest {
 
     private void clearBusinessData() {
         paymentEventRepository.deleteAllInBatch();
+        refundRepository.deleteAllInBatch();
         ticketRepository.deleteAllInBatch();
         staffCinemaRepository.deleteAllInBatch();
         paymentRepository.deleteAllInBatch();

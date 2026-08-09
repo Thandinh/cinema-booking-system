@@ -522,6 +522,7 @@ public class BookingServiceImpl implements BookingService {
         BookingSearchRequest safeRequest = request == null ? new BookingSearchRequest() : request;
         DateRange dateRange = DateRange.of(safeRequest.getFromDate(), safeRequest.getToDate());
         String keywordPattern = normalizeKeywordPattern(safeRequest.getKeyword());
+        String city = normalizeExactFilter(safeRequest.getCity());
 
         if (staffCinemaScopeService.isStaffButNotAdmin()) {
             List<UUID> cinemaIds = staffCinemaScopeService.getCurrentStaffCinemaIds();
@@ -531,6 +532,8 @@ public class BookingServiceImpl implements BookingService {
             return mapBookingPage(bookingRepository.findIdsForAdminSearchByCinemaIds(
                     safeRequest.getStatus(),
                     keywordPattern,
+                    safeRequest.getCinemaId(),
+                    city,
                     dateRange.fromSearchBound(),
                     dateRange.toSearchBound(),
                     cinemaIds,
@@ -539,6 +542,8 @@ public class BookingServiceImpl implements BookingService {
         return mapBookingPage(bookingRepository.findIdsForAdminSearch(
                 safeRequest.getStatus(),
                 keywordPattern,
+                safeRequest.getCinemaId(),
+                city,
                 dateRange.fromSearchBound(),
                 dateRange.toSearchBound(),
                 pageable));
@@ -748,6 +753,10 @@ public class BookingServiceImpl implements BookingService {
         return keyword == null || keyword.isBlank()
                 ? null
                 : "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
+    }
+
+    private String normalizeExactFilter(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private void expirePendingPaymentsAfterPriceChange(Booking booking, String message) {

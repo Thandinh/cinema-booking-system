@@ -47,6 +47,8 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             LEFT JOIN FETCH r.cinema c
             WHERE (:status IS NULL OR p.status = :status)
               AND (:method IS NULL OR p.method = :method)
+              AND (:cinemaId IS NULL OR c.id = :cinemaId)
+              AND (:city IS NULL OR c.city = :city)
               AND p.createdAt >= :fromTime
               AND p.createdAt < :toTime
               AND (
@@ -65,8 +67,12 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             LEFT JOIN b.user u
             LEFT JOIN b.showtime st
             LEFT JOIN st.movie m
+            LEFT JOIN st.room r
+            LEFT JOIN r.cinema c
             WHERE (:status IS NULL OR p.status = :status)
               AND (:method IS NULL OR p.method = :method)
+              AND (:cinemaId IS NULL OR c.id = :cinemaId)
+              AND (:city IS NULL OR c.city = :city)
               AND p.createdAt >= :fromTime
               AND p.createdAt < :toTime
               AND (
@@ -82,6 +88,8 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             @Param("status") PaymentStatus status,
             @Param("method") com.cinema.booking.enums.PaymentMethod method,
             @Param("keywordPattern") String keywordPattern,
+            @Param("cinemaId") UUID cinemaId,
+            @Param("city") String city,
             @Param("fromTime") LocalDateTime fromTime,
             @Param("toTime") LocalDateTime toTime,
             Pageable pageable);
@@ -98,6 +106,8 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             WHERE (:status IS NULL OR p.status = :status)
               AND (:method IS NULL OR p.method = :method)
               AND c.id IN :cinemaIds
+              AND (:cinemaId IS NULL OR c.id = :cinemaId)
+              AND (:city IS NULL OR c.city = :city)
               AND p.createdAt >= :fromTime
               AND p.createdAt < :toTime
               AND (
@@ -121,6 +131,8 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             WHERE (:status IS NULL OR p.status = :status)
               AND (:method IS NULL OR p.method = :method)
               AND c.id IN :cinemaIds
+              AND (:cinemaId IS NULL OR c.id = :cinemaId)
+              AND (:city IS NULL OR c.city = :city)
               AND p.createdAt >= :fromTime
               AND p.createdAt < :toTime
               AND (
@@ -136,6 +148,8 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             @Param("status") PaymentStatus status,
             @Param("method") com.cinema.booking.enums.PaymentMethod method,
             @Param("keywordPattern") String keywordPattern,
+            @Param("cinemaId") UUID cinemaId,
+            @Param("city") String city,
             @Param("fromTime") LocalDateTime fromTime,
             @Param("toTime") LocalDateTime toTime,
             @Param("cinemaIds") List<UUID> cinemaIds,

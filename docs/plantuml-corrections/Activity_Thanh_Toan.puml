@@ -1,0 +1,106 @@
+@startuml
+title Activity Diagram - Thanh toan VNPay va Quet QR ngan hang
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor #E3F2FD
+    BorderColor #1976D2
+    FontColor #0F172A
+    DiamondBackgroundColor #FFF9C4
+    DiamondBorderColor #F59E0B
+    StartColor #263238
+    EndColor #263238
+}
+skinparam note {
+    BackgroundColor #ECFDF5
+    BorderColor #10B981
+}
+
+|User|
+start
+:Mo trang thanh toan cua booking PENDING;
+:Kiem tra tong tien va ma giam gia;
+
+|Frontend|
+if (Da tao ma QR ngan hang?) then (Co)
+    :Tam khoa thay doi ma giam gia;
+    note right
+    QR ngan hang da co dinh so tien va noi dung chuyen khoan.
+    Muon doi ma giam gia thi huy QR hien tai
+    va tao ma thanh toan moi.
+    end note
+else (Chua)
+endif
+
+:Chon phuong thuc thanh toan;
+
+if (Phuong thuc?) then (VNPay)
+    |Backend API|
+    :PaymentService.initiatePayment(VNPAY);
+    :Tao payment PENDING;
+    :Tao signed payment URL;
+    |Frontend|
+    :Chuyen sang cong thanh toan VNPay;
+    |VNPay|
+    :Nguoi dung thanh toan;
+    :Redirect callback ve he thong;
+    |Backend API|
+    :Xac thuc checksum VNPay;
+    if (Ket qua thanh toan hop le va thanh cong?) then (Thanh cong)
+        :payment = SUCCESS;
+        :booking = SUCCESS;
+        :seat_status = BOOKED;
+        :Sinh ticket QR;
+        :Ghi PaymentEvent thanh cong;
+        |Mail Service|
+        :Gui email ve dien tu;
+        |Frontend|
+        :Hien thi ket qua giao dich thanh cong;
+        stop
+    else (That bai)
+        :payment = FAILED;
+        :booking = FAILED;
+        :seat_status = AVAILABLE;
+        :Ghi PaymentEvent that bai;
+        |Frontend|
+        :Hien thi ket qua giao dich that bai;
+        stop
+    endif
+else (Quet QR ngan hang)
+    |Backend API|
+    :PaymentService.initiatePayment(SePay/VietQR);
+    :Tao payment PENDING;
+    :Sinh QR theo ngan hang, so tien,\nnoi dung chuyen khoan;
+    |Frontend|
+    :Hien thi QR va tu dong scroll toi form QR;
+    |User|
+    :Mo app ngan hang va chuyen khoan dung noi dung;
+    |SePay|
+    :Nhan bien dong so du;
+    :Gui webhook ve backend;
+    |Backend API|
+    :Kiem tra API key/HMAC;
+    :Doi chieu booking code, so tien,\nnoi dung chuyen khoan;
+    if (Webhook hop le?) then (Hop le)
+        :payment = SUCCESS;
+        :booking = SUCCESS;
+        :seat_status = BOOKED;
+        :Sinh ticket QR;
+        :Ghi PaymentEvent thanh cong;
+        |Mail Service|
+        :Gui email ve dien tu;
+        |Frontend|
+        :Polling thay payment SUCCESS;
+        :Tu dong chuyen trang ket qua;
+        stop
+    else (Khong hop le)
+        :Luu PaymentEvent webhook that bai;
+        |Frontend|
+        :Tiep tuc hien thi dang cho xac nhan;
+        stop
+    endif
+endif
+
+@enduml
+

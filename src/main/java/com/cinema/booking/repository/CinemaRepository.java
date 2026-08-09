@@ -19,6 +19,25 @@ public interface CinemaRepository extends JpaRepository<Cinema, UUID> {
 
     Page<Cinema> findAllByIsActiveTrueAndIsDeletedFalse(Pageable pageable);
 
+    @Query("""
+            SELECT c
+            FROM Cinema c
+            WHERE c.isDeleted = false
+              AND (:onlyActive = false OR c.isActive = true)
+              AND (:city IS NULL OR c.city = :city)
+              AND (
+                    :keywordPattern IS NULL
+                    OR LOWER(c.name) LIKE :keywordPattern
+                    OR LOWER(c.address) LIKE :keywordPattern
+                    OR LOWER(c.city) LIKE :keywordPattern
+              )
+            """)
+    Page<Cinema> search(
+            @Param("onlyActive") boolean onlyActive,
+            @Param("city") String city,
+            @Param("keywordPattern") String keywordPattern,
+            Pageable pageable);
+
     @Query("SELECT c FROM Cinema c WHERE c.id = :id AND c.isDeleted = false")
     Optional<Cinema> findActiveById(UUID id);
 

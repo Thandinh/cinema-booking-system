@@ -224,6 +224,9 @@ public class PaymentServiceImpl implements PaymentService {
         String keywordPattern = safeRequest.getKeyword() == null || safeRequest.getKeyword().isBlank()
                 ? null
                 : "%" + safeRequest.getKeyword().trim().toLowerCase(Locale.ROOT) + "%";
+        String city = safeRequest.getCity() == null || safeRequest.getCity().isBlank()
+                ? null
+                : safeRequest.getCity().trim();
         if (staffCinemaScopeService.isStaffButNotAdmin()) {
             List<UUID> cinemaIds = staffCinemaScopeService.getCurrentStaffCinemaIds();
             if (cinemaIds.isEmpty()) {
@@ -233,6 +236,8 @@ public class PaymentServiceImpl implements PaymentService {
                               safeRequest.getStatus(),
                               safeRequest.getMethod(),
                               keywordPattern,
+                              safeRequest.getCinemaId(),
+                              city,
                             dateRange.fromSearchBound(),
                             dateRange.toSearchBound(),
                               cinemaIds,
@@ -243,6 +248,8 @@ public class PaymentServiceImpl implements PaymentService {
                         safeRequest.getStatus(),
                         safeRequest.getMethod(),
                         keywordPattern,
+                        safeRequest.getCinemaId(),
+                        city,
                         dateRange.fromSearchBound(),
                         dateRange.toSearchBound(),
                         pageable)
@@ -372,9 +379,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         if (booking.getStatus() != BookingStatus.PENDING) {
             log.warn("Booking {} already processed before VNPay callback {}", booking.getId(), txnRef);
-            payment.setStatus(booking.getStatus() == BookingStatus.SUCCESS
-                    ? PaymentStatus.SUCCESS
-                    : PaymentStatus.FAILED);
+            payment.setStatus(paymentStatusForFinalizedBooking(booking.getStatus()));
             if (payment.getStatus() == PaymentStatus.SUCCESS && payment.getPaymentTime() == null) {
                 payment.setPaymentTime(LocalDateTime.now());
             }
@@ -591,9 +596,7 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         if (booking.getStatus() != BookingStatus.PENDING) {
-            payment.setStatus(booking.getStatus() == BookingStatus.SUCCESS
-                    ? PaymentStatus.SUCCESS
-                    : PaymentStatus.FAILED);
+            payment.setStatus(paymentStatusForFinalizedBooking(booking.getStatus()));
             if (payment.getStatus() == PaymentStatus.SUCCESS && payment.getPaymentTime() == null) {
                 payment.setPaymentTime(LocalDateTime.now());
             }
@@ -729,9 +732,7 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         if (booking.getStatus() != BookingStatus.PENDING) {
-            payment.setStatus(booking.getStatus() == BookingStatus.SUCCESS
-                    ? PaymentStatus.SUCCESS
-                    : PaymentStatus.FAILED);
+            payment.setStatus(paymentStatusForFinalizedBooking(booking.getStatus()));
             if (payment.getStatus() == PaymentStatus.SUCCESS && payment.getPaymentTime() == null) {
                 payment.setPaymentTime(LocalDateTime.now());
             }
@@ -794,6 +795,16 @@ public class PaymentServiceImpl implements PaymentService {
     private boolean isPaymentWindowExpired(Booking booking) {
         return booking.getPaymentExpiresAt() != null
                 && !booking.getPaymentExpiresAt().isAfter(LocalDateTime.now());
+    }
+
+    private PaymentStatus paymentStatusForFinalizedBooking(BookingStatus bookingStatus) {
+        return switch (bookingStatus) {
+            case SUCCESS -> PaymentStatus.SUCCESS;
+            case REFUND_PENDING -> PaymentStatus.REFUND_PENDING;
+            case REFUNDED -> PaymentStatus.REFUNDED;
+            case EXPIRED -> PaymentStatus.EXPIRED;
+            default -> PaymentStatus.FAILED;
+        };
     }
 
     private boolean isSameAmount(BigDecimal left, BigDecimal right) {
