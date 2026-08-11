@@ -55,6 +55,14 @@ public class Booking extends BaseEntity {
 
     LocalDateTime paymentExpiresAt;
 
+    /**
+     * A promotion slot is reserved when a pending booking is created and is
+     * released only when that booking cannot complete. Keeping this state on
+     * the booking makes a promotion usage limit safe under concurrent payment.
+     */
+    @Builder.Default
+    boolean promotionReserved = false;
+
     @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     List<BookingDetail> bookingDetails = new ArrayList<>();

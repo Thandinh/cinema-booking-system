@@ -34,25 +34,27 @@ public class HoldExpireScheduler {
     @Scheduled(fixedDelayString = "${booking.expired-hold-scan-delay-ms:30000}")
     @Transactional
     public void releaseExpiredHolds() {
+        LocalDateTime now = LocalDateTime.now();
         List<ExpiredSeatHoldProjection> expired = seatStatusRepository.findExpiredHoldRows(
-                LocalDateTime.now(), expiredHoldScanLimit);
+                now, expiredHoldScanLimit);
 
         if (expired.isEmpty()) {
             return;
         }
 
-        Map<UUID, List<UUID>> seatIdsByShowtime = expired.stream()
-                .collect(Collectors.groupingBy(
-                        ExpiredSeatHoldProjection::getShowtimeId,
-                        Collectors.mapping(ExpiredSeatHoldProjection::getSeatId, Collectors.toList())
-                ));
-
         List<UUID> expiredIds = expired.stream()
                 .map(ExpiredSeatHoldProjection::getId)
                 .toList();
 
-        int releasedCount = seatStatusRepository.releaseExpiredHoldsByIds(expiredIds);
+        int releasedCount = seatStatusRepository.releaseExpiredHoldsByIds(expiredIds, now);
         log.info("Released {} expired seat holds", releasedCount);
+
+        Map<UUID, List<UUID>> seatIdsByShowtime = seatStatusRepository.findReleasedAvailableByIds(expiredIds)
+                .stream()
+                .collect(Collectors.groupingBy(
+                        seatStatus -> seatStatus.getShowtime().getId(),
+                        Collectors.mapping(seatStatus -> seatStatus.getSeat().getId(), Collectors.toList())
+                ));
 
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override

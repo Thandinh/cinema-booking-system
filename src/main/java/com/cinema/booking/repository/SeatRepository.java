@@ -49,4 +49,8 @@ public interface SeatRepository extends JpaRepository<Seat, UUID> {
     @Modifying
     @Query("UPDATE Seat s SET s.isDeleted = true WHERE s.room.id = :roomId AND s.isDeleted = false")
     void softDeleteByRoomId(@Param("roomId") UUID roomId);
+
+    @Modifying
+    @Query("UPDATE Seat s SET s.isDeleted = true WHERE s.room.cinema.id = :cinemaId AND s.isDeleted = false")
+    int softDeleteByCinemaId(@Param("cinemaId") UUID cinemaId);
 }

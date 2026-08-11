@@ -28,6 +28,7 @@ import com.cinema.booking.repository.BookingRepository;
 import com.cinema.booking.repository.HomeShowtimeProjection;
 import com.cinema.booking.repository.MovieRepository;
 import com.cinema.booking.repository.PaymentRepository;
+import com.cinema.booking.repository.PromotionRepository;
 import com.cinema.booking.repository.RoomRepository;
 import com.cinema.booking.repository.SeatRepository;
 import com.cinema.booking.repository.SeatStatusRepository;
@@ -79,6 +80,7 @@ public class ShowtimeServiceImpl implements ShowtimeService {
     StaffCinemaScopeService staffCinemaScopeService;
     BookingRepository bookingRepository;
     PaymentRepository paymentRepository;
+    PromotionRepository promotionRepository;
     TicketRepository ticketRepository;
     PaymentEventService paymentEventService;
     RefundService refundService;
@@ -229,6 +231,11 @@ public class ShowtimeServiceImpl implements ShowtimeService {
                 ? List.of()
                 : paymentRepository.findWithBookingByBookingIdInAndStatus(affectedBookingIds, PaymentStatus.PENDING);
 
+        if (!affectedBookingIds.isEmpty()) {
+            promotionRepository.releaseReservationsForBookingIds(affectedBookingIds);
+            affectedBookings.forEach(booking -> booking.setPromotionReserved(false));
+        }
+
         Map<UUID, List<Payment>> successPaymentsByBookingId = successPayments.stream()
                 .filter(payment -> payment.getBooking() != null)
                 .collect(Collectors.groupingBy(payment -> payment.getBooking().getId()));
@@ -243,7 +250,7 @@ public class ShowtimeServiceImpl implements ShowtimeService {
                     .map(detail -> detail.getSeat().getId())
                     .toList();
             if (!seatIds.isEmpty()) {
-                seatStatusRepository.bulkUpdateStatusAndClearHold(id, seatIds, SeatStatusType.AVAILABLE);
+                seatStatusRepository.releaseSeatsForCancelledShowtime(id, seatIds, SeatStatusType.AVAILABLE);
                 publishSeatAvailabilityAfterCommit(id, seatIds);
             }
 

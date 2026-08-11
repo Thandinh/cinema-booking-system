@@ -19,6 +19,7 @@ import com.cinema.booking.repository.MovieRepository;
 import com.cinema.booking.repository.PaymentEventRepository;
 import com.cinema.booking.repository.PaymentRepository;
 import com.cinema.booking.repository.RoomRepository;
+import com.cinema.booking.repository.RefundRepository;
 import com.cinema.booking.repository.ShowtimeRepository;
 import com.cinema.booking.repository.UserRepository;
 import com.cinema.booking.support.PostgresIntegrationTest;
@@ -58,6 +59,8 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 })
 class PaymentCallbackIntegrationTest extends PostgresIntegrationTest {
 
+    private static final String CALLBACK_TEST_USERNAME = "payment_callback_test_user";
+
     @Autowired
     PaymentService paymentService;
 
@@ -84,6 +87,9 @@ class PaymentCallbackIntegrationTest extends PostgresIntegrationTest {
 
     @Autowired
     PaymentEventRepository paymentEventRepository;
+
+    @Autowired
+    RefundRepository refundRepository;
 
     @MockitoBean
     BookingService bookingService;
@@ -268,15 +274,15 @@ class PaymentCallbackIntegrationTest extends PostgresIntegrationTest {
         Map<String, Object> response = paymentService.handleSePayWebhook(rawPayload, request);
 
         assertThat(response)
-                .containsEntry("success", false)
-                .containsEntry("message", "Booking expired");
+                .containsEntry("success", true)
+                .containsEntry("message", "Refund pending");
         assertThat(paymentRepository.findByTransactionNo("CBK1234567894").orElseThrow().getStatus())
-                .isEqualTo(PaymentStatus.EXPIRED);
+                .isEqualTo(PaymentStatus.REFUND_PENDING);
         assertThat(paymentEventRepository.findAll())
                 .anySatisfy(event -> {
                     assertThat(event.getTransactionNo()).isEqualTo("CBK1234567894");
-                    assertThat(event.getEventType()).isEqualTo(PaymentEventType.PAYMENT_EXPIRED);
-                    assertThat(event.getSuccess()).isFalse();
+                    assertThat(event.getEventType()).isEqualTo(PaymentEventType.REFUND_REQUESTED);
+                    assertThat(event.getSuccess()).isTrue();
                 });
         verify(bookingService).expirePendingBooking(booking.getId());
         verify(bookingService, never()).handlePaymentSuccess("secure-token-sepay-expired");
@@ -284,6 +290,7 @@ class PaymentCallbackIntegrationTest extends PostgresIntegrationTest {
     }
 
     private void clearBusinessData() {
+        refundRepository.deleteAllInBatch();
         paymentEventRepository.deleteAllInBatch();
         paymentRepository.deleteAllInBatch();
         bookingRepository.deleteAllInBatch();
@@ -299,7 +306,7 @@ class PaymentCallbackIntegrationTest extends PostgresIntegrationTest {
 
     private Payment createPendingPayment(String transactionNo, String secureToken, PaymentMethod method) {
         String suffix = UUID.randomUUID().toString();
-        User user = userRepository.findByUsername("user1").orElseThrow();
+        User user = findOrCreateCallbackTestUser();
         Movie movie = movieRepository.save(Movie.builder()
                 .title("Payment Callback Movie " + suffix)
                 .duration(120)
@@ -343,6 +350,18 @@ class PaymentCallbackIntegrationTest extends PostgresIntegrationTest {
                 .transactionNo(transactionNo)
                 .status(PaymentStatus.PENDING)
                 .build());
+    }
+
+    private User findOrCreateCallbackTestUser() {
+        return userRepository.findByUsername(CALLBACK_TEST_USERNAME)
+                .orElseGet(() -> userRepository.save(User.builder()
+                        .username(CALLBACK_TEST_USERNAME)
+                        .password("test-only-password-hash")
+                        .email("payment-callback-test@example.invalid")
+                        .emailVerified(true)
+                        .isActive(true)
+                        .isDeleted(false)
+                        .build()));
     }
 
     private MockHttpServletRequest signedVnpayRequest(Payment payment, String responseCode, String hashSecret) {

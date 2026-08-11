@@ -35,7 +35,6 @@ import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2Error;
@@ -78,6 +77,7 @@ import java.util.UUID;
 public class AuthenticationService {
     static final String ISSUER = "cinema-booking";
     static final String TOKEN_USE_CLAIM = "token_use";
+    static final String AUTH_VERSION_CLAIM = "auth_version";
     static final String ACCESS_TOKEN_USE = "access";
     static final String REFRESH_TOKEN_USE = "refresh";
     static final String EVENT_LOGIN_PASSWORD = "LOGIN_PASSWORD";
@@ -103,6 +103,7 @@ public class AuthenticationService {
     AuthRateLimitService authRateLimitService;
     AuthAuditService authAuditService;
     PlatformTransactionManager transactionManager;
+    PasswordEncoder passwordEncoder;
 
     public IntrospectResponse introspect(IntrospectRequest request) {
         boolean isValid = true;
@@ -126,7 +127,6 @@ public class AuthenticationService {
         try {
             authRateLimitService.check(rateLimitKey, LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW);
 
-            PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(10);
             user = userRepository.findByUsername(username)
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
             validateUserCanAuthenticate(user);
@@ -192,8 +192,10 @@ public class AuthenticationService {
             authRateLimitService.check(genericRateLimitKey("refresh", servletRequest), REFRESH_MAX_ATTEMPTS, REFRESH_WINDOW);
             verifyToken(refreshToken, true);
             String tokenHash = hashToken(refreshToken);
-            RefreshToken currentRefreshToken = refreshTokenRepository.findByTokenHash(tokenHash)
+            RefreshToken currentRefreshToken = refreshTokenRepository.findLockedByTokenHash(tokenHash)
                     .orElseThrow(() -> new AppException(ErrorCode.UNAUTHENTICATED));
+
+            validateRefreshTokenRecord(currentRefreshToken, SignedJWT.parse(refreshToken).getJWTClaimsSet());
 
             user = currentRefreshToken.getUser();
             validateUserCanAuthenticate(user);
@@ -297,6 +299,11 @@ public class AuthenticationService {
                 .orElseThrow(() -> new AppException(ErrorCode.UNAUTHENTICATED));
         validateUserCanAuthenticate(user);
 
+        Integer tokenAuthVersion = claims.getIntegerClaim(AUTH_VERSION_CLAIM);
+        if ((tokenAuthVersion == null ? 0 : tokenAuthVersion) != authVersionOf(user)) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+
         return signedJWT;
     }
 
@@ -328,6 +335,7 @@ public class AuthenticationService {
                         .toEpochMilli()))
                 .jwtID(UUID.randomUUID().toString())
                 .claim(TOKEN_USE_CLAIM, ACCESS_TOKEN_USE)
+                .claim(AUTH_VERSION_CLAIM, authVersionOf(user))
                 .claim("scope", buildScope(user))
                 .claim("userId", user.getId().toString())
                 .build();
@@ -345,6 +353,7 @@ public class AuthenticationService {
                 .expirationTime(Date.from(expiresAt))
                 .jwtID(tokenId)
                 .claim(TOKEN_USE_CLAIM, REFRESH_TOKEN_USE)
+                .claim(AUTH_VERSION_CLAIM, authVersionOf(user))
                 .claim("userId", user.getId().toString())
                 .build();
 
@@ -380,9 +389,14 @@ public class AuthenticationService {
     }
 
     private void validateRefreshTokenRecord(String token, JWTClaimsSet claims) {
-        LocalDateTime now = LocalDateTime.now();
         RefreshToken refreshToken = refreshTokenRepository.findByTokenHash(hashToken(token))
                 .orElseThrow(() -> new AppException(ErrorCode.UNAUTHENTICATED));
+
+        validateRefreshTokenRecord(refreshToken, claims);
+    }
+
+    private void validateRefreshTokenRecord(RefreshToken refreshToken, JWTClaimsSet claims) {
+        LocalDateTime now = LocalDateTime.now();
 
         if (!refreshToken.getTokenId().equals(claims.getJWTID())) {
             throw new AppException(ErrorCode.UNAUTHENTICATED);
@@ -398,6 +412,10 @@ public class AuthenticationService {
             }
             throw new AppException(ErrorCode.UNAUTHENTICATED);
         }
+    }
+
+    private int authVersionOf(User user) {
+        return user.getAuthVersion() == null ? 0 : user.getAuthVersion();
     }
 
     private void revokeAllActiveRefreshTokensInNewTransaction(UUID userId, LocalDateTime revokedAt, String reason) {
@@ -528,7 +546,7 @@ public class AuthenticationService {
 
         User user = User.builder()
                 .username(generateUniqueGoogleUsername(email))
-                .password(new BCryptPasswordEncoder(10).encode(UUID.randomUUID().toString()))
+                .password(passwordEncoder.encode(UUID.randomUUID().toString()))
                 .firstName(resolveFirstName(givenName, fullName))
                 .lastName(resolveLastName(familyName, givenName, fullName))
                 .email(email.toLowerCase(Locale.ROOT))

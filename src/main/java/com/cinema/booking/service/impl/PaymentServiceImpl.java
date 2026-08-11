@@ -14,6 +14,7 @@ import com.cinema.booking.enums.PaymentEventType;
 import com.cinema.booking.enums.PaymentMethod;
 import com.cinema.booking.enums.PaymentStatus;
 import com.cinema.booking.exception.AppException;
+import com.cinema.booking.exception.BookingExpiredAfterCleanupException;
 import com.cinema.booking.mapper.PaymentMapper;
 import com.cinema.booking.payment.PaymentGateway;
 import com.cinema.booking.repository.BookingRepository;
@@ -64,13 +65,14 @@ public class PaymentServiceImpl implements PaymentService {
     SePayConfig sePayConfig;
     com.cinema.booking.service.BookingService bookingService;
     PaymentEventService paymentEventService;
+    com.cinema.booking.service.RefundService refundService;
     PaymentMapper paymentMapper;
     List<PaymentGateway> paymentGateways;
     StaffCinemaScopeService staffCinemaScopeService;
     ObjectMapper objectMapper;
 
     @Override
-    @Transactional
+    @Transactional(noRollbackFor = BookingExpiredAfterCleanupException.class)
     public String initiatePayment(UUID bookingId, PaymentMethod method, BigDecimal amount, HttpServletRequest request) {
         UUID userId = SecurityUtils.getCurrentUserId();
 
@@ -87,7 +89,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         if (isPaymentWindowExpired(booking)) {
             bookingService.expirePendingBooking(booking.getId());
-            throw new AppException(ErrorCode.BOOKING_EXPIRED);
+            throw new BookingExpiredAfterCleanupException();
         }
 
         // Tạo record Payment PENDING
@@ -95,14 +97,27 @@ public class PaymentServiceImpl implements PaymentService {
             throw new AppException(ErrorCode.PAYMENT_AMOUNT_MISMATCH);
         }
 
-        Optional<Payment> pendingPayment = paymentRepository
-                .findFirstByBookingIdAndMethodAndStatusOrderByCreatedAtDesc(
-                        bookingId,
-                        method,
-                        PaymentStatus.PENDING);
+        Optional<Payment> pendingPayment = paymentRepository.findLockedPendingByBookingId(bookingId);
         if (pendingPayment.isPresent()) {
             Payment payment = pendingPayment.get();
-            if (isSameAmount(payment.getAmount(), booking.getTotalPrice())) {
+            if (!isSameAmount(payment.getAmount(), booking.getTotalPrice())) {
+                PaymentStatus oldPaymentStatus = payment.getStatus();
+                payment.setStatus(PaymentStatus.EXPIRED);
+                paymentRepository.save(payment);
+                paymentEventService.record(
+                        payment,
+                        booking,
+                        PaymentEventType.PAYMENT_EXPIRED,
+                        oldPaymentStatus,
+                        payment.getStatus(),
+                        booking.getStatus(),
+                        booking.getStatus(),
+                        true,
+                        "Expired stale pending payment because booking amount changed",
+                        Map.of(
+                                "paymentAmount", payment.getAmount(),
+                                "bookingAmount", booking.getTotalPrice()));
+            } else if (payment.getMethod() == method) {
                 log.info("Reusing pending payment {} for booking {}", payment.getTransactionNo(), bookingId);
                 paymentEventService.record(
                         payment,
@@ -116,24 +131,9 @@ public class PaymentServiceImpl implements PaymentService {
                         "Reused pending payment for booking",
                         null);
                 return createPaymentUrlWithAudit(payment, booking, request);
+            } else {
+                throw new AppException(ErrorCode.PAYMENT_IN_PROGRESS);
             }
-
-            PaymentStatus oldPaymentStatus = payment.getStatus();
-            payment.setStatus(PaymentStatus.EXPIRED);
-            paymentRepository.save(payment);
-            paymentEventService.record(
-                    payment,
-                    booking,
-                    PaymentEventType.PAYMENT_EXPIRED,
-                    oldPaymentStatus,
-                    payment.getStatus(),
-                    booking.getStatus(),
-                    booking.getStatus(),
-                    true,
-                    "Expired stale pending payment because booking amount changed",
-                    Map.of(
-                            "paymentAmount", payment.getAmount(),
-                            "bookingAmount", booking.getTotalPrice()));
         }
 
         String txnNo = generateTransactionNo(method, bookingId);
@@ -332,6 +332,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         String txnRef = request.getParameter("vnp_TxnRef");
         String responseCode = request.getParameter("vnp_ResponseCode");
+        boolean paymentSucceeded = "00".equals(responseCode);
         if (txnRef == null || txnRef.isBlank()) {
             paymentEventService.recordDetached(
                     null,
@@ -363,6 +364,19 @@ public class PaymentServiceImpl implements PaymentService {
                 callbackPayload);
 
         if (payment.getStatus() != PaymentStatus.PENDING) {
+            if (paymentSucceeded
+                    && payment.getStatus() != PaymentStatus.SUCCESS
+                    && payment.getStatus() != PaymentStatus.REFUND_PENDING
+                    && payment.getStatus() != PaymentStatus.REFUNDED) {
+                registerLateSuccessfulPayment(
+                        payment,
+                        booking,
+                        "VNPay confirmed payment after this checkout was closed.",
+                        callbackPayload);
+                return "redirect:/payment/result?status=REFUND_PENDING"
+                        + "&bookingId=" + booking.getId()
+                        + "&txn=" + txnRef;
+            }
             log.warn("Payment {} already processed", txnRef);
             paymentRepository.save(payment);
             recordPaymentEvent(
@@ -379,10 +393,17 @@ public class PaymentServiceImpl implements PaymentService {
 
         if (booking.getStatus() != BookingStatus.PENDING) {
             log.warn("Booking {} already processed before VNPay callback {}", booking.getId(), txnRef);
-            payment.setStatus(paymentStatusForFinalizedBooking(booking.getStatus()));
-            if (payment.getStatus() == PaymentStatus.SUCCESS && payment.getPaymentTime() == null) {
-                payment.setPaymentTime(LocalDateTime.now());
+            if (paymentSucceeded) {
+                registerLateSuccessfulPayment(
+                        payment,
+                        booking,
+                        "VNPay confirmed payment after this checkout was closed.",
+                        callbackPayload);
+                return "redirect:/payment/result?status=REFUND_PENDING"
+                        + "&bookingId=" + booking.getId()
+                        + "&txn=" + txnRef;
             }
+            payment.setStatus(PaymentStatus.FAILED);
             paymentRepository.save(payment);
             recordPaymentEvent(
                     payment,
@@ -414,9 +435,19 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         if (isPaymentWindowExpired(booking)) {
+            bookingService.expirePendingBooking(booking.getId());
+            if (paymentSucceeded) {
+                registerLateSuccessfulPayment(
+                        payment,
+                        booking,
+                        "VNPay confirmed payment after the checkout window expired.",
+                        callbackPayload);
+                return "redirect:/payment/result?status=REFUND_PENDING"
+                        + "&bookingId=" + booking.getId()
+                        + "&txn=" + txnRef;
+            }
             payment.setStatus(PaymentStatus.EXPIRED);
             paymentRepository.save(payment);
-            bookingService.expirePendingBooking(booking.getId());
             recordPaymentEvent(
                     payment,
                     booking,
@@ -429,7 +460,7 @@ public class PaymentServiceImpl implements PaymentService {
                     + "&txn=" + txnRef;
         }
 
-        if ("00".equals(responseCode)) {
+        if (paymentSucceeded) {
             payment.setStatus(PaymentStatus.SUCCESS);
             payment.setPaymentTime(LocalDateTime.now());
             paymentRepository.save(payment);
@@ -584,6 +615,16 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         if (payment.getStatus() != PaymentStatus.PENDING) {
+            if (payment.getStatus() != PaymentStatus.SUCCESS
+                    && payment.getStatus() != PaymentStatus.REFUND_PENDING
+                    && payment.getStatus() != PaymentStatus.REFUNDED) {
+                registerLateSuccessfulPayment(
+                        payment,
+                        booking,
+                        "SePay confirmed payment after this checkout was closed.",
+                        payload);
+                return sePayWebhookResponse(true, "Refund pending");
+            }
             paymentRepository.save(payment);
             recordPaymentEvent(
                     payment,
@@ -596,33 +637,22 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         if (booking.getStatus() != BookingStatus.PENDING) {
-            payment.setStatus(paymentStatusForFinalizedBooking(booking.getStatus()));
-            if (payment.getStatus() == PaymentStatus.SUCCESS && payment.getPaymentTime() == null) {
-                payment.setPaymentTime(LocalDateTime.now());
-            }
-            paymentRepository.save(payment);
-            recordPaymentEvent(
+            registerLateSuccessfulPayment(
                     payment,
                     booking,
-                    PaymentEventType.PAYMENT_ALREADY_PROCESSED,
-                    true,
-                    "SePay webhook aligned payment with already finalized booking",
+                    "SePay confirmed payment after this checkout was closed.",
                     payload);
-            return sePayWebhookResponse(true, "Booking already finalized");
+            return sePayWebhookResponse(true, "Refund pending");
         }
 
         if (isPaymentWindowExpired(booking)) {
-            payment.setStatus(PaymentStatus.EXPIRED);
-            paymentRepository.save(payment);
             bookingService.expirePendingBooking(booking.getId());
-            recordPaymentEvent(
+            registerLateSuccessfulPayment(
                     payment,
                     booking,
-                    PaymentEventType.PAYMENT_EXPIRED,
-                    false,
-                    "SePay webhook arrived after payment window expired",
+                    "SePay confirmed payment after the checkout window expired.",
                     payload);
-            return sePayWebhookResponse(false, "Booking expired");
+            return sePayWebhookResponse(true, "Refund pending");
         }
 
         payment.setStatus(PaymentStatus.SUCCESS);
@@ -719,7 +749,21 @@ public class PaymentServiceImpl implements PaymentService {
                 "MoMo callback received",
                 payload);
 
+        int resultCode = intValue(payload.get("resultCode"));
+        boolean paymentSucceeded = resultCode == 0;
+
         if (payment.getStatus() != PaymentStatus.PENDING) {
+            if (paymentSucceeded
+                    && payment.getStatus() != PaymentStatus.SUCCESS
+                    && payment.getStatus() != PaymentStatus.REFUND_PENDING
+                    && payment.getStatus() != PaymentStatus.REFUNDED) {
+                registerLateSuccessfulPayment(
+                        payment,
+                        booking,
+                        "MoMo confirmed payment after this checkout was closed.",
+                        payload);
+                return new MomoProcessingResult("REFUND_PENDING", bookingId, orderId, 0, "Refund pending");
+            }
             paymentRepository.save(payment);
             recordPaymentEvent(
                     payment,
@@ -732,10 +776,15 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         if (booking.getStatus() != BookingStatus.PENDING) {
-            payment.setStatus(paymentStatusForFinalizedBooking(booking.getStatus()));
-            if (payment.getStatus() == PaymentStatus.SUCCESS && payment.getPaymentTime() == null) {
-                payment.setPaymentTime(LocalDateTime.now());
+            if (paymentSucceeded) {
+                registerLateSuccessfulPayment(
+                        payment,
+                        booking,
+                        "MoMo confirmed payment after this checkout was closed.",
+                        payload);
+                return new MomoProcessingResult("REFUND_PENDING", bookingId, orderId, 0, "Refund pending");
             }
+            payment.setStatus(PaymentStatus.FAILED);
             paymentRepository.save(payment);
             recordPaymentEvent(
                     payment,
@@ -748,9 +797,17 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         if (isPaymentWindowExpired(booking)) {
+            bookingService.expirePendingBooking(bookingId);
+            if (paymentSucceeded) {
+                registerLateSuccessfulPayment(
+                        payment,
+                        booking,
+                        "MoMo confirmed payment after the checkout window expired.",
+                        payload);
+                return new MomoProcessingResult("REFUND_PENDING", bookingId, orderId, 0, "Refund pending");
+            }
             payment.setStatus(PaymentStatus.EXPIRED);
             paymentRepository.save(payment);
-            bookingService.expirePendingBooking(bookingId);
             recordPaymentEvent(
                     payment,
                     booking,
@@ -761,8 +818,7 @@ public class PaymentServiceImpl implements PaymentService {
             return new MomoProcessingResult("EXPIRED", bookingId, orderId, 0, "Booking expired");
         }
 
-        int resultCode = intValue(payload.get("resultCode"));
-        if (resultCode == 0) {
+        if (paymentSucceeded) {
             payment.setStatus(PaymentStatus.SUCCESS);
             payment.setPaymentTime(LocalDateTime.now());
             paymentRepository.save(payment);
@@ -797,14 +853,61 @@ public class PaymentServiceImpl implements PaymentService {
                 && !booking.getPaymentExpiresAt().isAfter(LocalDateTime.now());
     }
 
-    private PaymentStatus paymentStatusForFinalizedBooking(BookingStatus bookingStatus) {
-        return switch (bookingStatus) {
-            case SUCCESS -> PaymentStatus.SUCCESS;
-            case REFUND_PENDING -> PaymentStatus.REFUND_PENDING;
-            case REFUNDED -> PaymentStatus.REFUNDED;
-            case EXPIRED -> PaymentStatus.EXPIRED;
-            default -> PaymentStatus.FAILED;
-        };
+    /**
+     * A provider can confirm a transfer after the customer cancelled or the
+     * checkout window expired. The money must never be silently classified as
+     * FAILED: retain the receipt and create an operator-visible refund task.
+     */
+    private void registerLateSuccessfulPayment(
+            Payment payment,
+            Booking booking,
+            String reason,
+            Map<String, Object> payload) {
+        if (payment.getStatus() == PaymentStatus.REFUND_PENDING
+                || payment.getStatus() == PaymentStatus.REFUNDED) {
+            return;
+        }
+
+        PaymentStatus paymentStatusBefore = payment.getStatus();
+        BookingStatus bookingStatusBefore = booking.getStatus();
+        payment.setStatus(PaymentStatus.SUCCESS);
+        if (payment.getPaymentTime() == null) {
+            payment.setPaymentTime(LocalDateTime.now());
+        }
+        paymentEventService.record(
+                payment,
+                booking,
+                PaymentEventType.PAYMENT_SUCCESS,
+                paymentStatusBefore,
+                PaymentStatus.SUCCESS,
+                bookingStatusBefore,
+                bookingStatusBefore,
+                true,
+                "Provider confirmed a payment after the booking was no longer payable.",
+                payload);
+
+        // Preserve a fulfilled booking when this is a second, late gateway
+        // payment. Only cancelled/expired/failed bookings move to refund flow.
+        if (booking.getStatus() != BookingStatus.SUCCESS
+                && booking.getStatus() != BookingStatus.REFUND_PENDING
+                && booking.getStatus() != BookingStatus.REFUNDED) {
+            booking.setStatus(BookingStatus.REFUND_PENDING);
+        }
+
+        payment.setStatus(PaymentStatus.REFUND_PENDING);
+        refundService.requestRefund(payment, booking, reason);
+        paymentEventService.record(
+                payment,
+                booking,
+                PaymentEventType.REFUND_REQUESTED,
+                PaymentStatus.SUCCESS,
+                PaymentStatus.REFUND_PENDING,
+                bookingStatusBefore,
+                booking.getStatus(),
+                true,
+                reason,
+                payload);
+        paymentRepository.save(payment);
     }
 
     private boolean isSameAmount(BigDecimal left, BigDecimal right) {

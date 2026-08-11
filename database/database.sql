@@ -78,6 +78,7 @@ CREATE TABLE users (
     email_verification_expires_at TIMESTAMP,
     password_reset_token_hash VARCHAR(64),
     password_reset_expires_at TIMESTAMP,
+    auth_version INTEGER NOT NULL DEFAULT 0,
     is_active BOOLEAN DEFAULT TRUE,
     is_deleted BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -235,6 +236,7 @@ CREATE TABLE bookings (
     status VARCHAR(20) DEFAULT 'PENDING',
     secure_token VARCHAR(255) UNIQUE NOT NULL,
     payment_expires_at TIMESTAMP,
+    promotion_reserved BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT chk_booking_status CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'CANCELLED', 'EXPIRED', 'REFUND_PENDING', 'REFUNDED'))
@@ -519,6 +521,10 @@ CREATE INDEX idx_bookings_pending_expires_id
     ON bookings(payment_expires_at, id)
     WHERE status = 'PENDING';
 
+CREATE UNIQUE INDEX uq_bookings_pending_user_showtime
+    ON bookings(user_id, showtime_id)
+    WHERE status = 'PENDING';
+
 CREATE INDEX idx_booking_details_booking_id
     ON booking_details(booking_id);
 
@@ -535,11 +541,10 @@ CREATE INDEX idx_payments_pending_reuse
     ON payments(booking_id, method, status, created_at DESC)
     WHERE status = 'PENDING';
 
-CREATE UNIQUE INDEX uq_payments_pending_booking_method
-    ON payments(booking_id, method)
+CREATE UNIQUE INDEX uq_payments_pending_booking
+    ON payments(booking_id)
     WHERE status = 'PENDING'
-      AND booking_id IS NOT NULL
-      AND method IS NOT NULL;
+      AND booking_id IS NOT NULL;
 
 CREATE INDEX idx_payments_status_payment_time
     ON payments(status, payment_time DESC);

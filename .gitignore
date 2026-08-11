@@ -68,3 +68,5 @@ bin/
 temp/
 tmp/
 ~$*.docx
+__pycache__/
+*.py[cod]

@@ -7,7 +7,9 @@ import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageConversionException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -28,6 +30,8 @@ import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.time.OffsetDateTime;
+import jakarta.persistence.PessimisticLockException;
+import java.util.Locale;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -257,11 +261,29 @@ public class GlobalExceptionHandler {
         return buildResponse(ErrorCode.CONCURRENT_UPDATE_CONFLICT, request);
     }
 
+    @ExceptionHandler({
+            CannotAcquireLockException.class,
+            PessimisticLockingFailureException.class,
+            PessimisticLockException.class
+    })
+    ResponseEntity<ApiResponse<Void>> handlingPessimisticLocking(Exception exception, HttpServletRequest request) {
+        log.warn("Database lock conflict: {}", exception.getMessage());
+        return buildResponse(ErrorCode.CONCURRENT_UPDATE_CONFLICT, request);
+    }
+
     @ExceptionHandler(DataIntegrityViolationException.class)
     ResponseEntity<ApiResponse<Void>> handlingDataIntegrityViolation(
             DataIntegrityViolationException exception,
             HttpServletRequest request) {
         log.warn("Data integrity violation", exception);
+        String details = exception.getMostSpecificCause().getMessage();
+        String normalizedDetails = details == null ? "" : details.toLowerCase(Locale.ROOT);
+        if (normalizedDetails.contains("uq_bookings_pending_user_showtime")) {
+            return buildResponse(ErrorCode.BOOKING_PENDING_EXISTS, request);
+        }
+        if (normalizedDetails.contains("uq_payments_pending_booking")) {
+            return buildResponse(ErrorCode.PAYMENT_IN_PROGRESS, request);
+        }
         return buildResponse(ErrorCode.DATA_INTEGRITY_VIOLATION, request);
     }
 

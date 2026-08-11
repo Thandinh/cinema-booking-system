@@ -9,6 +9,7 @@ import com.cinema.booking.dto.response.HoldSeatResponse;
 import com.cinema.booking.dto.response.RefundResponse;
 import com.cinema.booking.dto.response.TicketResponse;
 import com.cinema.booking.entity.Cinema;
+import com.cinema.booking.entity.Booking;
 import com.cinema.booking.entity.Payment;
 import com.cinema.booking.entity.Movie;
 import com.cinema.booking.entity.Promotion;
@@ -52,12 +53,14 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.mock.web.MockHttpServletRequest;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -71,6 +74,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @SpringBootTest(properties = {
         "booking.seat-hold-minutes=5",
@@ -86,6 +90,9 @@ class BookingWorkflowIntegrationTest extends PostgresIntegrationTest {
 
     @Autowired
     BookingService bookingService;
+
+    @Autowired
+    PaymentService paymentService;
 
     @Autowired
     ShowtimeService showtimeService;
@@ -189,6 +196,86 @@ class BookingWorkflowIntegrationTest extends PostgresIntegrationTest {
         )))
                 .isInstanceOfSatisfying(AppException.class, ex ->
                         assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.SEAT_NOT_AVAILABLE));
+    }
+
+    @Test
+    void createBooking_shouldReuseTheActiveBookingForAnIdempotentRetry() {
+        TestShowtimeData data = createShowtimeData();
+        authenticateAs(customer, "BOOKING_CREATE");
+        List<UUID> selectedSeatIds = data.seats().stream().limit(2).map(Seat::getId).toList();
+
+        bookingService.holdSeats(new HoldSeatRequest(data.showtime().getId(), selectedSeatIds));
+        BookingResponse first = bookingService.createBooking(CreateBookingRequest.builder()
+                .showtimeId(data.showtime().getId())
+                .seatIds(selectedSeatIds)
+                .build());
+        BookingResponse retry = bookingService.createBooking(CreateBookingRequest.builder()
+                .showtimeId(data.showtime().getId())
+                .seatIds(selectedSeatIds)
+                .build());
+
+        assertThat(retry.getId()).isEqualTo(first.getId());
+        assertThat(bookingRepository.findAll())
+                .filteredOn(booking -> booking.getStatus() == BookingStatus.PENDING)
+                .hasSize(1);
+    }
+
+    @Test
+    void databaseShouldRejectConcurrentPendingBookingsForTheSameUserAndShowtime() {
+        TestShowtimeData data = createShowtimeData();
+        Booking first = bookingRepository.saveAndFlush(Booking.builder()
+                .user(customer)
+                .showtime(data.showtime())
+                .totalPrice(BASE_PRICE)
+                .discountAmount(BigDecimal.ZERO)
+                .status(BookingStatus.PENDING)
+                .secureToken("pending-booking-one-" + UUID.randomUUID())
+                .paymentExpiresAt(LocalDateTime.now().plusMinutes(5))
+                .build());
+
+        assertThatThrownBy(() -> bookingRepository.saveAndFlush(Booking.builder()
+                .user(customer)
+                .showtime(data.showtime())
+                .totalPrice(BASE_PRICE)
+                .discountAmount(BigDecimal.ZERO)
+                .status(BookingStatus.PENDING)
+                .secureToken("pending-booking-two-" + UUID.randomUUID())
+                .paymentExpiresAt(LocalDateTime.now().plusMinutes(5))
+                .build()))
+                .isInstanceOf(DataIntegrityViolationException.class);
+
+        assertThat(bookingRepository.findById(first.getId())).isPresent();
+    }
+
+    @Test
+    void databaseShouldRejectTwoPendingPaymentsForOneBookingAcrossGateways() {
+        TestShowtimeData data = createShowtimeData();
+        Booking booking = bookingRepository.saveAndFlush(Booking.builder()
+                .user(customer)
+                .showtime(data.showtime())
+                .totalPrice(BASE_PRICE)
+                .discountAmount(BigDecimal.ZERO)
+                .status(BookingStatus.PENDING)
+                .secureToken("pending-payment-" + UUID.randomUUID())
+                .paymentExpiresAt(LocalDateTime.now().plusMinutes(5))
+                .build());
+
+        paymentRepository.saveAndFlush(Payment.builder()
+                .booking(booking)
+                .amount(BASE_PRICE)
+                .method(PaymentMethod.VNPAY)
+                .transactionNo("VNPAY-" + UUID.randomUUID())
+                .status(PaymentStatus.PENDING)
+                .build());
+
+        assertThatThrownBy(() -> paymentRepository.saveAndFlush(Payment.builder()
+                .booking(booking)
+                .amount(BASE_PRICE)
+                .method(PaymentMethod.SEPAY)
+                .transactionNo("SEPAY-" + UUID.randomUUID())
+                .status(PaymentStatus.PENDING)
+                .build()))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
@@ -348,7 +435,7 @@ class BookingWorkflowIntegrationTest extends PostgresIntegrationTest {
     }
 
     @Test
-    void getSeatMap_shouldReleaseExpiredHoldsAndPublishAvailableEvent() {
+    void getSeatMap_shouldRemainReadOnlyWhenAnExpiredHoldAwaitsSchedulerCleanup() {
         TestShowtimeData data = createShowtimeData();
         Seat expiredHeldSeat = data.seats().getFirst();
         SeatStatus expiredSeatStatus = seatStatusFor(data.showtime(), expiredHeldSeat);
@@ -363,15 +450,46 @@ class BookingWorkflowIntegrationTest extends PostgresIntegrationTest {
         assertThat(seatMap)
                 .filteredOn(item -> item.getSeatId().equals(expiredHeldSeat.getId()))
                 .singleElement()
-                .satisfies(item -> assertThat(item.getStatus()).isEqualTo(SeatStatusType.AVAILABLE));
-        SeatStatus releasedSeat = seatStatusFor(data.showtime(), expiredHeldSeat);
-        assertThat(releasedSeat.getStatus()).isEqualTo(SeatStatusType.AVAILABLE);
-        assertThat(releasedSeat.getHoldBy()).isNull();
-        assertThat(releasedSeat.getHoldUntil()).isNull();
-        verify(seatStatusPublisher).publishBulk(
-                data.showtime().getId(),
-                List.of(expiredHeldSeat.getId()),
-                SeatStatusType.AVAILABLE);
+                .satisfies(item -> assertThat(item.getStatus()).isEqualTo(SeatStatusType.HOLD));
+        SeatStatus heldSeat = seatStatusFor(data.showtime(), expiredHeldSeat);
+        assertThat(heldSeat.getStatus()).isEqualTo(SeatStatusType.HOLD);
+        assertThat(heldSeat.getHoldBy().getId()).isEqualTo(customer.getId());
+        verifyNoInteractions(seatStatusPublisher);
+    }
+
+    @Test
+    void expiredPaymentAttempt_shouldCommitBookingAndSeatCleanupBeforeReturningError() {
+        TestShowtimeData data = createShowtimeData();
+        authenticateAs(customer, "BOOKING_CREATE", "PAYMENT_CREATE");
+        List<UUID> selectedSeatIds = List.of(data.seats().getFirst().getId());
+
+        bookingService.holdSeats(new HoldSeatRequest(data.showtime().getId(), selectedSeatIds));
+        BookingResponse pendingBooking = bookingService.createBooking(CreateBookingRequest.builder()
+                .showtimeId(data.showtime().getId())
+                .seatIds(selectedSeatIds)
+                .build());
+
+        Booking booking = bookingRepository.findWithDetailsById(pendingBooking.getId()).orElseThrow();
+        booking.setPaymentExpiresAt(LocalDateTime.now().minusSeconds(1));
+        bookingRepository.saveAndFlush(booking);
+
+        assertThatThrownBy(() -> paymentService.initiatePayment(
+                booking.getId(),
+                PaymentMethod.SEPAY,
+                booking.getTotalPrice(),
+                new MockHttpServletRequest()))
+                .isInstanceOfSatisfying(AppException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.BOOKING_EXPIRED));
+
+        assertThat(bookingRepository.findById(booking.getId()).orElseThrow().getStatus())
+                .isEqualTo(BookingStatus.EXPIRED);
+        assertThat(seatStatusRepository.findAllByShowtimeId(data.showtime().getId()))
+                .filteredOn(seatStatus -> selectedSeatIds.contains(seatStatus.getSeat().getId()))
+                .allSatisfy(seatStatus -> {
+                    assertThat(seatStatus.getStatus()).isEqualTo(SeatStatusType.AVAILABLE);
+                    assertThat(seatStatus.getHoldBy()).isNull();
+                    assertThat(seatStatus.getHoldUntil()).isNull();
+                });
     }
 
     @Test

@@ -41,9 +41,10 @@ public class ApplicationInitConfig {
             UserRepository userRepository,
             RoleRepository roleRepository,
             PermissionRepository permissionRepository,
-            @Value("${app.admin.default-password:admin123}") String adminDefaultPassword,
-            @Value("${app.staff.default-password:123456}") String staffDefaultPassword,
-            @Value("${app.user.default-password:123456}") String userDefaultPassword) {
+            @Value("${app.bootstrap.admin.enabled:false}") boolean bootstrapAdminEnabled,
+            @Value("${app.bootstrap.admin.username:}") String bootstrapAdminUsername,
+            @Value("${app.bootstrap.admin.password:}") String bootstrapAdminPassword,
+            @Value("${app.bootstrap.demo-accounts-enabled:false}") boolean demoAccountsEnabled) {
 
         return args -> {
             log.info("--- BAT DAU KHOI TAO DU LIEU CINEMA RBAC ---");
@@ -83,27 +84,36 @@ public class ApplicationInitConfig {
             adminRole.setPermissions(new HashSet<>(permissionRepository.findAll()));
             adminRole = roleRepository.save(adminRole);
 
-            ensureAdminUser(userRepository, adminRole, adminDefaultPassword);
+            if (bootstrapAdminEnabled) {
+                ensureAdminUser(
+                        userRepository,
+                        adminRole,
+                        bootstrapAdminUsername,
+                        bootstrapAdminPassword
+                );
+            }
 
-            ensureSeedUser(
-                    userRepository,
-                    staffRole,
-                    "staff1",
-                    staffDefaultPassword,
-                    "Nhân",
-                    "Viên",
-                    "staff@cinema.com"
-            );
+            if (demoAccountsEnabled) {
+                ensureSeedUser(
+                        userRepository,
+                        staffRole,
+                        "staff1",
+                        "123456",
+                        "Nhân",
+                        "Viên",
+                        "staff@cinema.com"
+                );
 
-            ensureSeedUser(
-                    userRepository,
-                    userRole,
-                    "user1",
-                    userDefaultPassword,
-                    "Khách",
-                    "Hàng",
-                    "user1@cinema.com"
-            );
+                ensureSeedUser(
+                        userRepository,
+                        userRole,
+                        "user1",
+                        "123456",
+                        "Khách",
+                        "Hàng",
+                        "user1@cinema.com"
+                );
+            }
 
             log.info("--- KHOI TAO DU LIEU HOAN TAT ---");
         };
@@ -127,14 +137,26 @@ public class ApplicationInitConfig {
         return roleRepository.save(role);
     }
 
-    private void ensureAdminUser(UserRepository userRepository, Role adminRole, String adminDefaultPassword) {
-        if (userRepository.findByUsername("admin").isPresent()) {
+    private void ensureAdminUser(
+            UserRepository userRepository,
+            Role adminRole,
+            String username,
+            String rawPassword) {
+
+        if (!org.springframework.util.StringUtils.hasText(username)
+                || !org.springframework.util.StringUtils.hasText(rawPassword)) {
+            throw new IllegalStateException(
+                    "APP_BOOTSTRAP_ADMIN_USERNAME and APP_BOOTSTRAP_ADMIN_PASSWORD are required when admin bootstrap is enabled."
+            );
+        }
+
+        if (userRepository.findByUsername(username.trim()).isPresent()) {
             return;
         }
 
         User adminUser = User.builder()
-                .username("admin")
-                .password(passwordEncoder.encode(adminDefaultPassword))
+                .username(username.trim())
+                .password(passwordEncoder.encode(rawPassword))
                 .roles(Set.of(adminRole))
                 .emailVerified(true)
                 .emailVerificationTokenHash(null)
@@ -144,7 +166,7 @@ public class ApplicationInitConfig {
                 .build();
 
         userRepository.save(adminUser);
-        log.warn("Da tao tai khoan ADMIN mac dinh: admin. Hay doi password ngay.");
+        log.warn("Da tao tai khoan ADMIN bootstrap: {}. Hay tat bootstrap sau khi khoi tao.", username.trim());
     }
 
     private void ensureSeedUser(
@@ -164,32 +186,26 @@ public class ApplicationInitConfig {
             return;
         }
 
-        User user = existingUser.orElseGet(() -> User.builder()
+        if (existingUser.isPresent()) {
+            return;
+        }
+
+        User user = User.builder()
                 .username(username)
-                .roles(new HashSet<>())
-                .build());
-
-        user.setPassword(passwordEncoder.encode(rawPassword));
-        user.setFirstName(firstName);
-        user.setLastName(lastName);
-        user.setEmail(normalizedEmail);
-        user.setEmailVerified(true);
-        user.setEmailVerificationTokenHash(null);
-        user.setEmailVerificationExpiresAt(null);
-        user.setIsActive(true);
-        user.setIsDeleted(false);
-
-        Set<Role> roles = user.getRoles() == null ? new HashSet<>() : new HashSet<>(user.getRoles());
-        roles.add(role);
-        user.setRoles(roles);
+                .password(passwordEncoder.encode(rawPassword))
+                .firstName(firstName)
+                .lastName(lastName)
+                .email(normalizedEmail)
+                .emailVerified(true)
+                .emailVerificationTokenHash(null)
+                .emailVerificationExpiresAt(null)
+                .isActive(true)
+                .isDeleted(false)
+                .roles(Set.of(role))
+                .build();
 
         userRepository.save(user);
-
-        if (existingUser.isEmpty()) {
-            log.info("Created default {} account: {} / {}", role.getName(), username, rawPassword);
-        } else {
-            log.info("Ensured default {} account is active: {}", role.getName(), username);
-        }
+        log.info("Created optional demo {} account: {}", role.getName(), username);
     }
 
     private Set<String> userPermissionNames() {

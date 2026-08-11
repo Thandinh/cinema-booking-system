@@ -61,6 +61,9 @@ public class User extends BaseEntity {
     @Builder.Default
     private Boolean isDeleted = false;
 
+    @Builder.Default
+    private Integer authVersion = 0;
+
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
             name = "users_roles",

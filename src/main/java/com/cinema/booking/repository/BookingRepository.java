@@ -30,6 +30,21 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     @Query("SELECT b FROM Booking b JOIN FETCH b.user WHERE b.id = :id")
     Optional<Booking> findLockedForPaymentInitiation(@Param("id") UUID id);
 
+    @Query("""
+            SELECT DISTINCT b
+            FROM Booking b
+            LEFT JOIN FETCH b.bookingDetails bd
+            LEFT JOIN FETCH bd.seat
+            WHERE b.user.id = :userId
+              AND b.showtime.id = :showtimeId
+              AND b.status = com.cinema.booking.enums.BookingStatus.PENDING
+              AND (b.paymentExpiresAt IS NULL OR b.paymentExpiresAt > :now)
+            """)
+    Optional<Booking> findActivePendingByUserAndShowtime(
+            @Param("userId") UUID userId,
+            @Param("showtimeId") UUID showtimeId,
+            @Param("now") LocalDateTime now);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             SELECT DISTINCT b FROM Booking b

@@ -126,7 +126,11 @@ public class RefundServiceImpl implements RefundService {
         refund.setProcessedAt(LocalDateTime.now());
 
         payment.setStatus(PaymentStatus.REFUNDED);
-        booking.setStatus(BookingStatus.REFUNDED);
+        // A late second payment can be refunded while the original booking is
+        // still valid. Do not invalidate its tickets by changing SUCCESS.
+        if (booking.getStatus() == BookingStatus.REFUND_PENDING) {
+            booking.setStatus(BookingStatus.REFUNDED);
+        }
 
         paymentEventService.record(
                 payment,
@@ -135,7 +139,7 @@ public class RefundServiceImpl implements RefundService {
                 paymentStatusBefore,
                 PaymentStatus.REFUNDED,
                 bookingStatusBefore,
-                BookingStatus.REFUNDED,
+                booking.getStatus(),
                 true,
                 "Refund was marked as completed by operator.",
                 refundPayload(refund));

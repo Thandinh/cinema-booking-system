@@ -1,6 +1,7 @@
 package com.cinema.booking.security.service;
 
 import com.cinema.booking.dto.request.AuthenticationRequest;
+import com.cinema.booking.dto.request.ChangePasswordRequest;
 import com.cinema.booking.dto.request.IntrospectRequest;
 import com.cinema.booking.dto.request.LogoutRequest;
 import com.cinema.booking.dto.request.RefreshRequest;
@@ -14,6 +15,7 @@ import com.cinema.booking.repository.InvalidatedTokenRepository;
 import com.cinema.booking.repository.RefreshTokenRepository;
 import com.cinema.booking.repository.UserRepository;
 import com.cinema.booking.support.PostgresIntegrationTest;
+import com.cinema.booking.service.UserService;
 import com.nimbusds.jose.JOSEException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,6 +44,9 @@ class AuthenticationServiceIntegrationTest extends PostgresIntegrationTest {
 
     @Autowired
     AuthenticationService authenticationService;
+
+    @Autowired
+    UserService userService;
 
     @Autowired
     UserRepository userRepository;
@@ -157,6 +162,38 @@ class AuthenticationServiceIntegrationTest extends PostgresIntegrationTest {
                     assertThat(refreshToken.getRevokedReason()).isEqualTo("LOGOUT");
                 });
         assertThat(invalidatedTokenRepository.count()).isEqualTo(1);
+    }
+
+    @Test
+    void changePassword_shouldInvalidateExistingAccessAndRefreshTokens() throws ParseException, JOSEException {
+        User user = createUser(true);
+        AuthenticationResponse loginResponse = authenticationService.authenticate(
+                AuthenticationRequest.builder()
+                        .username(user.getUsername())
+                        .password(RAW_PASSWORD)
+                        .build(),
+                request());
+
+        userService.changeMyPassword(user.getUsername(), ChangePasswordRequest.builder()
+                .currentPassword(RAW_PASSWORD)
+                .newPassword("N3wP@ssword!")
+                .confirmPassword("N3wP@ssword!")
+                .build());
+
+        assertThat(authenticationService.introspect(IntrospectRequest.builder()
+                .token(loginResponse.getAccessToken())
+                .build()).isValid()).isFalse();
+        assertThatThrownBy(() -> authenticationService.refreshToken(RefreshRequest.builder()
+                .token(loginResponse.getRefreshToken())
+                .build(), request()))
+                .isInstanceOfSatisfying(AppException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.UNAUTHENTICATED));
+        assertThat(refreshTokenRepository.findAllByUserIdOrderByCreatedAtDesc(user.getId()))
+                .singleElement()
+                .satisfies(refreshToken -> {
+                    assertThat(refreshToken.getRevokedAt()).isNotNull();
+                    assertThat(refreshToken.getRevokedReason()).isEqualTo("PASSWORD_CHANGED");
+                });
     }
 
     private void clearAuthData() {

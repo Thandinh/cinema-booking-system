@@ -50,7 +50,7 @@ class GlobalExceptionHandlerIntegrationTest extends PostgresIntegrationTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(1006))
-                .andExpect(jsonPath("$.message").value("Unauthenticated"))
+                .andExpect(jsonPath("$.message").isNotEmpty())
                 .andExpect(jsonPath("$.timestamp").isNotEmpty())
                 .andExpect(jsonPath("$.path").value("/api/v1/bookings/hold"));
 

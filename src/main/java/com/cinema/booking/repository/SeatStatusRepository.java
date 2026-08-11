@@ -30,7 +30,13 @@ public interface SeatStatusRepository extends JpaRepository<SeatStatus, UUID> {
     // ANTI RACE-CONDITION: Dùng Pessimistic Lock khi chọn ghế để tránh 2 người lấy 1 ghế
     // ===================================================================================
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT ss FROM SeatStatus ss JOIN FETCH ss.seat s WHERE ss.showtime.id = :showtimeId AND s.id IN :seatIds")
+    @Query("""
+            SELECT ss FROM SeatStatus ss
+            JOIN FETCH ss.seat s
+            WHERE ss.showtime.id = :showtimeId
+              AND s.id IN :seatIds
+            ORDER BY s.rowIndex ASC, s.colIndex ASC, s.id ASC
+            """)
     List<SeatStatus> findForUpdateByShowtimeAndSeats(@Param("showtimeId") UUID showtimeId, @Param("seatIds") List<UUID> seatIds);
 
     // ===================================================================================
@@ -46,8 +52,33 @@ public interface SeatStatusRepository extends JpaRepository<SeatStatus, UUID> {
      * vì ghế đã được hold bởi PESSIMISTIC_WRITE ở bước trước.
      */
     @Modifying
-    @Query("UPDATE SeatStatus ss SET ss.status = :status, ss.holdBy = null, ss.holdUntil = null WHERE ss.showtime.id = :showtimeId AND ss.seat.id IN :seatIds")
-    void bulkUpdateStatusAndClearHold(@Param("showtimeId") UUID showtimeId, @Param("seatIds") List<UUID> seatIds, @Param("status") SeatStatusType status);
+    @Query("""
+            UPDATE SeatStatus ss
+            SET ss.status = :status, ss.holdBy = null, ss.holdUntil = null
+            WHERE ss.showtime.id = :showtimeId
+              AND ss.seat.id IN :seatIds
+              AND ss.status = com.cinema.booking.enums.SeatStatusType.HOLD
+              AND ss.holdBy.id = :userId
+              AND ss.holdUntil > :now
+            """)
+    int confirmHeldSeatsForBooking(
+            @Param("showtimeId") UUID showtimeId,
+            @Param("seatIds") List<UUID> seatIds,
+            @Param("userId") UUID userId,
+            @Param("now") LocalDateTime now,
+            @Param("status") SeatStatusType status);
+
+    @Modifying
+    @Query("""
+            UPDATE SeatStatus ss
+            SET ss.status = :status, ss.holdBy = null, ss.holdUntil = null
+            WHERE ss.showtime.id = :showtimeId
+              AND ss.seat.id IN :seatIds
+            """)
+    int releaseSeatsForCancelledShowtime(
+            @Param("showtimeId") UUID showtimeId,
+            @Param("seatIds") List<UUID> seatIds,
+            @Param("status") SeatStatusType status);
 
     @Modifying
     @Query("""
@@ -57,13 +88,11 @@ public interface SeatStatusRepository extends JpaRepository<SeatStatus, UUID> {
               AND ss.seat.id IN :seatIds
               AND ss.status = com.cinema.booking.enums.SeatStatusType.HOLD
               AND ss.holdBy.id = :userId
-              AND ss.holdUntil <= :holdUntilBeforeOrAt
             """)
     int releaseHeldSeatsForBooking(
             @Param("showtimeId") UUID showtimeId,
             @Param("seatIds") List<UUID> seatIds,
             @Param("userId") UUID userId,
-            @Param("holdUntilBeforeOrAt") LocalDateTime holdUntilBeforeOrAt,
             @Param("status") SeatStatusType status);
 
     // ===================================================================================
@@ -105,8 +134,18 @@ public interface SeatStatusRepository extends JpaRepository<SeatStatus, UUID> {
                 hold_until = NULL
             WHERE id IN (:ids)
               AND status = 'HOLD'
+              AND hold_until <= :now
             """, nativeQuery = true)
-    int releaseExpiredHoldsByIds(@Param("ids") List<UUID> ids);
+    int releaseExpiredHoldsByIds(@Param("ids") List<UUID> ids, @Param("now") LocalDateTime now);
+
+    @Query("""
+            SELECT ss FROM SeatStatus ss
+            JOIN FETCH ss.seat
+            WHERE ss.id IN :ids
+              AND ss.status = com.cinema.booking.enums.SeatStatusType.AVAILABLE
+              AND ss.holdUntil IS NULL
+            """)
+    List<SeatStatus> findReleasedAvailableByIds(@Param("ids") List<UUID> ids);
 
     boolean existsBySeatIdAndStatusIn(UUID seatId, List<SeatStatusType> statuses);
 

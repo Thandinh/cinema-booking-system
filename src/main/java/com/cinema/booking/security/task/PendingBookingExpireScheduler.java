@@ -44,8 +44,17 @@ public class PendingBookingExpireScheduler {
             return;
         }
 
-        expiredBookingIds.forEach(bookingService::expirePendingBooking);
+        int expiredCount = 0;
+        for (UUID bookingId : expiredBookingIds) {
+            try {
+                bookingService.expirePendingBooking(bookingId);
+                expiredCount++;
+            } catch (RuntimeException exception) {
+                // A single damaged booking must not block cleanup for every other customer.
+                log.error("Could not expire pending booking id={}", bookingId, exception);
+            }
+        }
 
-        log.info("Expired {} pending bookings after payment timeout", expiredBookingIds.size());
+        log.info("Expired {} of {} pending bookings after payment timeout", expiredCount, expiredBookingIds.size());
     }
 }

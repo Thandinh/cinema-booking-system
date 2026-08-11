@@ -80,7 +80,8 @@ APP_FRONTEND_URL=http://localhost:5173
 APP_BACKEND_URL=http://localhost:8080
 
 JWT_SECRET=change-me-to-a-long-random-secret-at-least-32-chars
-JWT_EXPIRATION=86400000
+JWT_ACCESS_TOKEN_VALID_DURATION=900
+JWT_REFRESH_TOKEN_VALID_DURATION=604800
 ```
 
 Khoi dong PostgreSQL bang Docker:
@@ -123,7 +124,7 @@ File `database/database.sql` chi dung khi muon reset database sach bang tay:
 psql -h localhost -p 5433 -U cinema_user -d cinema_booking -f database/database.sql
 ```
 
-Sau khi backend da chay it nhat mot lan de dam bao RBAC/admin duoc seed, nap du lieu mau:
+Sau khi backend da chay it nhat mot lan de dam bao RBAC duoc seed, nap du lieu mau:
 
 ```powershell
 psql -h localhost -p 5433 -U cinema_user -d cinema_booking -f database/mock-data.sql
@@ -148,12 +149,12 @@ FLYWAY_ENABLED=true
 
 | Role | Username | Password | Ghi chu |
 |---|---|---|---|
-| ADMIN | `admin` | `admin123` hoac gia tri `app.admin.default-password` | Tao boi `ApplicationInitConfig` |
+| ADMIN | Gia tri `APP_BOOTSTRAP_ADMIN_USERNAME` | Gia tri `APP_BOOTSTRAP_ADMIN_PASSWORD` | Chi tao khi bat bootstrap mot lan |
 | STAFF | `staff1` | `123456` | Soat ve QR, quan ly nghiep vu |
 | USER | `user1` | `123456` | Dat ve, thanh toan, xem ve |
 | USER | `user2` | `123456` | Test multi-user |
 
-Neu login `staff1/user1` khong duoc, hay chay backend truoc de seed role, sau do chay lai `database/mock-data.sql`.
+De tao admin dau tien, dat `APP_BOOTSTRAP_ADMIN_ENABLED=true` va khai bao username/password trong `.env`, khoi dong backend mot lan, sau do doi bien nay ve `false` va restart. Neu login `staff1/user1` khong duoc, hay chay backend truoc de seed role, sau do chay lai `database/mock-data.sql`.
 
 ## 6. Chay Frontend
 

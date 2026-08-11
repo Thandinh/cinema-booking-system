@@ -19,6 +19,7 @@ import com.cinema.booking.exception.AppException;
 import com.cinema.booking.mapper.UserMapper;
 import com.cinema.booking.repository.CinemaRepository;
 import com.cinema.booking.repository.RoleRepository;
+import com.cinema.booking.repository.RefreshTokenRepository;
 import com.cinema.booking.repository.StaffCinemaRepository;
 import com.cinema.booking.repository.UserRepository;
 import com.cinema.booking.service.EmailService;
@@ -75,6 +76,7 @@ public class UserServiceImpl implements UserService {
     RoleRepository   roleRepository;
     CinemaRepository cinemaRepository;
     StaffCinemaRepository staffCinemaRepository;
+    RefreshTokenRepository refreshTokenRepository;
     UserMapper       userMapper;
     PasswordEncoder  passwordEncoder;
     EmailService     emailService;
@@ -180,10 +182,12 @@ public class UserServiceImpl implements UserService {
         }
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        incrementAuthVersion(user);
         user.setEmailVerified(true);
         clearPasswordReset(user);
         clearEmailVerification(user);
         userRepository.save(user);
+        revokeAllSessions(user, "PASSWORD_RESET");
         log.info("Password reset completed for user: {}", user.getUsername());
     }
 
@@ -376,7 +380,9 @@ public class UserServiceImpl implements UserService {
             throw new AppException(ErrorCode.CANNOT_DELETE_SELF);
         }
         user.setIsDeleted(true);
+        incrementAuthVersion(user);
         userRepository.save(user);
+        revokeAllSessions(user, "ACCOUNT_DELETED");
         log.info("Soft-deleted user id={}", id);
     }
 
@@ -394,7 +400,9 @@ public class UserServiceImpl implements UserService {
         }
 
         target.setIsActive(false);
+        incrementAuthVersion(target);
         User saved = userRepository.save(target);
+        revokeAllSessions(target, "ACCOUNT_BLOCKED");
         log.warn("Blocked user: {}", target.getUsername());
         return userMapper.toUserResponse(saved);
     }
@@ -487,7 +495,9 @@ public class UserServiceImpl implements UserService {
         }
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        incrementAuthVersion(user);
         userRepository.save(user);
+        revokeAllSessions(user, "PASSWORD_CHANGED");
         log.info("User {} changed password", currentUsername);
     }
 
@@ -496,6 +506,14 @@ public class UserServiceImpl implements UserService {
     // =========================================================================
 
     /** Lấy username từ SecurityContext hiện tại. */
+    private void incrementAuthVersion(User user) {
+        user.setAuthVersion((user.getAuthVersion() == null ? 0 : user.getAuthVersion()) + 1);
+    }
+
+    private void revokeAllSessions(User user, String reason) {
+        refreshTokenRepository.revokeAllActiveByUserId(user.getId(), LocalDateTime.now(), reason);
+    }
+
     private String getCurrentUsername() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !authentication.isAuthenticated()) {

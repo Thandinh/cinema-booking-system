@@ -1,0 +1,463 @@
+Tue, Aug 4 at 2:24 PM
+https://plantuml.com/ để vẽ các sơ đồ
+
+Được. Từ bây giờ mình sẽ viết các sơ đồ của dự án CinemaBooking.vn bằng PlantUML, thay cho Mermaid.
+
+Bạn chỉ cần:
+
+Truy cập PlantUML.
+Dán đoạn mã mình cung cấp vào trình soạn thảo bên trái.
+Sơ đồ sẽ tự xuất hiện bên phải.
+Có thể tải xuống dưới dạng PNG hoặc SVG.
+
+Mỗi sơ đồ sẽ có cấu trúc:
+
+@startuml
+' Nội dung sơ đồ
+@enduml
+
+PlantUML hỗ trợ đầy đủ các sơ đồ cần cho đồ án như:
+
+Use Case Diagram
+Activity Diagram
+Sequence Diagram
+Class Diagram
+Component Diagram
+Deployment Diagram
+State Diagram
+ER Diagram
+
+Trang chính thức xác nhận PlantUML hỗ trợ các loại UML trên và có thể xuất sang PNG/SVG. Tài liệu PlantUML
+
+Bạn gửi yêu cầu sơ đồ tiếp theo, mình sẽ trả về mã PlantUML hoàn chỉnh để dán vào trang và chạy ngay.
+
+Dùng Mermaid flowchart TD.
+
+Start
+-> User ở màn hình thanh toán.
+-> User áp mã giảm giá.
+-> Backend validate promotion.
+Nếu hợp lệ -> cập nhật tổng tiền.
+Nếu không hợp lệ -> báo lỗi.
+
+User chọn phương thức thanh toán.
+
+Nhánh VNPay:
+-> Tạo payment PENDING.
+-> Redirect sang VNPay.
+-> VNPay callback/IPN.
+-> Backend verify checksum.
+Nếu SUCCESS:
+   -> booking SUCCESS.
+   -> payment SUCCESS.
+   -> seat BOOKED.
+   -> sinh ticket.
+   -> gửi email vé qua Mail Service.
+Nếu FAILED:
+   -> booking FAILED.
+   -> payment FAILED.
+   -> trả ghế AVAILABLE.
+
+Nhánh SePay/VietQR:
+-> Tạo QR ngân hàng theo số tiền và nội dung booking.
+-> User chuyển khoản.
+-> SePay gửi webhook.
+-> Backend verify API key/HMAC.
+-> Đối chiếu amount/content.
+Nếu đúng:
+   -> booking SUCCESS.
+   -> payment SUCCESS.
+   -> seat BOOKED.
+   -> sinh ticket.
+   -> gửi email vé qua Mail Service.
+Nếu sai:
+   -> lưu payment event.
+   -> không xác nhận vé.
+
+End -> Trang kết quả giao dịch.
+
+Dưới đây là mã Mermaid flowchart TD hoàn chỉnh. Mình gom phần xử lý thành công dùng chung để sơ đồ gọn và tránh lặp:
+
+Invalid or unsupported diagram.
+có lỗi cú pháp hãy xem log vàng phía trên
+lỗi rồi
+đã đẹp rồi nhưng chữ hơi tô và bị chấm đen đè lên có cách sửa lại không
+đã đẹp rồi nhưng chữ hơi to và bị chấm đen đè lên có cách sửa lại không
+khó nhìn quá làm rõ ràng hơn được không
+khó nhìn quá vẽ lại rõ ràng hơn được không vẫn đầy đủ nhé
+ok rồi nhưng vẽ đẹp hơn tí nữa được không, các đường nối hơi cong
+nhìn hơi rối làm rõ ràng hơn được không, vẫn đầy đủ nhé
+nhìn chưa được cân đỗi lắm, sửa lại 1 tí được không
+nhìn chưa được cân đối lắm, sửa lại 1 tí được không
+cân đối nhưng vẫn giống ảnh được không
+
+Được. Mình giữ nguyên kiểu bố cục giống ảnh:
+
+Actor ở trên.
+Frontend ở giữa.
+Backend ở trung tâm.
+Dịch vụ ngoài và PostgreSQL ở dưới.
+
+Điểm sửa chính là đặt “Dịch vụ bên ngoài” và “Dữ liệu” trong cùng một khối hạ tầng để hàng dưới được căn giữa.
+
+@startuml
+title Kiến trúc tổng quan hệ thống CinemaBooking.vn
+
+top to bottom direction
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam linetype ortho
+skinparam packageStyle rectangle
+skinparam componentStyle rectangle
+skinparam defaultFontSize 11
+skinparam ArrowFontSize 10
+skinparam nodesep 50
+skinparam ranksep 60
+
+skinparam component {
+    BackgroundColor #FFFFFF
+    BorderColor #546E7A
+    FontColor #263238
+}
+
+skinparam actor {
+    BackgroundColor #E3F2FD
+    BorderColor #1976D2
+    FontColor #0D47A1
+}
+
+' =====================================================
+' 1. NGƯỜI SỬ DỤNG
+' =====================================================
+
+package "Người sử dụng" as Actors #F8FAFC {
+
+    actor "USER\nKhách hàng" as User
+    actor "STAFF\nNhân viên rạp" as Staff
+    actor "ADMIN\nQuản trị viên" as Admin
+
+    User -[hidden]right-> Staff
+    Staff -[hidden]right-> Admin
+}
+
+' =====================================================
+' 2. REACT FRONTEND
+' =====================================================
+
+component "React Frontend\n\nReact + TypeScript + Vite" as Frontend #E3F2FD
+
+User --> Frontend : Xem phim, đặt vé\nThanh toán, xem vé
+
+Staff --> Frontend : Quản lý suất\nSoát vé QR
+
+Admin --> Frontend : Quản trị, phân quyền\nDashboard, audit
+
+' =====================================================
+' 3. SPRING BOOT BACKEND
+' =====================================================
+
+package "Spring Boot Backend" as Backend #E8F5E9 {
+
+    component "Security Layer\n\nSpring Security\nJWT + Refresh Token\nRBAC + Staff Scope" as Security #FFEBEE
+
+    component "REST API" as RestAPI #E0F7FA
+
+    component "Business Services\n\nAuth\nBooking\nPayment\nTicket\nAdmin / Staff" as Services #E8F5E9
+
+    component "Integration Layer\n\nOAuth Adapter\nPayment Gateway\nEmail Adapter" as Integration #F3E5F5
+
+    component "Repository Layer" as Repository #FFF3E0
+
+    component "WebSocket Module\n\nRealtime Seat Update" as WebSocket #FFF9C4
+
+    Security -right-> RestAPI : xác thực
+    RestAPI -right-> Services : nghiệp vụ
+
+    Services --> Integration : tích hợp ngoài
+    Services --> Repository : dữ liệu
+    Services --> WebSocket : seat event
+
+    ' Cố định bố cục Backend thành hai hàng
+    Security -[hidden]down-> Integration
+    RestAPI -[hidden]down-> Repository
+    Services -[hidden]down-> WebSocket
+
+    Integration -[hidden]right-> Repository
+    Repository -[hidden]right-> WebSocket
+}
+
+Frontend --> Security : HTTPS / JSON
+Frontend <--> WebSocket : WSS / realtime
+
+' =====================================================
+' 4. HẠ TẦNG PHÍA DƯỚI
+' =====================================================
+
+package "Hạ tầng hệ thống" as Infrastructure #F8FAFC {
+
+    package "Dịch vụ bên ngoài" as External #F3F6F9 {
+
+        component "Google OAuth" as GoogleOAuth #F3E5F5
+
+        component "VNPay\nSandbox / Production" as VNPay #F3E5F5
+
+        component "SePay / VietQR" as SePay #F3E5F5
+
+        component "Mail Service\n\nXác thực email\nĐặt lại mật khẩu\nGửi vé điện tử" as MailService #F3E5F5
+
+        GoogleOAuth -[hidden]right-> VNPay
+        VNPay -[hidden]right-> SePay
+        SePay -[hidden]right-> MailService
+    }
+
+    package "Dữ liệu" as DataLayer #FFF8E1 {
+        database "PostgreSQL" as PostgreSQL #FFF3E0
+    }
+
+    External -[hidden]right-> DataLayer
+}
+
+' =====================================================
+' 5. KẾT NỐI HẠ TẦNG
+' =====================================================
+
+Integration --> GoogleOAuth : OAuth
+
+Integration <--> VNPay : Payment\nCallback / IPN
+
+Integration <--> SePay : VietQR\nWebhook
+
+Integration --> MailService : Spring Mail / SMTP
+
+Repository --> PostgreSQL : JPA / SQL
+
+' =====================================================
+' 6. CỐ ĐỊNH BỐ CỤC TỔNG THỂ
+' =====================================================
+
+Actors -[hidden]down-> Frontend
+Frontend -[hidden]down-> Backend
+Backend -[hidden]down-> Infrastructure
+
+@enduml
+
+Bố cục vẫn giống ảnh nhưng cân đối hơn:
+
+             USER   STAFF   ADMIN
+                       ↓
+                React Frontend
+                       ↓
+       ┌────── Spring Boot Backend ──────┐
+       │ Security → REST → Business      │
+       │ Integration  Repository  WS     │
+       └─────────────────────────────────┘
+                       ↓
+┌────────────── Hạ tầng hệ thống ──────────────┐
+│ Google | VNPay | SePay | Mail | PostgreSQL  │
+└──────────────────────────────────────────────┘
+
+PostgreSQL vẫn được tách riêng trong nhóm “Dữ liệu”, nhưng không còn đứng lẻ bên ngoài làm sơ đồ lệch sang một phía.
+
+Dùng Mermaid flowchart TD.
+
+Start
+-> User ở màn hình thanh toán.
+-> User áp mã giảm giá.
+-> Backend validate promotion.
+Nếu hợp lệ -> cập nhật tổng tiền.
+Nếu không hợp lệ -> báo lỗi.
+
+User chọn phương thức thanh toán.
+
+Nhánh VNPay:
+-> Tạo payment PENDING.
+-> Redirect sang VNPay.
+-> VNPay callback/IPN.
+-> Backend verify checksum.
+Nếu SUCCESS:
+   -> booking SUCCESS.
+   -> payment SUCCESS.
+   -> seat BOOKED.
+   -> sinh ticket.
+   -> gửi email vé qua Mail Service.
+Nếu FAILED:
+   -> booking FAILED.
+   -> payment FAILED.
+   -> trả ghế AVAILABLE.
+
+Nhánh SePay/VietQR:
+-> Tạo QR ngân hàng theo số tiền và nội dung booking.
+-> User chuyển khoản.
+-> SePay gửi webhook.
+-> Backend verify API key/HMAC.
+-> Đối chiếu amount/content.
+Nếu đúng:
+   -> booking SUCCESS.
+   -> payment SUCCESS.
+   -> seat BOOKED.
+   -> sinh ticket.
+   -> gửi email vé qua Mail Service.
+Nếu sai:
+   -> lưu payment event.
+   -> không xác nhận vé.
+
+End -> Trang kết quả giao dịch.
+
+tôi thấy chữ mờ quá làm rõ to lên tí được không, plantUML
+
+Được. Chữ trong ảnh nhỏ vì sơ đồ khá dài và PNG bị thu nhỏ khi hiển thị. Bản dưới tăng:
+
+Chữ trong node lên 14.
+Chữ trên mũi tên lên 12.
+Tiêu đề lên 18.
+Độ phân giải PNG lên 180 DPI.
+Màu chữ và viền đậm hơn.
+@startuml
+title Activity Diagram - Quy trình thanh toán
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam dpi 180
+
+skinparam defaultFontName Arial
+skinparam defaultFontSize 14
+skinparam titleFontSize 18
+skinparam titleFontStyle bold
+skinparam ArrowFontSize 12
+skinparam ArrowColor #263238
+
+skinparam activity {
+    FontName Arial
+    FontSize 14
+    FontColor #111827
+    BackgroundColor #EAF4FF
+    BorderColor #1976D2
+    DiamondBackgroundColor #FFF4CC
+    DiamondBorderColor #E6A700
+    StartColor #263238
+    EndColor #263238
+}
+
+start
+
+:User ở màn hình thanh toán;
+:User nhập mã giảm giá;
+:[Backend] Validate promotion;
+
+if (Promotion hợp lệ?) then (Có)
+    :Cập nhật tổng tiền; <<#DDF5E3>>
+else (Không)
+    :Hiển thị lỗi promotion; <<#FFE5E5>>
+endif
+
+:User chọn phương thức thanh toán;
+
+if (Phương thức?) then (VNPay)
+
+    partition "VNPAY" #DDEFFC {
+
+        :[Backend] Tạo payment PENDING;
+        :Redirect User sang VNPay;
+        :VNPay gửi callback / IPN;
+        :[Backend] Verify checksum;
+
+        if (Checksum hợp lệ và SUCCESS?) then (Có)
+            :Xác nhận thanh toán thành công; <<#DDF5E3>>
+
+        else (Không)
+            :Booking = FAILED; <<#FFE5E5>>
+            :Payment = FAILED; <<#FFE5E5>>
+            :Trả ghế về AVAILABLE; <<#FFE5E5>>
+            :Hiển thị trang kết quả thất bại;
+            stop
+        endif
+    }
+
+else (SePay / VietQR)
+
+    partition "SEPAY / VIETQR" #F4E4F7 {
+
+        :[Backend] Tạo payment PENDING;
+        :Tạo QR theo số tiền\nvà nội dung booking;
+        :User thực hiện chuyển khoản;
+        :SePay gửi webhook;
+        :[Backend] Verify API key / HMAC;
+        :Đối chiếu amount và content;
+
+        if (Thông tin giao dịch đúng?) then (Có)
+            :Xác nhận thanh toán thành công; <<#DDF5E3>>
+
+        else (Không)
+            :Lưu payment event; <<#FFE5E5>>
+            :Không xác nhận vé; <<#FFE5E5>>
+            :Hiển thị trang kết quả\nchưa xác nhận;
+            stop
+        endif
+    }
+
+endif
+
+partition "XỬ LÝ THÀNH CÔNG CHUNG" #E3F3E6 {
+
+    :Booking = SUCCESS;
+    :Payment = SUCCESS;
+    :Seat = BOOKED;
+    :Sinh ticket và mã QR;
+    :Mail Service gửi email vé;
+}
+
+:Hiển thị trang kết quả thành công;
+
+stop
+
+@enduml
+
+Nếu vẫn thấy nhỏ khi đưa vào Word hoặc PowerPoint, nên tải sơ đồ dưới dạng SVG thay vì PNG. SVG giữ chữ và đường nét rõ khi phóng to, phù hợp hơn cho báo cáo khóa luận. Nếu bắt buộc dùng PNG, giữ dòng:
+
+skinparam dpi 180
+
+Có thể tăng tiếp lên:
+
+skinparam dpi 220
+
+nhưng kích thước file sẽ lớn hơn.
+
+làm sao để tải được svg
+
+Nếu bạn đang dùng PlantUML Web Server:
+
+Dán mã PlantUML vào ô nhập.
+Nhấn Submit để tạo sơ đồ.
+
+Phía trên hoặc gần ảnh kết quả sẽ có các lựa chọn:
+
+PNG | SVG | ASCII Art
+
+Bấm SVG.
+Khi ảnh SVG mở ra:
+Nhấn Ctrl + S, hoặc
+Nhấp chuột phải → Save as/Lưu thành…
+Đặt tên, ví dụ: activity-payment.svg.
+
+Bạn có thể mở trực tiếp PlantUML Web Server, dán mã và chọn SVG.
+
+Nếu URL ảnh hiện tại có dạng:
+
+https://www.plantuml.com/plantuml/png/...
+
+chỉ cần đổi png thành svg:
+
+https://www.plantuml.com/plantuml/svg/...
+
+Sau đó nhấn Ctrl + S để lưu.
+
+Nếu chạy PlantUML bằng file trên máy:
+
+java -jar plantuml.jar -tsvg diagram.puml
+
+PlantUML sẽ tạo:
+
+diagram.svg
+
+SVG là định dạng vector nên khi đưa vào Word hoặc PowerPoint và phóng lớn, chữ vẫn rõ nét. PlantUML hỗ trợ SVG chính thức qua lựa chọn web hoặc tham số -tsvg. Tài liệu xuất SVG của PlantUML

@@ -162,6 +162,16 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             PaymentMethod method,
             PaymentStatus status);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT p
+            FROM Payment p
+            WHERE p.booking.id = :bookingId
+              AND p.status = com.cinema.booking.enums.PaymentStatus.PENDING
+            ORDER BY p.createdAt DESC
+            """)
+    Optional<Payment> findLockedPendingByBookingId(@Param("bookingId") UUID bookingId);
+
     List<Payment> findByBookingIdAndStatus(UUID bookingId, PaymentStatus status);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

@@ -113,7 +113,7 @@ public class CinemaServiceImpl implements CinemaService {
 
         // 2. Soft-delete tất cả Seats trong các phòng đó (bulk)
         if (!roomIds.isEmpty()) {
-            roomIds.forEach(seatRepository::softDeleteByRoomId);
+            seatRepository.softDeleteByCinemaId(id);
         }
 
         // 3. Soft-delete tất cả Rooms của rạp (bulk)
