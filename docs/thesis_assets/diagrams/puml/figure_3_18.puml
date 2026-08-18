@@ -1,0 +1,34 @@
+@startuml
+title Deployment Diagram - Môi trường phát triển và tích hợp logic
+skinparam shadowing false
+skinparam linetype ortho
+node "Thiết bị khách hàng/nhân viên\nTrình duyệt" as BROWSER
+node "Máy phát triển Front-end" as FRONTEND_DEV {
+  artifact "React + TypeScript\nVite development server" as REACT
+}
+node "Ứng dụng máy chủ" as APP {
+  component "Spring Boot\nREST API + WebSocket/STOMP" as SPRING
+}
+node "Docker Compose (đã xác minh)" as DOCKER {
+  database "PostgreSQL 15\nvolume: pgdata" as PG
+}
+cloud "Dịch vụ bên ngoài" as EXTERNAL {
+  component "VNPay" as DEPLOY_VNPAY
+  component "SePay/VietQR" as DEPLOY_SEPAY
+  component "Google Identity" as DEPLOY_GOOGLE
+  component "SMTP" as DEPLOY_SMTP
+}
+BROWSER --> REACT : HTTP trong local development
+BROWSER --> SPRING : HTTPS/JSON, WSS/STOMP khi deploy tách lớp
+REACT --> SPRING : proxy /api, /auth, /ws-native
+SPRING --> PG : JPA/Hibernate + Flyway
+SPRING --> DEPLOY_VNPAY : redirect/callback
+SPRING --> DEPLOY_SEPAY : QR/webhook
+SPRING --> DEPLOY_GOOGLE : ID token verification
+SPRING --> DEPLOY_SMTP : Spring Mail/SMTP
+note bottom of APP
+Sơ đồ chỉ thể hiện cấu trúc logic có căn cứ source.
+Load balancer, container backend/frontend và production hosting
+chưa được xác minh từ source hiện tại.
+end note
+@enduml

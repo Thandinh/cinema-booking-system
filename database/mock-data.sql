@@ -142,7 +142,10 @@ INSERT INTO cinemas (
 (uuid_generate_v4(), 'BHD Star Bitexco', 'Tầng 3 Bitexco, Quận 1', 'TP Hồ Chí Minh', 10.7719, 106.7044, NOW(), NOW(), true, false),
 (uuid_generate_v4(), 'Lotte Cinema Landmark', 'Keangnam Landmark, Phạm Hùng', 'Hà Nội', 21.0169, 105.7865, NOW(), NOW(), true, false),
 (uuid_generate_v4(), 'Cinestar Huế', '25 Hai Bà Trưng, Phường Vĩnh Ninh', 'Huế', 16.4621, 107.5909, NOW(), NOW(), true, false),
-(uuid_generate_v4(), 'Lotte Cinema Huế', 'Tầng 4 Big C Huế, 181 Bà Triệu', 'Huế', 16.4637, 107.5949, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'Lotte Cinema Huế', 'Tầng 4 Big C Huế, 181 Bà Triệu', 'Huế', 16.45988, 107.59928, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'BHD Star Huế', 'Tầng 5 Vincom Plaza Huế, 50A Hùng Vương', 'Huế', 16.46296, 107.59426, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'Galaxy AEON Mall Huế', 'Tầng 4 AEON Mall Huế, 08 Võ Nguyên Giáp, Phường An Cựu', 'Huế', 16.45450, 107.61420, NOW(), NOW(), true, false),
+(uuid_generate_v4(), 'Starlight Huế', 'Tầng 3 Co.opmart Huế, 06 Trần Hưng Đạo', 'Huế', 16.47102, 107.58739, NOW(), NOW(), true, false),
 (uuid_generate_v4(), 'CGV Vincom Đà Nẵng', 'Tầng 4 Vincom Plaza, 910A Ngô Quyền', 'Đà Nẵng', 16.0711, 108.2294, NOW(), NOW(), true, false),
 (uuid_generate_v4(), 'Galaxy Đà Nẵng', '478 Điện Biên Phủ, Quận Thanh Khê', 'Đà Nẵng', 16.0677, 108.1948, NOW(), NOW(), true, false),
 (uuid_generate_v4(), 'Lotte Cinema Đà Nẵng', 'Tầng 5 Lotte Mart, 6 Nại Nam', 'Đà Nẵng', 16.0392, 108.2265, NOW(), NOW(), true, false),
@@ -183,6 +186,9 @@ WITH assignments(username, cinema_name) AS (
         ('staff_danang', 'Lotte Cinema Chu Lai'),
         ('staff_hue', 'Cinestar Huế'),
         ('staff_hue', 'Lotte Cinema Huế'),
+        ('staff_hue', 'BHD Star Huế'),
+        ('staff_hue', 'Galaxy AEON Mall Huế'),
+        ('staff_hue', 'Starlight Huế'),
         ('staff_blocked', 'Lotte Cinema Cần Thơ')
 )
 INSERT INTO staff_cinemas (staff_id, cinema_id, created_at)
@@ -191,7 +197,7 @@ FROM assignments a
 JOIN users u ON u.username = a.username
 JOIN cinemas c ON c.name = a.cinema_name;
 
--- Mỗi rạp 3 phòng. Tổng: 60 phòng với dữ liệu hiện tại.
+-- Mỗi rạp 3 phòng. Tổng: 69 phòng với dữ liệu hiện tại.
 INSERT INTO rooms (id, cinema_id, name, created_at, updated_at, is_deleted)
 SELECT
     uuid_generate_v4(),
@@ -510,6 +516,186 @@ inserted_tickets AS (
     RETURNING qr_code
 )
 SELECT 'Quick test ticket QR: ' || qr_code AS demo_ticket_qr
+FROM inserted_tickets;
+
+-- =========================================
+-- 8A. QUICK TEST DATA: STAFF HUẾ CHECK-IN
+-- =========================================
+-- Tạo một đơn SUCCESS tại BHD Star Huế để staff_hue test đúng scope rạp.
+-- Suất bắt đầu sau 45 phút nên xuất hiện trong danh sách suất đang mở check-in.
+WITH constants AS (
+    SELECT
+        '00000000-0000-0000-0000-000000000981'::uuid AS demo_showtime_id,
+        '00000000-0000-0000-0000-000000000982'::uuid AS demo_booking_id,
+        '00000000-0000-0000-0000-000000000983'::uuid AS demo_detail_1_id,
+        '00000000-0000-0000-0000-000000000984'::uuid AS demo_detail_2_id,
+        '00000000-0000-0000-0000-000000000985'::uuid AS demo_payment_id,
+        '00000000-0000-0000-0000-000000000986'::uuid AS demo_ticket_1_id,
+        '00000000-0000-0000-0000-000000000987'::uuid AS demo_ticket_2_id,
+        'BBBBBBBBBBBBBBBBBBBBBB'::text AS demo_nonce,
+        'eM4ritLt9dfucTMfTTTX5afCVKnWD1OH6YTOrO6RnMyDIBkLk4al8oZUKTBnIKvwthu5TbEROewKIoYsktEAa3'::text AS demo_qr_secret
+),
+demo_movie AS (
+    SELECT id, duration
+    FROM movies
+    WHERE title = 'Dune: Part Two'
+    LIMIT 1
+),
+demo_room AS (
+    SELECT r.id
+    FROM rooms r
+    JOIN cinemas c ON c.id = r.cinema_id
+    WHERE c.name = 'BHD Star Huế'
+      AND r.name = 'Phòng 02 - Premium'
+    LIMIT 1
+),
+inserted_showtime AS (
+    INSERT INTO showtimes (
+        id, movie_id, room_id, start_time, end_time,
+        base_price, status, created_at, updated_at, is_deleted
+    )
+    SELECT
+        c.demo_showtime_id,
+        m.id,
+        r.id,
+        NOW() + INTERVAL '45 minutes',
+        NOW() + INTERVAL '3 hours 31 minutes',
+        85000,
+        'UPCOMING',
+        NOW(),
+        NOW(),
+        false
+    FROM constants c
+    CROSS JOIN demo_movie m
+    CROSS JOIN demo_room r
+    RETURNING id, room_id, base_price
+),
+inserted_demo_seat_status AS (
+    INSERT INTO seat_status (
+        id, showtime_id, seat_id, status, version, created_at, updated_at
+    )
+    SELECT
+        uuid_generate_v4(),
+        st.id,
+        s.id,
+        CASE
+            WHEN s.row_label = 'G' AND s.seat_number IN (5, 6) THEN 'BOOKED'
+            ELSE 'AVAILABLE'
+        END,
+        0,
+        NOW(),
+        NOW()
+    FROM inserted_showtime st
+    JOIN seats s ON s.room_id = st.room_id
+    WHERE s.is_deleted = false
+    RETURNING seat_id
+),
+demo_user AS (
+    SELECT id
+    FROM users
+    WHERE username = 'user2'
+    LIMIT 1
+),
+selected_demo_seats AS (
+    SELECT
+        s.id,
+        st.base_price * s.price_multiplier AS price_at_booking,
+        row_number() OVER (ORDER BY s.seat_number) AS seat_no
+    FROM inserted_showtime st
+    JOIN seats s ON s.room_id = st.room_id
+    WHERE s.row_label = 'G'
+      AND s.seat_number IN (5, 6)
+),
+inserted_booking AS (
+    INSERT INTO bookings (
+        id, user_id, showtime_id, promotion_id, total_price,
+        discount_amount, status, secure_token, payment_expires_at, created_at, updated_at
+    )
+    SELECT
+        c.demo_booking_id,
+        u.id,
+        st.id,
+        NULL,
+        (SELECT sum(s.price_at_booking) FROM selected_demo_seats s),
+        0,
+        'SUCCESS',
+        'demo-hue-success-booking-token',
+        NOW() + INTERVAL '10 minutes',
+        NOW(),
+        NOW()
+    FROM constants c
+    CROSS JOIN demo_user u
+    CROSS JOIN inserted_showtime st
+    RETURNING id, total_price
+),
+inserted_booking_details AS (
+    INSERT INTO booking_details (
+        id, booking_id, seat_id, price_at_booking, created_at, updated_at
+    )
+    SELECT
+        CASE WHEN s.seat_no = 1 THEN c.demo_detail_1_id ELSE c.demo_detail_2_id END,
+        b.id,
+        s.id,
+        s.price_at_booking,
+        NOW(),
+        NOW()
+    FROM selected_demo_seats s
+    CROSS JOIN constants c
+    CROSS JOIN inserted_booking b
+    RETURNING id
+),
+inserted_payment AS (
+    INSERT INTO payments (
+        id, booking_id, amount, method, transaction_no,
+        status, provider_response, payment_time, created_at, updated_at
+    )
+    SELECT
+        c.demo_payment_id,
+        b.id,
+        b.total_price,
+        'SEPAY',
+        'DEMO_SEPAY_HUE_SUCCESS_001',
+        'SUCCESS',
+        jsonb_build_object('demo', true, 'message', 'Seeded SePay payment for Hue staff check-in test'),
+        NOW(),
+        NOW(),
+        NOW()
+    FROM constants c
+    CROSS JOIN inserted_booking b
+    RETURNING id
+),
+ticket_payloads AS (
+    SELECT
+        bd.id AS booking_detail_id,
+        CASE
+            WHEN bd.id = c.demo_detail_1_id THEN c.demo_ticket_1_id
+            ELSE c.demo_ticket_2_id
+        END AS ticket_id,
+        'CBT1.' || replace(upper(bd.id::text), '-', '') || '.' || c.demo_nonce AS payload,
+        c.demo_qr_secret
+    FROM inserted_booking_details bd
+    CROSS JOIN constants c
+),
+inserted_tickets AS (
+    INSERT INTO tickets (
+        id, booking_detail_id, qr_code, status, check_in_time, created_at, updated_at
+    )
+    SELECT
+        p.ticket_id,
+        p.booking_detail_id,
+        p.payload || '.' || translate(
+            rtrim(encode(substring(hmac(p.payload, p.demo_qr_secret, 'sha256') from 1 for 24), 'base64'), '='),
+            '+/',
+            '-_'
+        ),
+        'ACTIVE',
+        NULL,
+        NOW(),
+        NOW()
+    FROM ticket_payloads p
+    RETURNING qr_code
+)
+SELECT 'Hue staff quick test ticket QR: ' || qr_code AS demo_hue_ticket_qr
 FROM inserted_tickets;
 
 -- =========================================
@@ -1126,8 +1312,30 @@ BEGIN
         RAISE EXCEPTION 'Mock data invalid: missing test users/staff accounts.';
     END IF;
 
-    IF (SELECT count(*) FROM staff_cinemas) < 20 THEN
+    IF (SELECT count(*) FROM staff_cinemas) < 23 THEN
         RAISE EXCEPTION 'Mock data invalid: staff cinema assignments were not seeded correctly.';
+    END IF;
+
+    IF (
+        SELECT count(*)
+        FROM cinemas
+        WHERE city = 'Huế'
+          AND is_active = true
+          AND is_deleted = false
+    ) < 5 THEN
+        RAISE EXCEPTION 'Mock data invalid: Hue cinema cluster was not seeded correctly.';
+    END IF;
+
+    IF (
+        SELECT count(*)
+        FROM staff_cinemas sc
+        JOIN users u ON u.id = sc.staff_id
+        JOIN cinemas c ON c.id = sc.cinema_id
+        WHERE u.username = 'staff_hue'
+          AND c.city = 'Huế'
+          AND c.is_deleted = false
+    ) < 5 THEN
+        RAISE EXCEPTION 'Mock data invalid: staff_hue cinema scope was not seeded correctly.';
     END IF;
 
     IF (
@@ -1183,6 +1391,22 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'Mock data invalid: refund pending case was not seeded correctly.';
     END IF;
+
+    IF (
+        SELECT count(*)
+        FROM tickets t
+        JOIN booking_details bd ON bd.id = t.booking_detail_id
+        JOIN bookings b ON b.id = bd.booking_id
+        JOIN showtimes st ON st.id = b.showtime_id
+        JOIN rooms room ON room.id = st.room_id
+        JOIN cinemas c ON c.id = room.cinema_id
+        WHERE b.secure_token = 'demo-hue-success-booking-token'
+          AND b.status = 'SUCCESS'
+          AND t.status = 'ACTIVE'
+          AND c.name = 'BHD Star Huế'
+    ) <> 2 THEN
+        RAISE EXCEPTION 'Mock data invalid: Hue staff check-in tickets were not seeded correctly.';
+    END IF;
 END $$;
 
 -- Tài khoản test:
@@ -1193,7 +1417,7 @@ END $$;
 -- staff_hcm: phụ trách cụm TP Hồ Chí Minh.
 -- staff_hanoi: phụ trách cụm Hà Nội.
 -- staff_danang: phụ trách cụm Đà Nẵng và Quảng Nam để test scope rạp gần bạn.
--- staff_hue: phụ trách cụm Huế.
+-- staff_hue: phụ trách 5 rạp tại Huế, dùng để test scope, lịch chiếu và soát vé theo rạp.
 -- staff_unassigned: chưa gán rạp, dùng để test filter "Chưa gán rạp".
 -- staff_blocked: tài khoản staff bị khóa, dùng để test block/unblock.
 -- USER:
@@ -1201,8 +1425,8 @@ END $$;
 -- user_pending: email_verified=false, dùng để test xác thực email.
 -- user_blocked: tài khoản user bị khóa, dùng để test đăng nhập/block.
 -- Kỳ vọng dữ liệu:
--- 23 phim NOW_SHOWING, 2 phim không chiếu hiện tại, 20 rạp, 60 phòng, 5760 ghế.
--- 2106 suất chiếu, 202176 dòng seat_status, 66 booking, 65 payment, 122 ticket, 1 refund pending.
+-- 23 phim NOW_SHOWING, 2 phim không chiếu hiện tại, 23 rạp, 69 phòng, 6624 ghế.
+-- 2422 suất chiếu, 232512 dòng seat_status, 67 booking, 66 payment, 124 ticket, 1 refund pending.
 -- Test nút "Gần tôi" trên tab Rạp chiếu:
 -- Dùng vị trí 15.593163, 108.534505 sẽ thấy cụm rạp Quảng Nam được sắp xếp gần nhất.
 -- Trong 10km có CinemaBooking Tam Kỳ Center, Galaxy Tam Kỳ Square, Beta Tam Phú, Cinestar Tam Thăng, Mega GS An Hà.
@@ -1215,6 +1439,15 @@ END $$;
 -- JOIN booking_details bd ON bd.id = t.booking_detail_id
 -- JOIN bookings b ON b.id = bd.booking_id
 -- WHERE b.secure_token = 'demo-success-booking-token';
+-- Vé test scope staff Huế:
+-- user2 có booking SUCCESS tại BHD Star Huế, Phòng 02 - Premium, ghế G5/G6, suất bắt đầu sau 45 phút.
+-- Đăng nhập staff_hue / 123456, chọn BHD Star Huế và suất đang mở check-in rồi quét QR lấy bằng:
+-- SELECT t.qr_code
+-- FROM tickets t
+-- JOIN booking_details bd ON bd.id = t.booking_detail_id
+-- JOIN bookings b ON b.id = bd.booking_id
+-- WHERE b.secure_token = 'demo-hue-success-booking-token';
+-- Có thể dùng QR Huế với staff1 hoặc chọn sai rạp/sai suất để test các nhánh từ chối mà vé vẫn ACTIVE.
 -- Case test tab "Đơn đã đặt" cho user1:
 -- SUCCESS: demo-success-booking-token, suất sau 30 phút, ghế A1/A2, có QR.
 -- PENDING: demo-pending-booking-token, suất sau 2 giờ, ghế B1/B2, còn hạn thanh toán.

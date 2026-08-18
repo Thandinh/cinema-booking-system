@@ -1,0 +1,31 @@
+@startuml
+title Sequence Diagram - Luồng thanh toán VNPay
+autonumber
+actor Customer
+participant React as FE
+participant PaymentController as CTRL
+participant PaymentServiceImpl as SERVICE
+participant VnPayPaymentGateway as GATEWAY
+database PostgreSQL as DB
+participant VNPay
+participant "Ticket / Email / WS" as POST
+Customer -> FE : choose VNPay
+FE -> CTRL : POST /api/v1/payments/initiate
+CTRL -> SERVICE : initiatePayment(bookingId, VNPAY, amount)
+SERVICE -> DB : lock/validate booking and pending payment
+SERVICE -> GATEWAY : create payment URL + secure hash
+GATEWAY --> SERVICE : redirect URL
+SERVICE -> DB : save/reuse PENDING payment + PAYMENT_EVENT
+SERVICE --> FE : payment URL
+FE -> VNPay : redirect browser
+VNPay -> CTRL : GET /vnpay-callback
+CTRL -> SERVICE : process VNPay callback
+SERVICE -> GATEWAY : verify checksum / response / amount
+alt verified success and first valid processing
+  SERVICE -> DB : payment SUCCESS; booking SUCCESS; seats BOOKED
+  SERVICE -> POST : create tickets, async email, WS BOOKED
+else invalid/failed/expired/duplicate
+  SERVICE -> DB : record event; apply safe status transition only
+end
+CTRL --> FE : redirect/result view
+@enduml

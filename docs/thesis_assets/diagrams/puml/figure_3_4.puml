@@ -1,0 +1,27 @@
+@startuml
+title Activity Diagram - Quy trình giữ ghế và tạo đơn đặt vé
+skinparam shadowing false
+skinparam linetype ortho
+start
+:Khách hàng lựa chọn ghế;
+:POST /api/v1/bookings/hold\nHoldSeatRequest(showtimeId, seatIds);
+:Kiểm tra rate limit và suất chiếu;
+:Khóa các dòng SeatStatus trong transaction;
+if (Tất cả ghế ở trạng thái AVAILABLE?) then (Có)
+  :Chuyển AVAILABLE -> HOLD;\nLưu holdBy và holdUntil;
+  :Đăng ký phát sự kiện HOLD sau commit;
+  :Trả HoldSeatResponse;
+  :Khách hàng xác nhận tạo đơn;
+  :POST /api/v1/bookings;
+  :Kiểm tra hold còn hiệu lực\nvà thuộc khách hàng hiện tại;
+  if (Điều kiện giữ ghế hợp lệ?) then (Có)
+    :Tạo Booking PENDING;\nTạo BookingDetail;\nLưu paymentExpiresAt;
+    :Trả BookingResponse;
+  else (Không)
+    :Trả lỗi nghiệp vụ;\nKhông tạo đơn đặt vé;
+  endif
+else (Không)
+  :Trả lỗi ghế không khả dụng;\nKhông cập nhật một phần;
+endif
+stop
+@enduml

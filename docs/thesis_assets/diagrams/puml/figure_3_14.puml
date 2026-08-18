@@ -1,0 +1,30 @@
+@startuml
+title Sequence Diagram - Đồng bộ sơ đồ ghế qua WebSocket/STOMP
+autonumber
+actor "Khách A" as A
+actor "Khách B" as B
+participant "SeatSelectionPage A" as FEA
+participant "SeatSelectionPage B\nuseSeatWebSocket" as FEB
+participant "ShowtimeController" as SHOWTIME
+participant "BookingServiceImpl" as BOOKING
+participant "SeatStatusRepository" as REPO
+database PostgreSQL as DB
+participant "SeatStatusPublisher\nSTOMP broker" as WS
+B -> FEB : mở màn hình chọn ghế
+FEB -> SHOWTIME : GET /api/v1/showtimes/{id}/seats
+SHOWTIME -> REPO : đọc seat map hiện tại
+REPO --> DB : SELECT seat_status
+SHOWTIME --> FEB : snapshot AVAILABLE/HOLD/BOOKED
+FEB -> WS : CONNECT /ws-native\nSUBSCRIBE /topic/seatmap/{showtimeId}
+A -> FEA : chọn ghế
+FEA -> BOOKING : POST /api/v1/bookings/hold
+BOOKING -> REPO : lock/cập nhật SeatStatus trong transaction
+REPO -> DB : AVAILABLE -> HOLD
+BOOKING -> WS : đăng ký publish sau commit
+WS -> FEB : SeatStatusEvent(HOLD, heldBy, holdUntil)
+FEB -> FEB : cập nhật đúng seat trong state UI
+note over BOOKING,WS
+Nếu transaction rollback, afterCommit không chạy;
+khách B không nhận trạng thái HOLD giả.
+end note
+@enduml

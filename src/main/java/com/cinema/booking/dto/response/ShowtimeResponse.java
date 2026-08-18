@@ -19,6 +19,7 @@ public class ShowtimeResponse {
     // Movie Info
     UUID movieId;
     String movieTitle;
+    String moviePosterUrl;
     Integer movieDuration;
     
     // Room Info

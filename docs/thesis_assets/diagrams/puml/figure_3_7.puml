@@ -1,0 +1,24 @@
+@startuml
+title Sequence Diagram - Luồng soát vé QR
+autonumber
+actor Staff
+participant "React StaffTicketScannerPage" as FE
+participant TicketController as CTRL
+participant BookingServiceImpl as SERVICE
+database PostgreSQL as DB
+Staff -> FE : select assigned cinema and open showtime
+FE -> CTRL : GET /tickets/check-in/showtimes?cinemaId
+CTRL --> FE : open check-in showtimes in scope
+Staff -> FE : scan camera/file QR
+FE -> CTRL : POST /tickets/check-in\nqrCode, cinemaId, showtimeId
+CTRL -> SERVICE : checkInTicket(...)
+SERVICE -> DB : lock/load ticket, booking, showtime, cinema
+SERVICE -> SERVICE : verify signature, ACTIVE, SUCCESS, scope, context, window
+alt all valid
+  SERVICE -> DB : ticket ACTIVE -> USED; set checkInTime/checkedInBy
+  SERVICE --> CTRL : TicketResponse
+else invalid/used/wrong cinema/wrong showtime/window
+  SERVICE --> CTRL : domain error; ticket unchanged
+end
+CTRL --> FE : result message
+@enduml

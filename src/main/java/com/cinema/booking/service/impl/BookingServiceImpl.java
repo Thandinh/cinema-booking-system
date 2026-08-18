@@ -650,6 +650,16 @@ public class BookingServiceImpl implements BookingService {
         Ticket ticket = ticketRepository.findByQrCodeForCheckIn(normalizedQrCode)
                 .orElseThrow(() -> new AppException(ErrorCode.TICKET_NOT_FOUND));
 
+        Booking booking = ticket.getBookingDetail().getBooking();
+        Showtime showtime = booking.getShowtime();
+        if (!showtime.getRoom().getCinema().getId().equals(cinemaId)) {
+            throw new AppException(ErrorCode.TICKET_WRONG_CINEMA);
+        }
+        if (!showtime.getId().equals(showtimeId)) {
+            throw new AppException(ErrorCode.TICKET_WRONG_SHOWTIME);
+        }
+        staffCinemaScopeService.validateCurrentStaffCanAccessCinema(showtime.getRoom().getCinema().getId());
+
         if (ticket.getStatus() == TicketStatus.USED) {
             return ticketMapper.toTicketResponse(ticket, true);
         }
@@ -660,20 +670,11 @@ public class BookingServiceImpl implements BookingService {
             throw new AppException(ErrorCode.TICKET_NOT_ACTIVE);
         }
 
-        Booking booking = ticket.getBookingDetail().getBooking();
         if (booking.getStatus() != BookingStatus.SUCCESS) {
             throw new AppException(ErrorCode.TICKET_NOT_ACTIVE);
         }
 
         LocalDateTime now = LocalDateTime.now();
-        Showtime showtime = booking.getShowtime();
-        if (!showtime.getRoom().getCinema().getId().equals(cinemaId)) {
-            throw new AppException(ErrorCode.TICKET_WRONG_CINEMA);
-        }
-        if (!showtime.getId().equals(showtimeId)) {
-            throw new AppException(ErrorCode.TICKET_WRONG_SHOWTIME);
-        }
-        staffCinemaScopeService.validateCurrentStaffCanAccessCinema(showtime.getRoom().getCinema().getId());
         if (now.isBefore(showtime.getStartTime().minusMinutes(checkInEarlyMinutes))) {
             throw new AppException(ErrorCode.TICKET_CHECKIN_TOO_EARLY);
         }

@@ -1,0 +1,39 @@
+@startuml
+title Component Diagram - CinemaBooking
+top to bottom direction
+skinparam shadowing false
+skinparam linetype ortho
+actor USER
+actor STAFF
+actor ADMIN
+component "React + TypeScript + Vite\nPages / Components / Zustand / Axios" as FE
+component "Spring Security\nJWT + RBAC + Staff Scope" as SECURITY
+component "REST Controllers\nDTO Validation / ApiResponse" as API
+component "Business Services\nAuth / Booking / Payment / Ticket / Admin" as SERVICE
+component "WebSocket STOMP\nSeatStatusPublisher" as WS
+component "JPA Repositories\nProjection / Lock Query" as REPO
+database "PostgreSQL\nFlyway schema" as DB
+component "Caffeine Cache" as CACHE
+component "Scheduler\nHold / Pending booking / Showtime" as SCHEDULER
+cloud "VNPay" as VNPAY
+cloud "SePay / VietQR" as SEPAY
+cloud "SMTP / Mail" as MAIL
+cloud "Google ID Token" as GOOGLE
+USER --> FE
+STAFF --> FE
+ADMIN --> FE
+FE --> SECURITY : Bearer JWT
+FE --> API : HTTPS JSON
+FE <--> WS : /ws-native, STOMP
+SECURITY --> API
+API --> SERVICE
+SERVICE --> REPO
+SERVICE --> CACHE
+REPO --> DB
+SCHEDULER --> SERVICE
+SERVICE --> WS : publish after commit
+SERVICE --> VNPAY
+SERVICE --> SEPAY
+SERVICE --> MAIL
+SERVICE --> GOOGLE
+@enduml

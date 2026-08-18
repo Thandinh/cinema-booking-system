@@ -15,6 +15,7 @@ import com.cinema.booking.support.PostgresIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -103,5 +104,54 @@ class HomeShowtimeFeedIntegrationTest extends PostgresIntegrationTest {
                 .hasSize(2)
                 .extracting(item -> item.getStartTime().toLocalTime())
                 .containsExactly(startTimes.get(0).toLocalTime(), startTimes.get(1).toLocalTime());
+    }
+
+    @Test
+    void getShowtimesByCinemaId_shouldReturnOnlyUpcomingShowtimesInsidePublicWindow() {
+        Movie movie = movieRepository.save(Movie.builder()
+                .title("Public Window Movie")
+                .duration(120)
+                .status(MovieStatus.NOW_SHOWING)
+                .isDeleted(false)
+                .build());
+        Cinema cinema = cinemaRepository.save(Cinema.builder()
+                .name("Public Window Cinema")
+                .address("Da Nang")
+                .city("Da Nang")
+                .isActive(true)
+                .isDeleted(false)
+                .build());
+        Room room = roomRepository.save(Room.builder()
+                .cinema(cinema)
+                .name("Screen 01")
+                .isDeleted(false)
+                .build());
+
+        LocalDateTime now = LocalDateTime.now();
+        Showtime bookable = saveShowtime(movie, room, now.plusHours(2), ShowtimeStatus.UPCOMING);
+        saveShowtime(movie, room, now.plusMinutes(5), ShowtimeStatus.UPCOMING);
+        saveShowtime(movie, room, now.minusMinutes(10), ShowtimeStatus.ONGOING);
+        saveShowtime(movie, room, now.plusHours(3), ShowtimeStatus.CANCELLED);
+        saveShowtime(movie, room, now.plusDays(8), ShowtimeStatus.UPCOMING);
+
+        assertThat(showtimeService.getShowtimesByCinemaId(cinema.getId(), PageRequest.of(0, 20)).getContent())
+                .extracting(item -> item.getId())
+                .containsExactly(bookable.getId());
+    }
+
+    private Showtime saveShowtime(
+            Movie movie,
+            Room room,
+            LocalDateTime startTime,
+            ShowtimeStatus status) {
+        return showtimeRepository.save(Showtime.builder()
+                .movie(movie)
+                .room(room)
+                .startTime(startTime)
+                .endTime(startTime.plusMinutes(120))
+                .basePrice(new BigDecimal("90000.00"))
+                .status(status)
+                .isDeleted(false)
+                .build());
     }
 }

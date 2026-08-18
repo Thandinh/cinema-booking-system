@@ -1,0 +1,14 @@
+@startuml
+title State Diagram - Trạng thái giao dịch thanh toán
+[*] --> PENDING : initiate/reuse payment
+PENDING --> SUCCESS : verified callback/webhook
+PENDING --> FAILED : provider failure
+PENDING --> EXPIRED : booking timeout
+SUCCESS --> REFUND_PENDING : refund requested
+REFUND_PENDING --> REFUNDED : refund completed
+REFUND_PENDING --> REFUND_FAILED : refund attempt failed
+FAILED --> [*]
+EXPIRED --> [*]
+REFUNDED --> [*]
+REFUND_FAILED --> [*]
+@enduml

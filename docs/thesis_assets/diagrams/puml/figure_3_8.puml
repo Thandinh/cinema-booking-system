@@ -1,0 +1,143 @@
+@startuml
+title ERD - Cơ sở dữ liệu PostgreSQL CinemaBooking
+hide circle
+skinparam shadowing false
+entity users {
+  * id : uuid <<PK>>
+  --
+  username : varchar <<UQ>>
+  email : varchar <<UQ>>
+  auth_version : integer
+  is_active : boolean
+  is_deleted : boolean
+}
+entity roles {
+  * id : uuid <<PK>>
+  --
+  name : varchar <<UQ>>
+}
+entity permissions {
+  * id : uuid <<PK>>
+  --
+  name : varchar <<UQ>>
+}
+entity users_roles {
+  * user_id : uuid <<FK>>
+  * role_id : uuid <<FK>>
+}
+entity roles_permissions {
+  * role_id : uuid <<FK>>
+  * permission_id : uuid <<FK>>
+}
+entity staff_cinemas {
+  * staff_id : uuid <<FK>>
+  * cinema_id : uuid <<FK>>
+}
+entity movies {
+  * id : uuid <<PK>>
+  title : varchar
+  status : varchar
+}
+entity cinemas {
+  * id : uuid <<PK>>
+  name : varchar
+  city : varchar
+  latitude : double
+  longitude : double
+}
+entity rooms {
+  * id : uuid <<PK>>
+  cinema_id : uuid <<FK>>
+  name : varchar
+}
+entity seats {
+  * id : uuid <<PK>>
+  room_id : uuid <<FK>>
+  row_label : varchar
+  seat_number : int
+}
+entity showtimes {
+  * id : uuid <<PK>>
+  movie_id : uuid <<FK>>
+  room_id : uuid <<FK>>
+  start_time : timestamp
+  end_time : timestamp
+  status : varchar
+}
+entity seat_status {
+  * id : uuid <<PK>>
+  seat_id : uuid <<FK>>
+  showtime_id : uuid <<FK>>
+  status : varchar
+  hold_by : uuid <<FK>>
+  hold_until : timestamp
+  version : int
+}
+entity bookings {
+  * id : uuid <<PK>>
+  user_id : uuid <<FK>>
+  showtime_id : uuid <<FK>>
+  promotion_id : uuid <<FK>>
+  status : varchar
+  payment_expires_at : timestamp
+}
+entity booking_details {
+  * id : uuid <<PK>>
+  booking_id : uuid <<FK>>
+  seat_id : uuid <<FK>>
+}
+entity payments {
+  * id : uuid <<PK>>
+  booking_id : uuid <<FK>>
+  method : varchar
+  status : varchar
+  transaction_no : varchar <<UQ>>
+}
+entity payment_events {
+  * id : uuid <<PK>>
+  payment_id : uuid <<FK>>
+  booking_id : uuid <<FK>>
+  event_type : varchar
+  payload : jsonb
+}
+entity refunds {
+  * id : uuid <<PK>>
+  booking_id : uuid <<FK>>
+  payment_id : uuid <<FK>>
+  status : varchar
+}
+entity tickets {
+  * id : uuid <<PK>>
+  booking_detail_id : uuid <<FK,UQ>>
+  qr_code : text <<UQ>>
+  status : varchar
+}
+entity refresh_tokens {
+  * id : uuid <<PK>>
+  user_id : uuid <<FK>>
+  token_hash : varchar
+}
+users ||--o{ users_roles
+roles ||--o{ users_roles
+roles ||--o{ roles_permissions
+permissions ||--o{ roles_permissions
+users ||--o{ staff_cinemas
+cinemas ||--o{ staff_cinemas
+cinemas ||--o{ rooms
+rooms ||--o{ seats
+movies ||--o{ showtimes
+rooms ||--o{ showtimes
+showtimes ||--o{ seat_status
+seats ||--o{ seat_status
+users ||--o{ bookings
+showtimes ||--o{ bookings
+bookings ||--o{ booking_details
+seats ||--o{ booking_details
+booking_details ||--o| tickets
+bookings ||--o{ payments
+payments ||--o{ payment_events
+bookings ||--o{ payment_events
+payments ||--o{ refunds
+bookings ||--o{ refunds
+users ||--o{ refresh_tokens
+@enduml

@@ -1,0 +1,726 @@
+# CINEMABOOKING - PLANTUML FINAL
+# Căn cứ: source front-end/back-end, Flyway V1-V14 và configuration hiện hành.
+# File diagrams_plantuml.txt chỉ được tham khảo về ý tưởng bố cục; nội dung dưới đây đã được đối chiếu lại với implementation hiện tại.
+#
+# HƯỚNG DẪN DÙNG TRONG BÁO CÁO
+# 1. Sao chép trọn vẹn MỘT khối PlantUML, bao gồm dòng mở đầu và dòng kết thúc khối.
+# 2. Xuất SVG để chèn Word (ưu tiên) hoặc PNG độ phân giải cao.
+# 3. Chèn ảnh tại marker [CHÈN FILE: ...] tương ứng trong Chương 3.
+# 4. Không dán toàn bộ file vào PlantUML trong một lần nếu chỉ cần vẽ một sơ đồ.
+#
+# DANH MỤC SƠ ĐỒ DÙNG TRONG WORD
+# [WORD: Hình 3.1] Use Case Diagram - CinemaBooking
+# [WORD: Hình 3.2] Class Diagram - Domain Model
+# [WORD: Hình 3.3] Sequence - Temporary Seat Hold
+# [WORD: Hình 3.4] Activity - Seat Hold and Booking
+# [WORD: Hình 3.5] Sequence - VNPay Payment
+# [WORD: Hình 3.6] Sequence - SePay VietQR Payment
+# [WORD: Hình 3.7] Sequence - Ticket Check-in
+# [WORD: Hình 3.8] ERD - PostgreSQL CinemaBooking
+# [WORD: Hình 3.9] State Diagram - Booking
+# [WORD: Hình 3.10] State Diagram - Payment
+# [WORD: Hình 3.11] Sequence - Access Token Expiry and Refresh Token Rotation
+# [WORD: Hình 3.12] Sequence - WebSocket Seat Map Synchronization
+# [WORD: Hình 3.13] Activity - Showtime Cancellation and Refund Request
+# [WORD: Hình 3.14] Activity - Refund Processing
+# [WORD: Hình 3.15] Component Diagram - CinemaBooking
+
+' [WORD: Hình 3.1] Use Case tổng quát
+@startuml
+title Use Case Diagram - Hệ thống CinemaBooking
+left to right direction
+skinparam shadowing false
+skinparam packageStyle rectangle
+actor "Khách hàng\n(USER)" as USER
+actor "Nhân viên rạp\n(STAFF)" as STAFF
+actor "Quản trị viên\n(ADMIN)" as ADMIN
+actor "VNPay" as VNPAY
+actor "SePay / VietQR" as SEPAY
+
+rectangle "CinemaBooking" {
+  usecase "Xem phim, rạp, lịch chiếu" as UC_BROWSE
+  usecase "Đăng ký / xác thực email\nreset mật khẩu / đăng nhập" as UC_AUTH
+  usecase "Chọn ghế, giữ ghế, tạo đơn" as UC_BOOK
+  usecase "Áp dụng / bỏ khuyến mãi" as UC_PROMO
+  usecase "Thanh toán VNPay" as UC_VNPAY
+  usecase "Thanh toán QR ngân hàng" as UC_SEPAY
+  usecase "Xem đơn, vé QR, hồ sơ, phiên" as UC_ACCOUNT
+  usecase "Soát vé QR đúng rạp/suất" as UC_CHECKIN
+  usecase "Quản lý suất chiếu, phòng/ghế\ntrong rạp được phân công" as UC_STAFF_OPS
+  usecase "Quản trị catalog, người dùng, RBAC\nbooking/payment/refund request/audit/analytics" as UC_ADMIN
+}
+USER --> UC_BROWSE
+USER --> UC_AUTH
+USER --> UC_BOOK
+USER --> UC_PROMO
+USER --> UC_VNPAY
+USER --> UC_SEPAY
+USER --> UC_ACCOUNT
+STAFF --> UC_CHECKIN
+STAFF --> UC_STAFF_OPS
+ADMIN --> UC_ADMIN
+VNPAY --> UC_VNPAY
+SEPAY --> UC_SEPAY
+@enduml
+
+' [WORD: Hình 3.15] Sơ đồ thành phần
+@startuml
+title Component Diagram - CinemaBooking
+top to bottom direction
+skinparam shadowing false
+skinparam linetype ortho
+actor USER
+actor STAFF
+actor ADMIN
+component "React + TypeScript + Vite\nPages / Components / Zustand / Axios" as FE
+component "Spring Security\nJWT + RBAC + Staff Scope" as SECURITY
+component "REST Controllers\nDTO Validation / ApiResponse" as API
+component "Business Services\nAuth / Booking / Payment / Ticket / Admin" as SERVICE
+component "WebSocket STOMP\nSeatStatusPublisher" as WS
+component "JPA Repositories\nProjection / Lock Query" as REPO
+database "PostgreSQL\nFlyway schema" as DB
+component "Caffeine Cache" as CACHE
+component "Scheduler\nHold / Pending booking / Showtime" as SCHEDULER
+cloud "VNPay" as VNPAY
+cloud "SePay / VietQR" as SEPAY
+cloud "SMTP / Mail" as MAIL
+cloud "Google ID Token" as GOOGLE
+USER --> FE
+STAFF --> FE
+ADMIN --> FE
+FE --> SECURITY : Bearer JWT
+FE --> API : HTTPS JSON
+FE <--> WS : /ws-native, STOMP
+SECURITY --> API
+API --> SERVICE
+SERVICE --> REPO
+SERVICE --> CACHE
+REPO --> DB
+SCHEDULER --> SERVICE
+SERVICE --> WS : publish after commit
+SERVICE --> VNPAY
+SERVICE --> SEPAY
+SERVICE --> MAIL
+SERVICE --> GOOGLE
+@enduml
+
+' [WORD: Hình 3.2] Sơ đồ lớp miền nghiệp vụ
+@startuml
+title Class Diagram - Mô hình miền nghiệp vụ CinemaBooking
+hide methods
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+class User {
+  UUID id
+  String username
+  String email
+  Boolean emailVerified
+  Integer authVersion
+  Boolean isActive
+  Boolean isDeleted
+}
+class Role {
+  UUID id
+  String name
+}
+class Permission {
+  UUID id
+  String name
+}
+class StaffCinema {
+  UUID staffId
+  UUID cinemaId
+}
+class Movie {
+  UUID id
+  String title
+  Integer duration
+  MovieStatus status
+  Boolean isDeleted
+}
+class Cinema {
+  UUID id
+  String name
+  String city
+  Double latitude
+  Double longitude
+  Boolean isActive
+}
+class Room {
+  UUID id
+  String name
+  Boolean isDeleted
+}
+class Seat {
+  UUID id
+  String rowLabel
+  Integer seatNumber
+  SeatType seatType
+  BigDecimal priceMultiplier
+}
+class Showtime {
+  UUID id
+  LocalDateTime startTime
+  LocalDateTime endTime
+  BigDecimal basePrice
+  ShowtimeStatus status
+}
+class SeatStatus {
+  UUID id
+  SeatStatusType status
+  LocalDateTime holdUntil
+  Integer version
+}
+class Booking {
+  UUID id
+  BigDecimal totalPrice
+  BigDecimal discountAmount
+  BookingStatus status
+  String secureToken
+  LocalDateTime paymentExpiresAt
+}
+class BookingDetail {
+  UUID id
+  BigDecimal priceAtBooking
+}
+class Payment {
+  UUID id
+  BigDecimal amount
+  PaymentMethod method
+  PaymentStatus status
+  String transactionNo
+}
+class PaymentEvent {
+  UUID id
+  PaymentEventType eventType
+  Boolean success
+  LocalDateTime createdAt
+}
+class Refund {
+  UUID id
+  BigDecimal amount
+  RefundStatus status
+  String reason
+  LocalDateTime requestedAt
+}
+class Ticket {
+  UUID id
+  String qrCode
+  TicketStatus status
+  LocalDateTime checkInTime
+}
+class RefreshToken {
+  UUID id
+  String tokenHash
+  LocalDateTime expiresAt
+  LocalDateTime revokedAt
+}
+class InvalidatedToken {
+  String id
+  LocalDateTime expiryTime
+}
+class AuthAuditLog {
+  UUID id
+  String eventType
+  Boolean success
+  LocalDateTime createdAt
+}
+class AdminAuditLog {
+  UUID id
+  String action
+  String resourceType
+  Boolean success
+  LocalDateTime createdAt
+}
+User "*" -- "*" Role : users_roles
+Role "*" -- "*" Permission : roles_permissions
+User "1" -- "*" StaffCinema
+Cinema "1" -- "*" StaffCinema
+Cinema "1" -- "*" Room
+Room "1" -- "*" Seat
+Movie "1" -- "*" Showtime
+Room "1" -- "*" Showtime
+Showtime "1" -- "*" SeatStatus
+Seat "1" -- "*" SeatStatus
+User "1" -- "*" Booking
+Showtime "1" -- "*" Booking
+Booking "1" -- "*" BookingDetail
+Seat "1" -- "*" BookingDetail
+BookingDetail "1" -- "0..1" Ticket
+Booking "1" -- "*" Payment
+Payment "1" -- "*" PaymentEvent
+Booking "1" -- "*" PaymentEvent
+Payment "1" -- "*" Refund
+Booking "1" -- "*" Refund
+User "1" -- "*" RefreshToken
+User "1" -- "*" AuthAuditLog
+User "0..1" -- "*" AdminAuditLog : actor
+@enduml
+
+' [WORD: Hình 3.8] Sơ đồ quan hệ cơ sở dữ liệu
+@startuml
+title ERD - Cơ sở dữ liệu PostgreSQL CinemaBooking
+hide circle
+skinparam shadowing false
+entity users {
+  * id : uuid <<PK>>
+  --
+  username : varchar <<UQ>>
+  email : varchar <<UQ>>
+  auth_version : integer
+  is_active : boolean
+  is_deleted : boolean
+}
+entity roles {
+  * id : uuid <<PK>>
+  --
+  name : varchar <<UQ>>
+}
+entity permissions {
+  * id : uuid <<PK>>
+  --
+  name : varchar <<UQ>>
+}
+entity users_roles {
+  * user_id : uuid <<FK>>
+  * role_id : uuid <<FK>>
+}
+entity roles_permissions {
+  * role_id : uuid <<FK>>
+  * permission_id : uuid <<FK>>
+}
+entity staff_cinemas {
+  * staff_id : uuid <<FK>>
+  * cinema_id : uuid <<FK>>
+}
+entity movies {
+  * id : uuid <<PK>>
+  title : varchar
+  status : varchar
+}
+entity cinemas {
+  * id : uuid <<PK>>
+  name : varchar
+  city : varchar
+  latitude : double
+  longitude : double
+}
+entity rooms {
+  * id : uuid <<PK>>
+  cinema_id : uuid <<FK>>
+  name : varchar
+}
+entity seats {
+  * id : uuid <<PK>>
+  room_id : uuid <<FK>>
+  row_label : varchar
+  seat_number : int
+}
+entity showtimes {
+  * id : uuid <<PK>>
+  movie_id : uuid <<FK>>
+  room_id : uuid <<FK>>
+  start_time : timestamp
+  end_time : timestamp
+  status : varchar
+}
+entity seat_status {
+  * id : uuid <<PK>>
+  seat_id : uuid <<FK>>
+  showtime_id : uuid <<FK>>
+  status : varchar
+  hold_by : uuid <<FK>>
+  hold_until : timestamp
+  version : int
+}
+entity bookings {
+  * id : uuid <<PK>>
+  user_id : uuid <<FK>>
+  showtime_id : uuid <<FK>>
+  promotion_id : uuid <<FK>>
+  status : varchar
+  payment_expires_at : timestamp
+}
+entity booking_details {
+  * id : uuid <<PK>>
+  booking_id : uuid <<FK>>
+  seat_id : uuid <<FK>>
+}
+entity payments {
+  * id : uuid <<PK>>
+  booking_id : uuid <<FK>>
+  method : varchar
+  status : varchar
+  transaction_no : varchar <<UQ>>
+}
+entity payment_events {
+  * id : uuid <<PK>>
+  payment_id : uuid <<FK>>
+  booking_id : uuid <<FK>>
+  event_type : varchar
+  payload : jsonb
+}
+entity refunds {
+  * id : uuid <<PK>>
+  booking_id : uuid <<FK>>
+  payment_id : uuid <<FK>>
+  status : varchar
+}
+entity tickets {
+  * id : uuid <<PK>>
+  booking_detail_id : uuid <<FK,UQ>>
+  qr_code : text <<UQ>>
+  status : varchar
+}
+entity refresh_tokens {
+  * id : uuid <<PK>>
+  user_id : uuid <<FK>>
+  token_hash : varchar
+}
+users ||--o{ users_roles
+roles ||--o{ users_roles
+roles ||--o{ roles_permissions
+permissions ||--o{ roles_permissions
+users ||--o{ staff_cinemas
+cinemas ||--o{ staff_cinemas
+cinemas ||--o{ rooms
+rooms ||--o{ seats
+movies ||--o{ showtimes
+rooms ||--o{ showtimes
+showtimes ||--o{ seat_status
+seats ||--o{ seat_status
+users ||--o{ bookings
+showtimes ||--o{ bookings
+bookings ||--o{ booking_details
+seats ||--o{ booking_details
+booking_details ||--o| tickets
+bookings ||--o{ payments
+payments ||--o{ payment_events
+bookings ||--o{ payment_events
+payments ||--o{ refunds
+bookings ||--o{ refunds
+users ||--o{ refresh_tokens
+@enduml
+
+' [WORD: Hình 3.11] Access token hết hạn và luân chuyển refresh token
+@startuml
+title Sequence Diagram - Access Token hết hạn và Refresh Token Rotation
+autonumber
+actor User
+participant "React Client\naxiosClient" as FE
+participant AuthenticationController as CTRL
+participant AuthenticationService as AUTH
+database PostgreSQL as DB
+User -> FE : thao tác trên phiên đã đăng nhập
+FE -> CTRL : API request kèm access token đã hết hạn
+CTRL --> FE : 401 Unauthorized
+FE -> FE : gom các request 401 vào một refresh promise
+FE -> CTRL : POST /auth/refresh\nHttpOnly refresh cookie
+CTRL -> AUTH : refreshToken(request metadata)
+AUTH -> DB : khóa bản ghi refresh token theo hash
+AUTH -> AUTH : xác minh token_use, expiry, auth_version
+alt refresh token hợp lệ
+  AUTH -> DB : thu hồi token cũ; lưu token mới đã băm
+  AUTH --> CTRL : cặp token mới
+  CTRL --> FE : access token mới + refresh cookie mới
+  FE -> FE : phát lại các request đang chờ
+else token không hợp lệ hoặc đã bị thu hồi
+  AUTH --> CTRL : lỗi xác thực
+  CTRL --> FE : 401 Unauthorized
+  FE -> FE : xóa phiên cục bộ và chuyển đến trang đăng nhập
+end
+@enduml
+
+' [WORD: Hình 3.3] Luồng giữ ghế tạm thời
+@startuml
+title Sequence Diagram - Giữ ghế tạm thời
+autonumber
+actor Customer
+participant "React SeatSelectionPage" as FE
+participant BookingController as CTRL
+participant BookingServiceImpl as SERVICE
+participant SeatStatusRepository as REPO
+database PostgreSQL as DB
+participant SeatStatusPublisher as WS
+Customer -> FE : choose seats
+FE -> CTRL : POST /api/v1/bookings/hold\nHoldSeatRequest(showtimeId, seatIds)
+CTRL -> SERVICE : holdSeats(request)
+SERVICE -> SERVICE : rate limit + validate showtime
+SERVICE -> REPO : lock target SeatStatus rows
+REPO -> DB : SELECT/UPDATE in transaction
+alt all target seats AVAILABLE
+  SERVICE -> DB : AVAILABLE -> HOLD, holdBy, holdUntil
+  SERVICE -> WS : register publish after commit
+  SERVICE --> CTRL : HoldSeatResponse
+  WS -> FE : /topic/seatmap/{showtimeId} HOLD event
+else a seat is not available
+  SERVICE --> CTRL : business error; no partial success
+end
+@enduml
+
+' [WORD: Hình 3.4] Quy trình hoạt động giữ ghế và tạo đơn
+@startuml
+title Activity Diagram - Quy trình giữ ghế và tạo đơn đặt vé
+skinparam shadowing false
+skinparam linetype ortho
+start
+:Khách hàng lựa chọn ghế;
+:POST /api/v1/bookings/hold\nHoldSeatRequest(showtimeId, seatIds);
+:Kiểm tra rate limit và suất chiếu;
+:Khóa các dòng SeatStatus trong transaction;
+if (Tất cả ghế ở trạng thái AVAILABLE?) then (Có)
+  :Chuyển AVAILABLE -> HOLD;\nLưu holdBy và holdUntil;
+  :Đăng ký phát sự kiện HOLD sau commit;
+  :Trả HoldSeatResponse;
+  :Khách hàng xác nhận tạo đơn;
+  :POST /api/v1/bookings;
+  :Kiểm tra hold còn hiệu lực\nvà thuộc khách hàng hiện tại;
+  if (Điều kiện giữ ghế hợp lệ?) then (Có)
+    :Tạo Booking PENDING;\nTạo BookingDetail;\nLưu paymentExpiresAt;
+    :Trả BookingResponse;
+  else (Không)
+    :Trả lỗi nghiệp vụ;\nKhông tạo đơn đặt vé;
+  endif
+else (Không)
+  :Trả lỗi ghế không khả dụng;\nKhông cập nhật một phần;
+endif
+stop
+@enduml
+
+' [WORD: Hình 3.5] Luồng thanh toán VNPay
+@startuml
+title Sequence Diagram - Luồng thanh toán VNPay
+autonumber
+actor Customer
+participant React as FE
+participant PaymentController as CTRL
+participant PaymentServiceImpl as SERVICE
+participant VnPayPaymentGateway as GATEWAY
+database PostgreSQL as DB
+participant VNPay
+participant "Ticket / Email / WS" as POST
+Customer -> FE : choose VNPay
+FE -> CTRL : POST /api/v1/payments/initiate
+CTRL -> SERVICE : initiatePayment(bookingId, VNPAY, amount)
+SERVICE -> DB : lock/validate booking and pending payment
+SERVICE -> GATEWAY : create payment URL + secure hash
+GATEWAY --> SERVICE : redirect URL
+SERVICE -> DB : save/reuse PENDING payment + PAYMENT_EVENT
+SERVICE --> FE : payment URL
+FE -> VNPay : redirect browser
+VNPay -> CTRL : GET /vnpay-callback
+CTRL -> SERVICE : process VNPay callback
+SERVICE -> GATEWAY : verify checksum / response / amount
+alt verified success and first valid processing
+  SERVICE -> DB : payment SUCCESS; booking SUCCESS; seats BOOKED
+  SERVICE -> POST : create tickets, async email, WS BOOKED
+else invalid/failed/expired/duplicate
+  SERVICE -> DB : record event; apply safe status transition only
+end
+CTRL --> FE : redirect/result view
+@enduml
+
+' [WORD: Hình 3.6] Luồng thanh toán SePay/VietQR
+@startuml
+title Sequence Diagram - Luồng thanh toán SePay/VietQR
+autonumber
+actor Customer
+participant React as FE
+participant PaymentController as CTRL
+participant PaymentServiceImpl as SERVICE
+participant SePayPaymentGateway as GATEWAY
+database PostgreSQL as DB
+participant SePay
+participant "Ticket / Email / WS" as POST
+Customer -> FE : select bank QR payment
+FE -> CTRL : POST /api/v1/payments/initiate
+CTRL -> SERVICE : initiatePayment(bookingId, SEPAY, amount)
+SERVICE -> DB : validate PENDING booking and amount
+SERVICE -> GATEWAY : build QR account/amount/content
+SERVICE -> DB : save PENDING payment + event
+SERVICE --> FE : QR payment data
+Customer -> SePay : bank transfer using QR
+SePay -> CTRL : POST /sepay-webhook
+CTRL -> SERVICE : process webhook
+SERVICE -> GATEWAY : verify API key/HMAC
+SERVICE -> DB : locate payment; compare content and amount
+alt verified first success
+  SERVICE -> DB : payment SUCCESS; booking SUCCESS; seats BOOKED
+  SERVICE -> POST : tickets, email, WS
+else mismatch/invalid/duplicate
+  SERVICE -> DB : store PaymentEvent; do not issue ticket
+end
+FE -> CTRL : GET payment/booking result
+CTRL --> FE : current confirmed status
+@enduml
+
+' [WORD: Hình 3.7] Luồng soát vé QR
+@startuml
+title Sequence Diagram - Luồng soát vé QR
+autonumber
+actor Staff
+participant "React StaffTicketScannerPage" as FE
+participant TicketController as CTRL
+participant BookingServiceImpl as SERVICE
+database PostgreSQL as DB
+Staff -> FE : select assigned cinema and open showtime
+FE -> CTRL : GET /tickets/check-in/showtimes?cinemaId
+CTRL --> FE : open check-in showtimes in scope
+Staff -> FE : scan camera/file QR
+FE -> CTRL : POST /tickets/check-in\nqrCode, cinemaId, showtimeId
+CTRL -> SERVICE : checkInTicket(...)
+SERVICE -> DB : lock/load ticket, booking, showtime, cinema
+SERVICE -> SERVICE : verify signature, ACTIVE, SUCCESS, scope, context, window
+alt all valid
+  SERVICE -> DB : ticket ACTIVE -> USED; set checkInTime/checkedInBy
+  SERVICE --> CTRL : TicketResponse
+else invalid/used/wrong cinema/wrong showtime/window
+  SERVICE --> CTRL : domain error; ticket unchanged
+end
+CTRL --> FE : result message
+@enduml
+
+' [WORD: Hình 3.12] Đồng bộ sơ đồ ghế qua WebSocket
+@startuml
+title Sequence Diagram - Đồng bộ sơ đồ ghế qua WebSocket/STOMP
+autonumber
+actor "Khách A" as A
+actor "Khách B" as B
+participant "SeatSelectionPage A" as FEA
+participant "SeatSelectionPage B\nuseSeatWebSocket" as FEB
+participant "ShowtimeController" as SHOWTIME
+participant "BookingServiceImpl" as BOOKING
+participant "SeatStatusRepository" as REPO
+database PostgreSQL as DB
+participant "SeatStatusPublisher\nSTOMP broker" as WS
+B -> FEB : mở màn hình chọn ghế
+FEB -> SHOWTIME : GET /api/v1/showtimes/{id}/seats
+SHOWTIME -> REPO : đọc seat map hiện tại
+REPO --> DB : SELECT seat_status
+SHOWTIME --> FEB : snapshot AVAILABLE/HOLD/BOOKED
+FEB -> WS : CONNECT /ws-native\nSUBSCRIBE /topic/seatmap/{showtimeId}
+A -> FEA : chọn ghế
+FEA -> BOOKING : POST /api/v1/bookings/hold
+BOOKING -> REPO : lock/cập nhật SeatStatus trong transaction
+REPO -> DB : AVAILABLE -> HOLD
+BOOKING -> WS : đăng ký publish sau commit
+WS -> FEB : SeatStatusEvent(HOLD, heldBy, holdUntil)
+FEB -> FEB : cập nhật đúng seat trong state UI
+note over BOOKING,WS
+Nếu transaction rollback, afterCommit không chạy;
+khách B không nhận trạng thái HOLD giả.
+end note
+@enduml
+
+' [WORD: Hình 3.13] Hủy suất chiếu và tạo yêu cầu hoàn tiền
+@startuml
+title Activity Diagram - Hủy suất chiếu và tạo yêu cầu hoàn tiền
+skinparam shadowing false
+skinparam linetype ortho
+start
+:Admin/Staff gửi POST /api/v1/showtimes/{id}/cancel;
+:ShowtimeServiceImpl kiểm tra permission\nvà staff cinema scope;
+if (Suất đang UPCOMING/ONGOING?) then (Có)
+  if (Có ticket USED?) then (Có)
+    :Từ chối hủy suất;
+    stop
+  else (Không)
+    :Lấy Booking PENDING và SUCCESS\ncùng payment liên quan;
+    :Giải phóng reservation khuyến mãi;
+    while (Mỗi booking bị ảnh hưởng?) is (Còn)
+      :Trả ghế AVAILABLE và phát event sau commit;
+      :Hủy ticket ACTIVE nếu có;
+      if (Booking ban đầu là SUCCESS?) then (Có)
+        :Booking -> REFUND_PENDING;
+        :Payment SUCCESS -> REFUND_PENDING;
+        :Tạo Refund PENDING và PaymentEvent;
+        :Đăng ký gửi email hủy suất sau commit;
+      else (PENDING)
+        :Booking -> CANCELLED;
+      endif
+    endwhile (Hết)
+    :Payment PENDING -> FAILED\nvà ghi PaymentEvent;
+:Showtime -> CANCELLED;
+    :Lưu transaction;
+    :Quản trị viên xử lý hoàn trả bên ngoài hệ thống;\nsau đó ghi nhận thành công hoặc thất bại\nqua RefundServiceImpl;
+  endif
+else (Không)
+  :Từ chối vì suất không thể hủy;
+endif
+stop
+@enduml
+
+' [WORD: Hình 3.14] Xử lý yêu cầu hoàn tiền
+@startuml
+title Activity Diagram - Xử lý yêu cầu hoàn tiền
+skinparam shadowing false
+skinparam linetype ortho
+start
+:Người có thẩm quyền mở yêu cầu Refund PENDING;
+:Kiểm tra permission, trạng thái Booking/Payment\nvà phạm vi rạp;
+if (Yêu cầu còn hợp lệ?) then (Có)
+  :Refund PENDING -> PROCESSING;
+  :Thực hiện hoàn trả theo quy trình bên ngoài hệ thống;
+  if (Người vận hành xác nhận đã hoàn trả?) then (Có)
+    :Refund -> SUCCESS;
+    :Payment -> REFUNDED;
+    :Booking -> REFUNDED;
+    :Ghi mã tham chiếu, thời điểm xử lý\nvà PaymentEvent;
+  else (Không)
+    :Refund -> FAILED;
+    :Payment -> REFUND_FAILED;
+    :Booking giữ REFUND_PENDING để theo dõi;
+    :Ghi lý do thất bại và PaymentEvent;
+  endif
+else (Không)
+  :Từ chối thao tác;\nkhông thay đổi trạng thái giao dịch;
+endif
+note right
+CinemaBooking chưa gọi API hoàn tiền của provider.
+SUCCESS/FAILED là kết quả do người vận hành ghi nhận.
+end note
+stop
+@enduml
+
+' [WORD: Hình 3.9] Sơ đồ trạng thái đơn đặt vé
+@startuml
+title State Diagram - Trạng thái đơn đặt vé
+[*] --> PENDING : create after valid holds
+PENDING --> SUCCESS : verified payment success
+PENDING --> FAILED : payment failed
+PENDING --> EXPIRED : payment timeout scheduler
+PENDING --> CANCELLED : customer/operator cancel when policy permits
+SUCCESS --> REFUND_PENDING : showtime cancellation/refund policy
+REFUND_PENDING --> REFUNDED : operator records external refund success
+note right of REFUND_PENDING
+CinemaBooking không tự chuyển tiền qua provider API.
+Nếu xử lý bên ngoài thất bại, Payment chuyển
+REFUND_FAILED; Booking vẫn giữ REFUND_PENDING
+để nhân viên tiếp tục theo dõi và xử lý.
+end note
+SUCCESS --> CANCELLED : cancellation policy if applicable
+FAILED --> [*]
+EXPIRED --> [*]
+CANCELLED --> [*]
+REFUNDED --> [*]
+@enduml
+
+' [WORD: Hình 3.10] Sơ đồ trạng thái giao dịch thanh toán
+@startuml
+title State Diagram - Trạng thái giao dịch thanh toán
+[*] --> PENDING : initiate/reuse payment
+PENDING --> SUCCESS : verified callback/webhook
+PENDING --> FAILED : provider failure
+PENDING --> EXPIRED : booking timeout
+SUCCESS --> REFUND_PENDING : refund request created
+REFUND_PENDING --> REFUNDED : operator records success
+REFUND_PENDING --> REFUND_FAILED : operator records failure
+note right of REFUND_PENDING
+Các trạng thái phản ánh kết quả được ghi nhận;
+không có provider refund API trong phiên bản hiện tại.
+end note
+FAILED --> [*]
+EXPIRED --> [*]
+REFUNDED --> [*]
+REFUND_FAILED --> [*]
+@enduml

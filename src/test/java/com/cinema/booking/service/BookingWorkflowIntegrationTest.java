@@ -4,6 +4,7 @@ import com.cinema.booking.dto.request.CreateBookingRequest;
 import com.cinema.booking.dto.request.HoldSeatRequest;
 import com.cinema.booking.dto.request.RefundCompleteRequest;
 import com.cinema.booking.dto.request.ShowtimeCancelRequest;
+import com.cinema.booking.dto.request.ShowtimeCreationRequest;
 import com.cinema.booking.dto.response.BookingResponse;
 import com.cinema.booking.dto.response.HoldSeatResponse;
 import com.cinema.booking.dto.response.RefundResponse;
@@ -80,7 +81,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
         "booking.seat-hold-minutes=5",
         "booking.pending-timeout-minutes=5",
         "showtime.booking-cutoff-minutes=15",
-        "ticket.check-in-early-minutes=180",
+        "ticket.check-in-early-minutes=60",
         "ticket.check-in-late-minutes=30",
         "ticket.qr-secret=test-ticket-qr-secret-32-characters-minimum"
 })
@@ -495,6 +496,9 @@ class BookingWorkflowIntegrationTest extends PostgresIntegrationTest {
     @Test
     void checkInTicket_shouldRequireCorrectCinemaAndShowtimeBeforeMarkingUsed() {
         TestShowtimeData data = createShowtimeData();
+        data.showtime().setStartTime(LocalDateTime.now().plusMinutes(30));
+        data.showtime().setEndTime(LocalDateTime.now().plusHours(2));
+        showtimeRepository.saveAndFlush(data.showtime());
         authenticateAs(customer, "BOOKING_CREATE");
         List<UUID> selectedSeatIds = List.of(data.seats().getFirst().getId());
 
@@ -543,6 +547,22 @@ class BookingWorkflowIntegrationTest extends PostgresIntegrationTest {
         assertThat(firstScan.getAlreadyCheckedIn()).isFalse();
         assertThat(firstScan.getCheckedInById()).isEqualTo(staff.getId());
 
+        assertThatThrownBy(() -> bookingService.checkInTicket(
+                qrCode,
+                otherData.cinema().getId(),
+                data.showtime().getId()
+        ))
+                .isInstanceOfSatisfying(AppException.class, ex ->
+                        assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.TICKET_WRONG_CINEMA));
+
+        assertThatThrownBy(() -> bookingService.checkInTicket(
+                qrCode,
+                data.cinema().getId(),
+                otherData.showtime().getId()
+        ))
+                .isInstanceOfSatisfying(AppException.class, ex ->
+                        assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.TICKET_WRONG_SHOWTIME));
+
         TicketResponse secondScan = bookingService.checkInTicket(
                 qrCode,
                 data.cinema().getId(),
@@ -552,6 +572,57 @@ class BookingWorkflowIntegrationTest extends PostgresIntegrationTest {
         assertThat(secondScan.getStatus()).isEqualTo(TicketStatus.USED);
         assertThat(secondScan.getAlreadyCheckedIn()).isTrue();
         assertThat(secondScan.getCheckedInById()).isEqualTo(staff.getId());
+    }
+
+    @Test
+    void getOpenCheckInShowtimes_shouldRespectConfiguredTimeWindow() {
+        TestShowtimeData data = createShowtimeData();
+        LocalDateTime now = LocalDateTime.now();
+        data.showtime().setStartTime(now.plusMinutes(30));
+        data.showtime().setEndTime(now.plusHours(2));
+        showtimeRepository.saveAndFlush(data.showtime());
+
+        Showtime ongoing = showtimeRepository.save(Showtime.builder()
+                .movie(data.movie())
+                .room(data.room())
+                .startTime(now.minusMinutes(10))
+                .endTime(now.plusMinutes(30))
+                .basePrice(BASE_PRICE)
+                .status(ShowtimeStatus.ONGOING)
+                .isDeleted(false)
+                .build());
+        showtimeRepository.save(Showtime.builder()
+                .movie(data.movie())
+                .room(data.room())
+                .startTime(now.plusMinutes(61))
+                .endTime(now.plusHours(3))
+                .basePrice(BASE_PRICE)
+                .status(ShowtimeStatus.UPCOMING)
+                .isDeleted(false)
+                .build());
+        showtimeRepository.save(Showtime.builder()
+                .movie(data.movie())
+                .room(data.room())
+                .startTime(now.minusMinutes(31))
+                .endTime(now.plusMinutes(20))
+                .basePrice(BASE_PRICE)
+                .status(ShowtimeStatus.ONGOING)
+                .isDeleted(false)
+                .build());
+
+        staffCinemaRepository.save(StaffCinema.builder()
+                .id(StaffCinemaId.builder()
+                        .staffId(staff.getId())
+                        .cinemaId(data.cinema().getId())
+                        .build())
+                .staff(staff)
+                .cinema(data.cinema())
+                .build());
+        authenticateAs(staff, "ROLE_STAFF", "TICKET_CHECKIN");
+
+        assertThat(showtimeService.getOpenCheckInShowtimes(data.cinema().getId()))
+                .extracting(item -> item.getId())
+                .containsExactlyInAnyOrder(data.showtime().getId(), ongoing.getId());
     }
 
     @Test
@@ -644,6 +715,34 @@ class BookingWorkflowIntegrationTest extends PostgresIntegrationTest {
                 eq(data.showtime().getId()),
                 argThat(ids -> ids.size() == selectedSeatIds.size() && ids.containsAll(selectedSeatIds)),
                 eq(SeatStatusType.AVAILABLE));
+    }
+
+    @Test
+    void createShowtime_shouldRejectConflictInsideCleaningBuffer() {
+        TestShowtimeData data = createShowtimeData();
+        authenticateAs(staff, "ROLE_STAFF", "SHOWTIME_CREATE");
+        staffCinemaRepository.save(StaffCinema.builder()
+                .id(StaffCinemaId.builder()
+                        .staffId(staff.getId())
+                        .cinemaId(data.cinema().getId())
+                        .build())
+                .staff(staff)
+                .cinema(data.cinema())
+                .build());
+
+        LocalDateTime proposedStart = data.showtime().getEndTime().plusMinutes(10);
+        ShowtimeCreationRequest request = ShowtimeCreationRequest.builder()
+                .movieId(data.movie().getId())
+                .roomId(data.room().getId())
+                .startTime(proposedStart)
+                .endTime(proposedStart.plusHours(2))
+                .basePrice(BASE_PRICE)
+                .build();
+
+        assertThatThrownBy(() -> showtimeService.createShowtime(request))
+                .isInstanceOfSatisfying(AppException.class, ex ->
+                        assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.SHOWTIME_TIME_OVERLAPPING));
+        assertThat(showtimeRepository.count()).isEqualTo(1);
     }
 
     @Test
