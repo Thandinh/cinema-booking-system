@@ -110,12 +110,11 @@ com.cinema.booking
 - Maven is optional; the repository includes `mvnw.cmd`
 - `psql`, DBeaver, or pgAdmin is optional for loading sample data
 
-## Quick start
+## Get started locally
 
-### 1. Configure the environment
+After cloning the repository, open a terminal in the backend directory and create a local environment file from the template:
 
 ```powershell
-cd "D:\spring boot\cinema-booking-system"
 Copy-Item .env.example .env
 ```
 
@@ -140,7 +139,7 @@ FLYWAY_ENABLED=true
 
 Never commit a real `.env` file, payment secret, SMTP password, Google credential, or production JWT secret.
 
-### 2. Start PostgreSQL
+Start the local PostgreSQL service with Docker:
 
 ```powershell
 docker compose up -d
@@ -148,7 +147,7 @@ docker compose up -d
 
 The default compose configuration exposes PostgreSQL on `localhost:5433` and stores data in the `pgdata` Docker volume.
 
-### 3. Run the API
+With the database running, start the API:
 
 ```powershell
 .\mvnw.cmd spring-boot:run
@@ -158,7 +157,7 @@ The backend is available at `http://localhost:8080`.
 
 Flyway runs automatically on startup and validates the JPA schema after migrations are applied. New databases should not use `database.sql` as the normal startup path.
 
-### 4. Open API documentation
+Once the application has started, the API documentation is available at:
 
 - Swagger UI: `http://localhost:8080/swagger-ui.html`
 - OpenAPI JSON: `http://localhost:8080/v3/api-docs`
