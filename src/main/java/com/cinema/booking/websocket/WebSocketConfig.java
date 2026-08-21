@@ -1,10 +1,14 @@
 package com.cinema.booking.websocket;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
+
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * Cấu hình WebSocket dùng giao thức STOMP (Simple Text Oriented Messaging Protocol).
@@ -16,6 +20,16 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 @Configuration
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
+
+    private final List<String> allowedOrigins;
+
+    public WebSocketConfig(
+            @Value("${app.cors.allowed-origins:http://localhost:5173}") String allowedOrigins) {
+        this.allowedOrigins = Arrays.stream(allowedOrigins.split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isBlank())
+                .toList();
+    }
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry registry) {
@@ -30,12 +44,12 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         // Endpoint 1: SockJS — fallback cho môi trường corporate proxy, firewall chặn WS thuần
         registry.addEndpoint("/ws")
-                .setAllowedOriginPatterns("*")
+                .setAllowedOriginPatterns(allowedOrigins.toArray(String[]::new))
                 .withSockJS();
 
         // Endpoint 2: Native WebSocket — cho modern browser, mobile app, không cần SockJS
         // Frontend kết nối: new Client({ brokerURL: 'ws://host/ws-native' })
         registry.addEndpoint("/ws-native")
-                .setAllowedOriginPatterns("*");
+                .setAllowedOriginPatterns(allowedOrigins.toArray(String[]::new));
     }
 }

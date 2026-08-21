@@ -112,11 +112,13 @@ com.cinema.booking
 
 ## Get started locally
 
-After cloning the repository, open a terminal in the backend directory and create a local environment file from the template:
+After cloning the repository, open a terminal in the backend directory and create a local environment file from the template. The values below assume the default Docker/PostgreSQL setup; change them when your local ports or credentials are different.
 
 ```powershell
 Copy-Item .env.example .env
 ```
+
+On macOS/Linux, use `cp .env.example .env` instead.
 
 For a local demo, update at least the database credentials and JWT secret in `.env`:
 
